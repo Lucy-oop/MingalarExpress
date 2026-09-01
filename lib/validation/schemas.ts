@@ -42,6 +42,23 @@ const lng = z.coerce.number().min(-180).max(180)
  * not redundant: it turns a 500-level constraint violation into a field-level
  * message pointing at the map pin the user needs to move.
  */
+/**
+ * A Postgres `uuid` column value — NOT an RFC 9562 UUID.
+ *
+ * Zod 4's `.uuid()` enforces the version and variant nibbles. Postgres does not:
+ * its `uuid` type accepts any 32 hex digits in 8-4-4-4-12 shape, and this
+ * project's own seed uses ids like `aaaaaaaa-0000-0000-0000-000000000001` that
+ * are entirely valid columns and entirely invalid RFC UUIDs.
+ *
+ * Validating more strictly than the database rejects values the database itself
+ * holds. That is how "Select a shop" appeared for a shop the server had already
+ * resolved correctly from the session: the id was right, the rule was wrong.
+ *
+ * `z.guid()` is Zod 4's shape-only check, which is exactly Postgres's rule.
+ * Use this for anything read out of, or written into, a uuid column.
+ */
+export const dbId = (message = 'Invalid id') => z.guid(message)
+
 export const servicePoint = z
   .object({ lat, lng })
   .refine(
@@ -82,7 +99,7 @@ export const registerSchema = z
 
 export const orderCreateSchema = z
   .object({
-    shopId: z.string().uuid('Select a shop'),
+    shopId: dbId('Select a shop'),
 
     pickupAddress: z.string().trim().min(5, 'Pickup address is required').max(300),
     pickupPoint: servicePoint,
@@ -93,7 +110,7 @@ export const orderCreateSchema = z
     customerPhone: myanmarPhone,
     customerPhoneAlt: optionalMyanmarPhone.optional(),
     dropoffAddress: z.string().trim().min(5, 'Delivery address is required').max(300),
-    dropoffAreaId: z.string().uuid().nullable().optional(),
+    dropoffAreaId: dbId('Select a valid area').nullable().optional(),
     dropoffPoint: servicePoint,
     dropoffNote: z.string().trim().max(300).optional().or(z.literal('')),
 

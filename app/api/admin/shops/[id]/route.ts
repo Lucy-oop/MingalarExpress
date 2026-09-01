@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
+import { dbId } from '@/lib/validation/schemas'
 import { assertRole } from '@/lib/auth/guards'
 import { getShopDetail } from '@/lib/admin/shop-queries'
 
-const paramsSchema = z.object({ id: z.string().uuid() })
+const paramsSchema = z.object({ id: dbId('Invalid shop id') })
 
 /**
  * Detail payload for the shop drawer.

@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { myanmarPhone, optionalMyanmarPhone, servicePoint } from '@/lib/validation/schemas'
+import { dbId, myanmarPhone, optionalMyanmarPhone, servicePoint } from '@/lib/validation/schemas'
 import { blankToNull } from '@/lib/validation/admin'
 
 /**
@@ -39,7 +39,7 @@ export const SUSPEND_REASON_LABEL: Record<SuspendReason, string> = {
 
 export const shopStatusSchema = z
   .object({
-    shopId: z.string().uuid('Select a shop'),
+    shopId: dbId('Select a shop'),
     action: z.enum(['activate', 'suspend']),
     reason: z.preprocess(blankToNull, z.union([z.null(), z.enum(SUSPEND_REASONS)])),
     detail: z.string().trim().max(300, 'Keep it under 300 characters'),
@@ -61,7 +61,7 @@ export const shopStatusSchema = z
 const shopCoreShape = {
   name: z.string().trim().min(1, 'Shop name is required').max(160, 'Shop name is too long'),
   phone: myanmarPhone,
-  areaId: z.preprocess(blankToNull, z.union([z.null(), z.string().uuid('Select a valid ward')])),
+  areaId: z.preprocess(blankToNull, z.union([z.null(), dbId('Select a valid ward')])),
   pickupAddress: z
     .string()
     .trim()
@@ -94,7 +94,7 @@ export const shopEditSchema = z.object(shopCoreShape)
  */
 export const shopOnboardExistingOwnerSchema = z.object({
   ...shopCoreShape,
-  ownerId: z.string().uuid('Select the owner account'),
+  ownerId: dbId('Select the owner account'),
 })
 
 export const shopOnboardNewOwnerSchema = z

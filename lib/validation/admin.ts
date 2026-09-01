@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { THINGANGYUN_BBOX } from '@/lib/geo/thingangyun'
-import { mmk, myanmarPhone, optionalMyanmarPhone } from '@/lib/validation/schemas'
+import { dbId, mmk, myanmarPhone, optionalMyanmarPhone } from '@/lib/validation/schemas'
 
 /**
  * Super Admin input schemas (Phase 5).
@@ -54,7 +54,7 @@ const lng = z.coerce.number({ error: 'Enter a longitude' }).min(-180).max(180)
 
 /** Shared operating parameters — the columns tg_riders_guard reserves to admins. */
 const riderOperatingFields = {
-  baseAreaId: z.union([z.null(), z.string().uuid('Select a valid ward')]),
+  baseAreaId: z.union([z.null(), dbId('Select a valid ward')]),
   coverageKm,
   maxActiveOrders,
   codFloatLimit: mmk,
@@ -223,7 +223,7 @@ export const coverageSchema = z
  * convention: positive = rider owes the platform.
  */
 export const adjustmentSchema = z.object({
-  riderId: z.string().uuid('Select a rider'),
+  riderId: dbId('Select a rider'),
   direction: z.enum(['owed_by_rider', 'owed_to_rider']),
   amount: mmk.refine((v) => v > 0, 'Enter an amount greater than zero'),
   memo: z.string().trim().min(3, 'Say why — this line is permanent').max(200),
