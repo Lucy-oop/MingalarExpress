@@ -267,7 +267,7 @@ export function LocationPicker({
 
       {outsideArea ? (
         <Alert tone="error">
-          That pin is outside Thingangyun Township. Mingalar Express does not deliver there yet.
+          That pin is outside our delivery area (Greater Yangon). Move it closer in.
         </Alert>
       ) : null}
       {pointError && !outsideArea ? <Alert tone="error">{pointError}</Alert> : null}

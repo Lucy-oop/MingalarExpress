@@ -1,6 +1,6 @@
 'use client'
 
-import { useActionState, useMemo, useState } from 'react'
+import { useActionState, useEffect, useMemo, useRef, useState } from 'react'
 import { useFormStatus } from 'react-dom'
 import { PackagePlus } from 'lucide-react'
 import { createOrder, type OrderFormState } from '@/lib/orders/actions'
@@ -39,9 +39,52 @@ function SubmitButton({ disabled }: { disabled: boolean }) {
   )
 }
 
+/**
+ * Schema keys this form has somewhere to PUT an error message.
+ *
+ * orderCreateSchema validates keys that have no text input behind them —
+ * pickupPoint, dropoffPoint, paymentMethod, feePayer, shopId, deliveryFee. An
+ * error on one of those used to render nowhere: the page came back unchanged and
+ * the shop's order looked like it had evaporated. Anything not in this set is
+ * now collected into the alert at the top instead of being dropped.
+ *
+ * Add a key here only when the field genuinely renders `err(key)`.
+ */
+const RENDERED_ERROR_KEYS = new Set([
+  'pickupAddress',
+  'customerName',
+  'customerPhone',
+  'customerPhoneAlt',
+  'dropoffAddress',
+  'parcelDesc',
+  'parcelWeightG',
+  'parcelValue',
+  'codAmount',
+])
+
 export function OrderForm({ shop, areas, settings }: OrderFormProps) {
   const [state, action] = useActionState<OrderFormState, FormData>(createOrder, {})
   const err = (k: string) => state.fieldErrors?.[k]?.[0]
+
+  // Point errors have no input of their own, so they ride on the address field
+  // of the picker they belong to — which is where someone looking at a rejected
+  // pin would expect to find them.
+  const pickupError = err('pickupAddress') ?? err('pickupPoint')
+  const dropoffError = err('dropoffAddress') ?? err('dropoffPoint')
+
+  const unshown = Object.entries(state.fieldErrors ?? {}).filter(
+    ([k]) => !RENDERED_ERROR_KEYS.has(k) && k !== 'pickupPoint' && k !== 'dropoffPoint',
+  )
+
+  // The form is three tall cards; the alert sits above all of them, so after a
+  // failed submit it is usually scrolled off screen. Not scrolling to it is most
+  // of why a rejected submission reads as "nothing happened".
+  const alertRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (state.error || state.fieldErrors) {
+      alertRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }
+  }, [state])
 
   const [pickup, setPickup] = useState<LatLng>({
     lat: shop.pickup_lat,
@@ -69,11 +112,31 @@ export function OrderForm({ shop, areas, settings }: OrderFormProps) {
   const goods = Number(goodsValue) || 0
   const codTotal = quote && paymentMethod === 'cod' ? codCollectable(goods, quote.total, feePayer) : 0
 
-  const canSubmit = !!dropoff && isInServiceArea(dropoff) && dropoffAddress.trim().length >= 5
+  // Mirrors what the server will accept. Pickup is included because a shop whose
+  // saved pickup point predates the geofence change would otherwise submit an
+  // order the database rejects, with the failure landing on a field that has no
+  // input of its own.
+  const canSubmit =
+    !!dropoff &&
+    isInServiceArea(dropoff) &&
+    isInServiceArea(pickup) &&
+    dropoffAddress.trim().length >= 5
 
   return (
     <form action={action} className="space-y-6" noValidate>
-      {state.error ? <Alert tone="error">{state.error}</Alert> : null}
+      <div ref={alertRef}>
+        {state.error || unshown.length > 0 ? (
+          <Alert tone="error" title={state.error ?? 'Could not create this order'}>
+            {unshown.length > 0 ? (
+              <ul className="list-disc space-y-0.5 pl-4">
+                {unshown.map(([key, messages]) => (
+                  <li key={key}>{messages[0]}</li>
+                ))}
+              </ul>
+            ) : null}
+          </Alert>
+        ) : null}
+      </div>
 
       <input type="hidden" name="paymentMethod" value={paymentMethod} />
       <input type="hidden" name="feePayer" value={feePayer} />
@@ -92,7 +155,7 @@ export function OrderForm({ shop, areas, settings }: OrderFormProps) {
             onPointChange={setPickup}
             onAddressChange={setPickupAddress}
             fieldPrefix="pickup"
-            addressError={err('pickupAddress')}
+            addressError={pickupError}
             addressPlaceholder="Shop address"
           />
 
@@ -166,7 +229,7 @@ export function OrderForm({ shop, areas, settings }: OrderFormProps) {
             onPointChange={setDropoff}
             onAddressChange={setDropoffAddress}
             fieldPrefix="dropoff"
-            addressError={err('dropoffAddress')}
+            addressError={dropoffError}
             addressPlaceholder="No. 7, Baho Street, Lhay Htaung Kan"
           />
 
@@ -281,7 +344,9 @@ export function OrderForm({ shop, areas, settings }: OrderFormProps) {
       <SubmitButton disabled={!canSubmit} />
       {!canSubmit ? (
         <p className="text-center text-xs text-muted-foreground">
-          Drop the delivery pin and enter the address to continue.
+          {!isInServiceArea(pickup)
+            ? 'Your pickup point is outside the delivery area. Fix it in shop settings.'
+            : 'Drop the delivery pin and enter the address to continue.'}
         </p>
       ) : null}
     </form>

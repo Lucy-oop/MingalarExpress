@@ -50,7 +50,7 @@ export const servicePoint = z
       p.lat <= THINGANGYUN_BBOX.north &&
       p.lng >= THINGANGYUN_BBOX.west &&
       p.lng <= THINGANGYUN_BBOX.east,
-    'This location is outside Thingangyun Township. Mingalar Express does not deliver there yet.',
+    'That location is outside our delivery area (Greater Yangon). Move the pin closer in.',
   )
 
 // ---------------------------------------------------------------------------

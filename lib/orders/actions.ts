@@ -14,6 +14,16 @@ export type OrderFormState = {
 }
 
 /**
+ * Service-area copy, in one place.
+ *
+ * Migration 0007 widened the geofence from Thingangyun to Greater Yangon for the
+ * route model. Messages still naming Thingangyun told a shop that a downtown
+ * address was undeliverable when the database would in fact accept it.
+ */
+const OUT_OF_AREA =
+  'That location is outside our delivery area (Greater Yangon). Move the pin closer in.'
+
+/**
  * Create an order.
  *
  * The delivery fee and COD total are RECOMPUTED here from the two map points and
@@ -25,7 +35,16 @@ export async function createOrder(
   formData: FormData,
 ): Promise<OrderFormState> {
   const ctx = await assertRole('shop_owner').catch(() => null)
-  if (!ctx) redirect('/auth/login')
+  // Deliberately NOT a redirect. A redirect here throws away a long, carefully
+  // typed order and lands the shop on a login page with no explanation -- which
+  // is indistinguishable from the form silently eating the submission. Returning
+  // an error keeps every field on screen so the order survives a re-login.
+  if (!ctx) {
+    return {
+      error:
+        'Your session has expired. Sign in again in another tab, then press Create delivery order — nothing you typed has been lost.',
+    }
+  }
 
   const supabase = await createClient()
 
@@ -85,7 +104,19 @@ export async function createOrder(
   })
 
   if (!parsed.success) {
-    return { fieldErrors: parsed.error.flatten().fieldErrors as Record<string, string[]> }
+    // A summary alongside the field errors, always. Several schema keys
+    // (pickupPoint, dropoffPoint, paymentMethod, feePayer...) have no text input
+    // to attach a message to, so a fieldErrors-only response renders as nothing
+    // at all and the submission appears to vanish.
+    const fieldErrors = parsed.error.flatten().fieldErrors as Record<string, string[]>
+    const count = Object.keys(fieldErrors).length
+    return {
+      error:
+        count === 0
+          ? 'Could not create the order. Check the details and try again.'
+          : `Please fix ${count} field${count === 1 ? '' : 's'} below before submitting.`,
+      fieldErrors,
+    }
   }
   const v = parsed.data
 
@@ -142,11 +173,31 @@ export async function createOrder(
   if (error) {
     // Translate the DB's own invariants back into field-level messages. Those
     // constraints are the authority; this mapping only makes them legible.
-    if (error.message.includes('in_service_area')) {
-      return { fieldErrors: { dropoffAddress: ['That address is outside Thingangyun Township.'] } }
+    //
+    // Every branch below sets a top-level `error` as well as any field error.
+    // A fieldErrors-only response is invisible whenever the key has no rendered
+    // input, and an invisible failure reads to the shop as the form losing their
+    // order -- the exact bug this mapping is supposed to prevent.
+    if (error.message.includes('orders_dropoff_in_service_area')) {
+      return {
+        error: 'The delivery pin is outside the area we cover.',
+        fieldErrors: { dropoffAddress: [OUT_OF_AREA] },
+      }
+    }
+    if (error.message.includes('orders_pickup_in_service_area')) {
+      return {
+        error: 'The pickup pin is outside the area we cover.',
+        fieldErrors: { pickupAddress: [OUT_OF_AREA] },
+      }
     }
     if (error.message.includes('orders_cod_consistent')) {
-      return { fieldErrors: { codAmount: ['A COD order needs an amount above zero.'] } }
+      return {
+        error: 'A cash-on-delivery order needs a collection amount.',
+        fieldErrors: { codAmount: ['A COD order needs an amount above zero.'] },
+      }
+    }
+    if (error.message.includes('row-level security') || error.code === '42501') {
+      return { error: 'This shop is not active, so it cannot take new orders. Contact the office.' }
     }
     return { error: 'Could not create the order. Check the details and try again.' }
   }

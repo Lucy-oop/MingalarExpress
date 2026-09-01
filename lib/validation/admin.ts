@@ -155,7 +155,7 @@ export const areaSchema = z
         v.lng >= THINGANGYUN_BBOX.west &&
         v.lng <= THINGANGYUN_BBOX.east),
     {
-      message: 'That centroid is outside Thingangyun Township.',
+      message: 'That centroid is outside our delivery area (Greater Yangon).',
       path: ['lat'],
     },
   )
