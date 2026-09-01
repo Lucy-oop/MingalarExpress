@@ -1,9 +1,10 @@
 'use client'
 
 import { useActionState, useEffect, useMemo, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { useFormStatus } from 'react-dom'
-import { PackagePlus } from 'lucide-react'
-import { createOrder, type OrderFormState } from '@/lib/orders/actions'
+import { CheckCircle2, PackagePlus } from 'lucide-react'
+import { createOrder, type CreatedOrder, type OrderFormState } from '@/lib/orders/actions'
 import { LocationPicker } from '@/components/map/location-picker'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -11,6 +12,7 @@ import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { Field } from '@/components/ui/field'
 import { Alert } from '@/components/ui/alert'
+import { Overlay } from '@/components/ui/overlay'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { haversineKm, etaMinutes } from '@/lib/geo/haversine'
 import { quoteFee, codCollectable, type FeeQuote } from '@/lib/pricing'
@@ -98,6 +100,31 @@ export function OrderForm({ shop, areas, settings }: OrderFormProps) {
   const [feePayer, setFeePayer] = useState<'customer' | 'shop'>('customer')
   const [goodsValue, setGoodsValue] = useState('')
 
+  const formRef = useRef<HTMLFormElement>(null)
+
+  /**
+   * Which confirmation the shop has already dismissed.
+   *
+   * `useActionState` has no reset, so "Create another order" cannot clear the
+   * returned state — it records the code instead. A later submit returns a
+   * different code and the modal opens again on its own.
+   */
+  const [dismissedCode, setDismissedCode] = useState<string | null>(null)
+  const created = state.created && state.created.code !== dismissedCode ? state.created : null
+
+  const resetForForNextOrder = (order: CreatedOrder) => {
+    setDismissedCode(order.code)
+    formRef.current?.reset()
+    // Controlled values are not touched by form.reset(), so they are cleared by
+    // hand. Pickup stays: the next parcel leaves from the same shop.
+    setDropoff(null)
+    setDropoffAddress('')
+    setGoodsValue('')
+    setPaymentMethod('cod')
+    setFeePayer('customer')
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
   /**
    * The quote is computed locally for instant feedback and confirmed by the
    * server on submit. Same `quoteFee` function on both sides, same settings row,
@@ -123,7 +150,8 @@ export function OrderForm({ shop, areas, settings }: OrderFormProps) {
     dropoffAddress.trim().length >= 5
 
   return (
-    <form action={action} className="space-y-6" noValidate>
+    <>
+      <form ref={formRef} action={action} className="space-y-6" noValidate>
       <div ref={alertRef}>
         {state.error || unshown.length > 0 ? (
           <Alert tone="error" title={state.error ?? 'Could not create this order'}>
@@ -350,6 +378,104 @@ export function OrderForm({ shop, areas, settings }: OrderFormProps) {
         </p>
       ) : null}
     </form>
+
+      {created ? (
+        <OrderCreatedDialog
+          order={created}
+          areas={areas}
+          onCreateAnother={() => resetForForNextOrder(created)}
+        />
+      ) : null}
+    </>
+  )
+}
+
+/**
+ * Shown once, immediately after the insert, before anyone navigates.
+ *
+ * Escape and the backdrop are wired to "create another", not to a bare close.
+ * Dismissing therefore always lands somewhere coherent — a blank form ready for
+ * the next parcel — rather than on a stale form still showing the order that was
+ * just submitted, which invites creating it twice. The code is on the orders
+ * list either way if it is dismissed before being written down.
+ */
+function OrderCreatedDialog({
+  order,
+  areas,
+  onCreateAnother,
+}: {
+  order: CreatedOrder
+  areas: OrderFormProps['areas']
+  onCreateAnother: () => void
+}) {
+  const router = useRouter()
+  const areaName = areas.find((a) => a.id === order.dropoffAreaId)?.name ?? null
+  const isCod = order.paymentMethod === 'cod'
+
+  return (
+    <Overlay
+      open
+      side="center"
+      title="Order created"
+      onClose={onCreateAnother}
+      footer={
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <Button variant="outline" onClick={onCreateAnother}>
+            <PackagePlus />
+            Create another order
+          </Button>
+          <Button onClick={() => router.push('/shop/orders')}>View orders</Button>
+        </div>
+      }
+    >
+      <div className="space-y-4">
+        <div className="flex items-center gap-3 rounded-lg border border-emerald-300 bg-emerald-50 p-3">
+          <CheckCircle2 className="size-5 shrink-0 text-emerald-700" aria-hidden="true" />
+          <div className="min-w-0">
+            <p className="text-xs text-emerald-800">Order code — write this on the parcel</p>
+            <p className="font-mono text-lg font-semibold tracking-tight text-emerald-900">
+              {order.code}
+            </p>
+          </div>
+        </div>
+
+        <dl className="space-y-2 text-sm">
+          <DetailRow label="Recipient">{order.customerName}</DetailRow>
+          <DetailRow label="Destination">
+            {areaName ? <span className="font-medium">{areaName}</span> : null}
+            {areaName ? ' · ' : null}
+            <span className="text-muted-foreground">{order.dropoffAddress}</span>
+          </DetailRow>
+          <DetailRow label="Delivery fee">
+            {formatMmk(order.deliveryFee)}
+            <span className="text-muted-foreground">
+              {' '}
+              · paid by the {order.feePayer}
+            </span>
+          </DetailRow>
+          <DetailRow label={isCod ? 'Rider collects' : 'Payment'}>
+            {isCod ? (
+              <span className="font-semibold">{formatMmk(order.codAmount)}</span>
+            ) : (
+              <span className="text-muted-foreground">Prepaid — nothing to collect</span>
+            )}
+          </DetailRow>
+        </dl>
+
+        <p className="text-xs text-muted-foreground">
+          Dispatch can see it now. It stays in Open deliveries until a rider is assigned.
+        </p>
+      </div>
+    </Overlay>
+  )
+}
+
+function DetailRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex gap-3">
+      <dt className="w-28 shrink-0 text-muted-foreground">{label}</dt>
+      <dd className="min-w-0 flex-1">{children}</dd>
+    </div>
   )
 }
 

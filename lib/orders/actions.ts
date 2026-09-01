@@ -8,9 +8,29 @@ import { orderCreateSchema } from '@/lib/validation/schemas'
 import { haversineKm } from '@/lib/geo/haversine'
 import { quoteFee, codCollectable } from '@/lib/pricing'
 
+/** What the confirmation modal needs. Every money figure is the SERVER's. */
+export type CreatedOrder = {
+  id: string
+  code: string
+  customerName: string
+  dropoffAddress: string
+  dropoffAreaId: string | null
+  paymentMethod: 'cod' | 'prepaid'
+  feePayer: 'customer' | 'shop'
+  deliveryFee: number
+  codAmount: number
+}
+
 export type OrderFormState = {
   error?: string
   fieldErrors?: Record<string, string[]>
+  /**
+   * Set once, on success. The action no longer redirects: the shop needs to see
+   * the generated code and the collectable total before leaving the page, and a
+   * redirect gives them no chance to read either. Navigation is now the modal's
+   * job, so the form owns when it happens.
+   */
+  created?: CreatedOrder
 }
 
 /**
@@ -167,7 +187,9 @@ export async function createOrder(
       fee_payer: v.feePayer,
       route_distance_km: Math.round(crowKm * 100) / 100,
     })
-    .select('id, code')
+    .select(
+      'id, code, customer_name, dropoff_address, dropoff_area_id, payment_method, fee_payer, delivery_fee, cod_amount',
+    )
     .single()
 
   if (error) {
@@ -202,9 +224,28 @@ export async function createOrder(
     return { error: 'Could not create the order. Check the details and try again.' }
   }
 
+  // Both dashboards, because one insert changes both: the shop's "Open
+  // deliveries" bucket and the dispatcher's unrouted-parcel pool. The dispatcher
+  // board is force-dynamic so this only matters for a client already holding a
+  // cached RSC payload -- Realtime (route-board.tsx) is what makes it live.
   revalidatePath('/shop/dashboard')
   revalidatePath('/shop/orders')
-  redirect(`/shop/orders/${created.id}?created=1`)
+  revalidatePath(`/shop/orders/${created.id}`)
+  revalidatePath('/admin/dispatcher')
+
+  return {
+    created: {
+      id: created.id,
+      code: created.code,
+      customerName: created.customer_name,
+      dropoffAddress: created.dropoff_address,
+      dropoffAreaId: created.dropoff_area_id,
+      paymentMethod: created.payment_method as 'cod' | 'prepaid',
+      feePayer: created.fee_payer as 'customer' | 'shop',
+      deliveryFee: created.delivery_fee,
+      codAmount: created.cod_amount,
+    },
+  }
 }
 
 /** A shop may cancel only while the order is still pending — RLS enforces it. */

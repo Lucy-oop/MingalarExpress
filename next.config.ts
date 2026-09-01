@@ -25,6 +25,8 @@ const nextConfig: NextConfig = {
     return [
       { source: '/login', destination: '/auth/login', permanent: false },
       { source: '/register-shop', destination: '/auth/register', permanent: false },
+      // /shop has no page of its own; the dashboard is the shop's home.
+      { source: '/shop', destination: '/shop/dashboard', permanent: false },
       { source: '/merchant', destination: '/shop/dashboard', permanent: false },
       { source: '/merchant/:path*', destination: '/shop/:path*', permanent: false },
       // The daily route manifest is Phase 3 of the route plan and does not exist

@@ -57,8 +57,8 @@ export default async function NewOrderPage() {
       <div>
         <h1 className="text-xl font-semibold">New delivery order</h1>
         <p className="text-sm text-muted-foreground">
-          Sending from <span className="font-medium">{shop.name}</span>. Delivery is available inside
-          Thingangyun Township only.
+          Sending from <span className="font-medium">{shop.name}</span>. Delivery is available
+          across Greater Yangon on the daily routes.
         </p>
       </div>
       <OrderForm shop={shop} areas={areas ?? []} settings={settings} />

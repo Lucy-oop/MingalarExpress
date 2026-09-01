@@ -3,6 +3,7 @@
 import * as React from 'react'
 import { useRouter } from 'next/navigation'
 import { Plus, RefreshCw } from 'lucide-react'
+import { createClient } from '@/lib/supabase/client'
 import { TripCard } from '@/components/routes/trip-card'
 import { DepartDialog } from '@/components/routes/depart-dialog'
 import { UnroutedPanel } from '@/components/routes/unrouted-panel'
@@ -68,6 +69,47 @@ export function RouteBoard({ board }: { board: PlanningBoard }) {
 
   const refresh = React.useCallback(() => {
     startTransition(() => router.refresh())
+  }, [router])
+
+  /**
+   * Live board.
+   *
+   * A shop creating a parcel has to appear in the unrouted pool without anyone
+   * pressing Refresh — otherwise a dispatcher loads a run believing they have
+   * seen everything waiting. `orders` and `trips` are both in the
+   * `supabase_realtime` publication (0005 and 0009 respectively) and both are
+   * RLS-filtered, so a dispatcher receives exactly the rows they may already
+   * read.
+   *
+   * Coalesced through a short timer rather than refreshing per event: loading
+   * twenty parcels onto a run emits twenty UPDATEs in one transaction, and
+   * twenty `router.refresh()` calls would fight the action that caused them.
+   */
+  React.useEffect(() => {
+    const supabase = createClient()
+    let timer: ReturnType<typeof setTimeout> | null = null
+
+    const nudge = () => {
+      if (timer) clearTimeout(timer)
+      timer = setTimeout(() => {
+        timer = null
+        router.refresh()
+      }, 400)
+    }
+
+    const channel = supabase
+      .channel('dispatch-board')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, nudge)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'trips' }, nudge)
+      .subscribe()
+
+    return () => {
+      if (timer) clearTimeout(timer)
+      void supabase.removeChannel(channel)
+    }
+    // `router` is stable in the app router; refresh() is deliberately called
+    // directly rather than through `refresh` so the subscription is not torn
+    // down and rebuilt whenever a transition starts.
   }, [router])
 
   const run = React.useCallback(
