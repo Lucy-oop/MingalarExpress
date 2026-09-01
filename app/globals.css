@@ -1,0 +1,113 @@
+@import 'tailwindcss';
+
+@custom-variant dark (&:is(.dark *));
+
+/* ---------------------------------------------------------------------------
+   Mingalar Express brand palette, taken from the identity sheet.
+   --------------------------------------------------------------------------- */
+:root {
+  --brand-red: #c62828;
+  --brand-red-dark: #9e1f1f;
+  --brand-gold: #d4a72c;
+  --charcoal: #242424;
+
+  --background: #ffffff;
+  --foreground: var(--charcoal);
+  --card: #ffffff;
+  --card-foreground: var(--charcoal);
+  --muted: #f4f4f5;
+  --muted-foreground: #6b6b70;
+  --border: #e4e4e7;
+  --input: #e4e4e7;
+  --primary: var(--brand-red);
+  --primary-foreground: #ffffff;
+  --secondary: #f4f4f5;
+  --secondary-foreground: var(--charcoal);
+  --accent: var(--brand-gold);
+  --accent-foreground: var(--charcoal);
+  --destructive: #b91c1c;
+  --destructive-foreground: #ffffff;
+  --ring: var(--brand-gold);
+  --radius: 0.625rem;
+}
+
+.dark {
+  --background: #151517;
+  --foreground: #fafafa;
+  --card: #1e1e21;
+  --card-foreground: #fafafa;
+  --muted: #27272a;
+  --muted-foreground: #a1a1aa;
+  --border: #2f2f34;
+  --input: #2f2f34;
+  --primary: #e53935;
+  --primary-foreground: #ffffff;
+  --secondary: #27272a;
+  --secondary-foreground: #fafafa;
+  --destructive: #ef4444;
+  --ring: var(--brand-gold);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-ring: var(--ring);
+
+  --color-brand-red: var(--brand-red);
+  --color-brand-gold: var(--brand-gold);
+  --color-charcoal: var(--charcoal);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    -webkit-font-smoothing: antialiased;
+  }
+  /* Myanmar script needs more line height than Latin at the same size, or
+     stacked diacritics collide. */
+  :lang(my) {
+    line-height: 1.9;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Leaflet: the stylesheet is imported by MapCanvas. These are the overrides
+   that keep the map inside our design language.
+   --------------------------------------------------------------------------- */
+.leaflet-container {
+  font: inherit;
+  background: var(--muted);
+  z-index: 0;
+}
+.leaflet-control-attribution {
+  font-size: 10px;
+  background: color-mix(in srgb, var(--background) 85%, transparent);
+}
+.mge-pin-shadow {
+  filter: drop-shadow(0 2px 3px rgb(0 0 0 / 0.35));
+}
+.mge-pin-muted {
+  opacity: 0.45;
+}

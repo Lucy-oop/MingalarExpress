@@ -1,0 +1,295 @@
+'use client'
+
+import * as React from 'react'
+import { useRouter } from 'next/navigation'
+import { Plus, RefreshCw } from 'lucide-react'
+import { TripCard } from '@/components/routes/trip-card'
+import { DepartDialog } from '@/components/routes/depart-dialog'
+import { UnroutedPanel } from '@/components/routes/unrouted-panel'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Alert } from '@/components/ui/alert'
+import {
+  assignTripRider,
+  cancelTrip,
+  closeTrip,
+  departTrip,
+  loadTrip,
+  planTrip,
+  returnTrip,
+  unloadTrip,
+  type TripResult,
+} from '@/lib/routes/actions'
+import type { BoardTrip, PlanningBoard } from '@/lib/routes/queries'
+import { formatMmk } from '@/lib/utils'
+
+type Feedback = { tone: 'success' | 'error' | 'info'; message: string }
+
+/**
+ * The route planning board — what replaced the offer-era dispatch board.
+ *
+ * Two columns, because that is the actual workflow: today's runs on the left,
+ * the parcels not yet on a run on the right. A dispatcher ticks parcels on the
+ * right and loads them into a run on the left, over and over, until the runs are
+ * full enough to send.
+ *
+ * Runs are grouped by route and every active route gets a section even with no
+ * run planned — an empty ROUTE_C section is information ("nobody has planned the
+ * north run yet"), whereas its absence looks like the route does not exist.
+ *
+ * Server state comes from `getPlanningBoard` and is refreshed with
+ * `router.refresh()` after every action. No optimistic local mutation: two
+ * dispatchers work this board at once and the loser of a race has to see the
+ * truth, not their own guess.
+ */
+export function RouteBoard({ board }: { board: PlanningBoard }) {
+  const router = useRouter()
+  const [selected, setSelected] = React.useState<Set<string>>(new Set())
+  const [feedback, setFeedback] = React.useState<Feedback | null>(null)
+  const [busyTripId, setBusyTripId] = React.useState<string | null>(null)
+  const [refreshing, startTransition] = React.useTransition()
+
+  /** The run the depart modal is asking about, once SQL says it is short. */
+  const [departing, setDeparting] = React.useState<BoardTrip | null>(null)
+  const [departError, setDepartError] = React.useState<string | null>(null)
+
+  /** Which run the parcel panel is filtered to — the last one interacted with. */
+  const [focusRouteId, setFocusRouteId] = React.useState<string | null>(null)
+
+  // Drop ticks for parcels that left the pool (another dispatcher loaded them).
+  // Without this, "Load 12 selected" silently becomes "load 9".
+  const poolIds = React.useMemo(() => new Set(board.unrouted.map((p) => p.id)), [board.unrouted])
+  React.useEffect(() => {
+    setSelected((prev) => {
+      const next = new Set([...prev].filter((id) => poolIds.has(id)))
+      return next.size === prev.size ? prev : next
+    })
+  }, [poolIds])
+
+  const refresh = React.useCallback(() => {
+    startTransition(() => router.refresh())
+  }, [router])
+
+  const run = React.useCallback(
+    async (tripId: string, fn: () => Promise<TripResult>, clearSelection = false) => {
+      setBusyTripId(tripId)
+      setFeedback(null)
+      const result = await fn()
+      setBusyTripId(null)
+
+      if (result.ok) {
+        if (clearSelection) setSelected(new Set())
+        setFeedback({ tone: 'success', message: result.message })
+      } else {
+        setFeedback({ tone: 'error', message: result.message })
+      }
+      refresh()
+      return result
+    },
+    [refresh],
+  )
+
+  const toggle = (id: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+
+  const toggleMany = (ids: string[], select: boolean) =>
+    setSelected((prev) => {
+      const next = new Set(prev)
+      for (const id of ids) {
+        if (select) next.add(id)
+        else next.delete(id)
+      }
+      return next
+    })
+
+  /**
+   * Depart, in two phases.
+   *
+   * The first call carries no reason. If the run is under
+   * `min_parcels_per_trip`, `depart_trip` refuses with `trip_below_minimum` and
+   * the action returns `requiresOverride` — which is what opens the modal. The
+   * threshold therefore lives in exactly one place (SQL), even though the banner
+   * shows it too.
+   */
+  const handleDepart = async (trip: BoardTrip) => {
+    const result = await run(trip.id, () => departTrip(trip.id))
+    if (!result.ok && result.requiresOverride) {
+      setDepartError(null)
+      setDeparting(trip)
+      setFeedback(null)
+    }
+  }
+
+  const handleDepartOverride = async (reason: string) => {
+    if (!departing) return
+    const trip = departing
+    setDepartError(null)
+    const result = await run(trip.id, () => departTrip(trip.id, reason))
+    if (result.ok) setDeparting(null)
+    else setDepartError(result.message)
+  }
+
+  const tripsByRoute = React.useMemo(() => {
+    const map = new Map<string, BoardTrip[]>()
+    for (const t of board.trips) {
+      const list = map.get(t.routeId) ?? []
+      list.push(t)
+      map.set(t.routeId, list)
+    }
+    return map
+  }, [board.trips])
+
+  const shortRuns = board.trips.filter(
+    (t) => t.volume.severity !== 'ok' && (t.status === 'planned' || t.status === 'loading'),
+  ).length
+  const totalUnrouted = board.unrouted.length
+  const unmapped = board.unrouted.filter((p) => p.suggestedRouteId === null).length
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <h1 className="text-xl font-semibold">Route planning</h1>
+          <Badge tone="neutral">{board.serviceDate}</Badge>
+          <Badge tone={totalUnrouted > 0 ? 'amber' : 'green'}>
+            {totalUnrouted} unrouted
+          </Badge>
+          {shortRuns > 0 ? (
+            <Badge tone="amber">
+              {shortRuns} run{shortRuns === 1 ? '' : 's'} under {board.minParcels}
+            </Badge>
+          ) : null}
+        </div>
+        <Button variant="outline" size="sm" onClick={refresh} disabled={refreshing}>
+          <RefreshCw className={refreshing ? 'animate-spin' : undefined} />
+          Refresh
+        </Button>
+      </div>
+
+      {feedback ? <Alert tone={feedback.tone}>{feedback.message}</Alert> : null}
+
+      {unmapped > 0 ? (
+        <Alert tone="error" title="Parcels with no route">
+          {unmapped} parcel{unmapped === 1 ? '' : 's'} sit in an area that is not mapped to any
+          route, so no run can carry them. Map the area under Areas, or the parcels will keep
+          ageing here unseen.
+        </Alert>
+      ) : null}
+
+      <div className="grid gap-3 xl:grid-cols-[minmax(0,1.6fr)_minmax(340px,1fr)]">
+        {/* ---- runs, grouped by route --------------------------------- */}
+        <div className="space-y-4">
+          {board.routes.map((route) => {
+            const trips = tripsByRoute.get(route.id) ?? []
+            return (
+              <section key={route.id} className="space-y-2" aria-label={route.name}>
+                <div className="flex items-center justify-between gap-2">
+                  <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    <span
+                      className="size-2.5 rounded-full"
+                      style={{ backgroundColor: route.colour }}
+                      aria-hidden="true"
+                    />
+                    {route.code.replace('ROUTE_', 'Route ')}
+                    <span className="font-normal normal-case tracking-normal">
+                      {formatMmk(route.perParcelFee)}/parcel
+                    </span>
+                  </h2>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={busyTripId !== null}
+                    onClick={() => {
+                      setFocusRouteId(route.id)
+                      void run('new', () => planTrip(route.id, board.serviceDate))
+                    }}
+                  >
+                    <Plus />
+                    New run
+                  </Button>
+                </div>
+
+                {trips.length === 0 ? (
+                  <p className="rounded-lg border border-dashed p-4 text-center text-xs text-muted-foreground">
+                    No run planned on this route yet.
+                  </p>
+                ) : (
+                  trips.map((trip) => (
+                    <div key={trip.id} onFocusCapture={() => setFocusRouteId(route.id)}>
+                      <TripCard
+                        trip={trip}
+                        route={route}
+                        riders={board.riders}
+                        selectedCount={selected.size}
+                        busy={busyTripId === trip.id}
+                        onAssignRider={(riderId) =>
+                          void run(trip.id, () => assignTripRider(trip.id, riderId))
+                        }
+                        onLoadSelected={(leg) => {
+                          setFocusRouteId(route.id)
+                          void run(trip.id, () => loadTrip(trip.id, [...selected], leg), true)
+                        }}
+                        onUnload={(ids) => void run(trip.id, () => unloadTrip(trip.id, ids))}
+                        onDepart={() => void handleDepart(trip)}
+                        onReturn={() => void run(trip.id, () => returnTrip(trip.id))}
+                        onClose={() => {
+                          if (
+                            !window.confirm(
+                              'Close this run and book the rider’s pay? The ledger is append-only, so this cannot be undone — a correction would be a new adjustment line.',
+                            )
+                          )
+                            return
+                          void run(trip.id, () => closeTrip(trip.id))
+                        }}
+                        onCancel={() => {
+                          const reason = window.prompt('Why is this run being cancelled?')
+                          if (reason === null) return
+                          void run(trip.id, () => cancelTrip(trip.id, reason))
+                        }}
+                      />
+                    </div>
+                  ))
+                )}
+              </section>
+            )
+          })}
+        </div>
+
+        {/* ---- unrouted parcels -------------------------------------- */}
+        <section
+          className="max-h-[80vh] rounded-lg border bg-card p-3 xl:sticky xl:top-3"
+          aria-label="Unrouted parcels"
+        >
+          <UnroutedPanel
+            parcels={board.unrouted}
+            routes={board.routes}
+            selected={selected}
+            onToggle={toggle}
+            onToggleMany={toggleMany}
+            onClear={() => setSelected(new Set())}
+            focusRouteId={focusRouteId}
+          />
+        </section>
+      </div>
+
+      {departing ? (
+        <DepartDialog
+          open
+          onClose={() => setDeparting(null)}
+          onConfirm={(reason) => void handleDepartOverride(reason)}
+          routeName={
+            board.routes.find((r) => r.id === departing.routeId)?.name ?? 'This run'
+          }
+          volume={departing.volume}
+          busy={busyTripId === departing.id}
+          error={departError}
+        />
+      ) : null}
+    </div>
+  )
+}

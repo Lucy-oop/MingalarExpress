@@ -1,0 +1,419 @@
+-- ============================================================================
+--  PHASE 1 EXIT-CRITERIA TEST
+--
+--  Every check RAISEs on failure, so a clean run means the invariants hold.
+--  Run after 0001-0004 + seed. Requires the shim locally; on a real project run
+--  it as the `postgres` role via the SQL editor.
+-- ============================================================================
+
+\set ON_ERROR_STOP on
+
+\set ADMIN    '11111111-1111-1111-1111-111111111111'
+\set DISPATCH '22222222-2222-2222-2222-222222222222'
+\set SHOP     '33333333-3333-3333-3333-333333333333'
+\set RIDER1   '44444444-4444-4444-4444-444444444444'
+\set RIDER2   '55555555-5555-5555-5555-555555555555'
+\set RIDER3   '66666666-6666-6666-6666-666666666666'
+
+\echo '=== 0. structural: 15 tables, 9 enums ==='
+do $$
+declare t int; e int;
+begin
+  select count(*) into t from pg_tables where schemaname = 'public';
+  select count(*) into e from pg_type ty join pg_namespace n on n.oid = ty.typnamespace
+   where n.nspname = 'public' and ty.typtype = 'e';
+  -- 0007 added routes, route_areas, route_pay_tiers, trips and the
+  -- trip_status enum. A bare count is a blunt instrument, but it is the one
+  -- assertion that notices a table shipped without RLS being considered at all.
+  if t <> 15 then raise exception 'FAIL: expected 15 public tables, found %', t; end if;
+  if e <> 9  then raise exception 'FAIL: expected 9 enums, found %', e; end if;
+  raise notice 'PASS: % tables, % enums', t, e;
+end $$;
+
+\echo '=== 1. every public table has RLS enabled ==='
+do $$
+declare bad text;
+begin
+  select string_agg(tablename, ', ') into bad
+    from pg_tables where schemaname = 'public' and not rowsecurity;
+  if bad is not null then raise exception 'FAIL: RLS off on %', bad; end if;
+  raise notice 'PASS: RLS enabled on every public table';
+end $$;
+
+\echo '=== 2. append-only tables have no UPDATE/DELETE policy ==='
+do $$
+declare bad text;
+begin
+  select string_agg(tablename || '.' || policyname, ', ') into bad
+    from pg_policies
+   where schemaname = 'public'
+     and tablename in ('order_status_events','cod_ledger','audit_log',
+                       -- order_assignments joined the list in 0009: with offers
+                       -- retired, a rider has nothing left to respond to.
+                       'order_assignments')
+     and cmd in ('UPDATE','DELETE');
+  if bad is not null then raise exception 'FAIL: mutating policy exists: %', bad; end if;
+  raise notice 'PASS: status events, ledger, audit log and assignment history are immutable';
+end $$;
+
+\echo '=== 3. geofence rejects an out-of-township pin ==='
+do $$
+begin
+  insert into public.orders (shop_id, pickup_address, pickup_lat, pickup_lng,
+    customer_name, customer_phone, dropoff_address, dropoff_lat, dropoff_lng,
+    parcel_desc, payment_method, cod_amount, delivery_fee, created_by)
+  select id, pickup_address, pickup_lat, pickup_lng,
+    'Out Of Area', '+959790000000', 'Mandalay somewhere', 21.9750, 96.0836,
+    'test', 'prepaid', 0, 2000, owner_id
+  from public.shops limit 1;
+  raise exception 'FAIL: out-of-township dropoff was accepted';
+exception
+  when check_violation then raise notice 'PASS: geofence rejected Mandalay coordinates';
+end $$;
+
+\echo '=== 4. shop isolation: shop B cannot see shop A''s orders ==='
+-- second shop under a second owner
+insert into auth.users (instance_id, id, aud, role, email, raw_app_meta_data, raw_user_meta_data,
+        created_at, updated_at, confirmation_token, recovery_token, email_change_token_new,
+        email_change_token_current, email_change, phone_change, phone_change_token, reauthentication_token)
+values ('00000000-0000-0000-0000-000000000000','77777777-7777-7777-7777-777777777777',
+        'authenticated','authenticated','shop2@mingalar.test',
+        '{"role":"shop_owner"}'::jsonb, '{"full_name":"Rival Store","phone":"+959770000009"}'::jsonb,
+        now(), now(), '', '', '', '', '', '', '', '')
+on conflict (id) do nothing;
+update public.profiles set phone = '+959770000009' where id = '77777777-7777-7777-7777-777777777777' and phone is null;
+insert into public.shops (id, owner_id, name, phone, pickup_address, pickup_lat, pickup_lng)
+values ('aaaaaaaa-0000-0000-0000-000000000002','77777777-7777-7777-7777-777777777777',
+        'Rival Store','+959770000009','Thu Mingalar Rd, Thingangyun', 16.8555, 96.1750)
+on conflict (id) do nothing;
+
+select set_config('request.jwt.claims', '{"sub":"77777777-7777-7777-7777-777777777777","role":"authenticated"}', false);
+set role authenticated;
+do $$
+declare n int;
+begin
+  select count(*) into n from public.orders;
+  if n <> 0 then raise exception 'FAIL: rival shop sees % orders it does not own', n; end if;
+  raise notice 'PASS: rival shop sees 0 orders';
+end $$;
+do $$
+declare n int;
+begin
+  select count(*) into n from public.rider_profiles;
+  if n <> 0 then raise exception 'FAIL: shop can read % rider profiles', n; end if;
+  raise notice 'PASS: shop cannot read rider_profiles';
+end $$;
+reset role;
+
+\echo '=== 5. shop A sees exactly its own 2 seeded orders ==='
+select set_config('request.jwt.claims', '{"sub":"33333333-3333-3333-3333-333333333333","role":"authenticated"}', false);
+set role authenticated;
+do $$
+declare n int;
+begin
+  select count(*) into n from public.orders;
+  if n <> 2 then raise exception 'FAIL: owning shop sees % orders, expected 2', n; end if;
+  raise notice 'PASS: owning shop sees its 2 orders';
+end $$;
+reset role;
+
+\echo '=== 6. rider cannot escalate their own role ==='
+select set_config('request.jwt.claims', '{"sub":"44444444-4444-4444-4444-444444444444","role":"authenticated"}', false);
+set role authenticated;
+do $$
+begin
+  update public.profiles set role = 'super_admin' where id = auth.uid();
+  raise exception 'FAIL: rider escalated to super_admin';
+exception
+  when insufficient_privilege then raise notice 'PASS: role escalation blocked (42501)';
+end $$;
+
+\echo '=== 7. rider cannot raise their own commission or capacity ==='
+do $$
+begin
+  update public.rider_profiles set commission_pct_override = 100 where id = auth.uid();
+  raise exception 'FAIL: rider set their own commission';
+exception
+  when insufficient_privilege then raise notice 'PASS: commission override blocked';
+end $$;
+do $$
+begin
+  update public.rider_profiles set coverage_km = 30 where id = auth.uid();
+  raise exception 'FAIL: rider widened their own coverage radius';
+exception
+  when insufficient_privilege then raise notice 'PASS: coverage widening blocked';
+end $$;
+do $$
+begin
+  update public.rider_profiles set max_active_orders = 10 where id = auth.uid();
+  raise exception 'FAIL: rider raised their own capacity';
+exception
+  when insufficient_privilege then raise notice 'PASS: capacity change blocked';
+end $$;
+
+\echo '=== 8. rider CAN toggle presence and narrow coverage ==='
+do $$
+begin
+  perform public.rider_heartbeat(16.8451, 96.1706, true);
+  update public.rider_profiles set coverage_km = 4.0 where id = auth.uid();
+  raise notice 'PASS: heartbeat + coverage narrowing allowed';
+end $$;
+
+\echo '=== 9. rider sees no other rider, and no unassigned order ==='
+do $$
+declare nr int; no_ int;
+begin
+  select count(*) into nr from public.rider_profiles;
+  select count(*) into no_ from public.orders;
+  if nr <> 1 then raise exception 'FAIL: rider sees % rider rows, expected 1 (self)', nr; end if;
+  if no_ <> 0 then raise exception 'FAIL: rider sees % unassigned orders, expected 0', no_; end if;
+  raise notice 'PASS: rider sees only self, no unassigned work';
+end $$;
+reset role;
+
+\echo '=== 10. the offer engine is retired (0009) ==='
+do $$
+declare gone text[] := array['offer_order','respond_to_offer','expire_stale_offers',
+                             'nearby_available_riders','assign_order_internal'];
+        found text;
+begin
+  select string_agg(p.proname, ', ') into found
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+   where n.nspname = 'public' and p.proname = any(gone);
+  if found is not null then
+    raise exception 'FAIL: offer-engine functions still present: %', found;
+  end if;
+
+  -- assign_order survives, and it must still be the ONLY writer of history.
+  if not exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+                  where n.nspname = 'public' and p.proname = 'assign_order') then
+    raise exception 'FAIL: assign_order was dropped with the offer engine';
+  end if;
+  if has_table_privilege('authenticated', 'public.order_assignments', 'INSERT') then
+    raise exception 'FAIL: authenticated can still write assignment history';
+  end if;
+  raise notice 'PASS: 5 offer functions gone, assign_order kept, history read-only';
+end $$;
+
+\echo '=== 11. shop cannot assign a rider ==='
+select set_config('request.jwt.claims', '{"sub":"33333333-3333-3333-3333-333333333333","role":"authenticated"}', false);
+set role authenticated;
+do $$
+begin
+  perform public.assign_order(
+    (select id from public.orders order by created_at limit 1),
+    '44444444-4444-4444-4444-444444444444');
+  raise exception 'FAIL: shop assigned a rider';
+exception
+  when insufficient_privilege then raise notice 'PASS: assign_order refused a shop_owner';
+end $$;
+reset role;
+
+\echo '=== 12. dispatcher assigns; commission snapshot is 80/20 ==='
+select set_config('request.jwt.claims', '{"sub":"22222222-2222-2222-2222-222222222222","role":"authenticated"}', false);
+set role authenticated;
+do $$
+declare o public.orders; oid uuid;
+begin
+  select id into oid from public.orders where status = 'pending' order by created_at limit 1;
+  o := public.assign_order(oid, '44444444-4444-4444-4444-444444444444');
+
+  if o.status <> 'assigned' then raise exception 'FAIL: status is %', o.status; end if;
+  if o.rider_commission_pct <> 80.00 then raise exception 'FAIL: pct is %', o.rider_commission_pct; end if;
+  if o.rider_commission_amount + o.platform_fee_amount <> o.delivery_fee then
+    raise exception 'FAIL: split % + % <> fee %',
+      o.rider_commission_amount, o.platform_fee_amount, o.delivery_fee;
+  end if;
+  if o.cod_status <> 'pending' then raise exception 'FAIL: cod_status is %', o.cod_status; end if;
+  raise notice 'PASS: assigned. fee=% rider=% platform=% dist=%km',
+    o.delivery_fee, o.rider_commission_amount, o.platform_fee_amount, o.assign_distance_km;
+end $$;
+
+\echo '=== 13. double-assignment loses ==='
+do $$
+begin
+  perform public.assign_order(
+    (select id from public.orders where status = 'assigned' order by assigned_at limit 1),
+    '55555555-5555-5555-5555-555555555555');
+  raise exception 'FAIL: second dispatcher also assigned the same order';
+exception
+  when sqlstate '55000' then raise notice 'PASS: second assign rejected (order_not_assignable)';
+end $$;
+
+\echo '=== 14. illegal transition pending -> delivered ==='
+do $$
+begin
+  update public.orders set status = 'delivered', proof_photo_path = 'x/y.webp'
+   where status = 'pending';
+  raise exception 'FAIL: pending jumped straight to delivered';
+exception
+  when sqlstate '55000' then raise notice 'PASS: illegal transition blocked';
+end $$;
+reset role;
+
+\echo '=== 15. rider lifecycle: picked_up -> delivered, proof enforced ==='
+select set_config('request.jwt.claims', '{"sub":"44444444-4444-4444-4444-444444444444","role":"authenticated"}', false);
+set role authenticated;
+do $$
+declare oid uuid; o public.orders;
+begin
+  select id into oid from public.orders where rider_id = auth.uid() and status = 'assigned' limit 1;
+
+  o := public.advance_order(oid, 'picked_up', 16.8478, 96.1693);
+  if o.status <> 'picked_up' or o.picked_up_at is null then
+    raise exception 'FAIL: pickup not recorded';
+  end if;
+
+  begin
+    o := public.advance_order(oid, 'delivered', 16.8402, 96.1808);
+    raise exception 'FAIL: delivered accepted with no proof photo';
+  exception
+    when sqlstate '55000' then raise notice 'PASS: delivered without proof rejected';
+  end;
+
+  o := public.advance_order(oid, 'delivered', 16.8402, 96.1808,
+        oid::text || '/proof-1.webp', 'Daw Khin Myo');
+  if o.status <> 'delivered' or o.cod_status <> 'collected' then
+    raise exception 'FAIL: delivery not finalised (status=%, cod=%)', o.status, o.cod_status;
+  end if;
+  raise notice 'PASS: full pending->assigned->picked_up->delivered cycle';
+end $$;
+
+\echo '=== 16. checkpoint trail is complete and rider cannot forge it ==='
+do $$
+declare n int;
+begin
+  select count(*) into n from public.order_status_events
+   where order_id = (select id from public.orders where status = 'delivered' limit 1);
+  -- insert(pending) + assigned + picked_up + delivered
+  if n <> 4 then raise exception 'FAIL: expected 4 checkpoints, found %', n; end if;
+  raise notice 'PASS: 4 checkpoints recorded';
+end $$;
+do $$
+begin
+  insert into public.order_status_events (order_id, to_status)
+  values ((select id from public.orders where status = 'delivered' limit 1), 'cancelled');
+  raise exception 'FAIL: rider forged a checkpoint row';
+exception
+  when insufficient_privilege then raise notice 'PASS: checkpoint trail is not client-writable';
+end $$;
+
+\echo '=== 17. capacity released, COD ledger booked with both legs ==='
+do $$
+declare v_active smallint; v_cod bigint; v_com bigint; v_hand bigint;
+begin
+  select active_order_count into v_active from public.rider_profiles where id = auth.uid();
+  if v_active <> 0 then raise exception 'FAIL: active_order_count is % after delivery', v_active; end if;
+
+  select sum(amount) filter (where kind = 'cod_collected'),
+         sum(amount) filter (where kind = 'commission_earned')
+    into v_cod, v_com
+    from public.cod_ledger where rider_id = auth.uid();
+
+  if v_cod <> 24500 then raise exception 'FAIL: cod leg is %, expected 24500', v_cod; end if;
+  if v_com <> -1600 then raise exception 'FAIL: commission leg is %, expected -1600 (80%% of 2000)', v_com; end if;
+
+  select sum(amount) into v_hand from public.cod_ledger
+   where rider_id = auth.uid() and settlement_id is null;
+  if v_hand <> 22900 then raise exception 'FAIL: cash owed is %, expected 22900', v_hand; end if;
+  raise notice 'PASS: ledger = +24500 cod, -1600 commission, 22900 due to platform';
+end $$;
+reset role;
+
+\echo '=== 18. ledger is immutable even for super_admin (loud, not silent) ==='
+select set_config('request.jwt.claims', '{"sub":"11111111-1111-1111-1111-111111111111","role":"authenticated"}', false);
+set role authenticated;
+do $$
+begin
+  update public.cod_ledger set amount = 0 where kind = 'cod_collected';
+  raise exception 'FAIL: super_admin edited the ledger';
+exception
+  when insufficient_privilege then raise notice 'PASS: ledger UPDATE denied to super_admin';
+end $$;
+do $$
+begin
+  delete from public.cod_ledger where kind = 'cod_collected';
+  raise exception 'FAIL: super_admin deleted a ledger line';
+exception
+  when insufficient_privilege then raise notice 'PASS: ledger DELETE denied to super_admin';
+end $$;
+
+\echo '=== 19. settlement math and idempotency ==='
+do $$
+declare s1 public.settlements; s2 public.settlements;
+begin
+  s1 := public.build_settlement('44444444-4444-4444-4444-444444444444', public.mm_today());
+
+  if s1.gross_cod        <> 24500 then raise exception 'FAIL: gross_cod %', s1.gross_cod; end if;
+  if s1.rider_earnings   <> 1600  then raise exception 'FAIL: rider_earnings %', s1.rider_earnings; end if;
+  if s1.delivery_fees    <> 2000  then raise exception 'FAIL: delivery_fees %', s1.delivery_fees; end if;
+  if s1.platform_share   <> 400   then raise exception 'FAIL: platform_share %', s1.platform_share; end if;
+  if s1.net_due_platform <> s1.gross_cod - s1.rider_earnings then
+    raise exception 'FAIL: net % <> % - %', s1.net_due_platform, s1.gross_cod, s1.rider_earnings;
+  end if;
+  if s1.order_count <> 1 then raise exception 'FAIL: order_count %', s1.order_count; end if;
+
+  s2 := public.build_settlement('44444444-4444-4444-4444-444444444444', public.mm_today());
+  if s2.id <> s1.id or s2.net_due_platform <> s1.net_due_platform or s2.order_count <> s1.order_count then
+    raise exception 'FAIL: build_settlement is not idempotent';
+  end if;
+  raise notice 'PASS: settlement 24500 cod - 1600 rider = % due; idempotent', s1.net_due_platform;
+end $$;
+
+\echo '=== 20. a locked settlement refuses to be rebuilt ==='
+do $$
+begin
+  update public.settlements set status = 'approved', approved_by = auth.uid(), approved_at = now()
+   where rider_id = '44444444-4444-4444-4444-444444444444';
+  perform public.build_settlement('44444444-4444-4444-4444-444444444444', public.mm_today());
+  raise exception 'FAIL: rebuilt an approved settlement';
+exception
+  when sqlstate '55000' then raise notice 'PASS: approved settlement is locked';
+end $$;
+
+\echo '=== 21. changing the split does not rewrite history (D5) ==='
+do $$
+declare before_amt bigint; after_amt bigint;
+begin
+  select rider_commission_amount into before_amt
+    from public.orders where status = 'delivered' limit 1;
+  update public.app_settings set rider_commission_pct = 70 where id;
+  select rider_commission_amount into after_amt
+    from public.orders where status = 'delivered' limit 1;
+  if before_amt <> after_amt then
+    raise exception 'FAIL: historical commission changed from % to %', before_amt, after_amt;
+  end if;
+  update public.app_settings set rider_commission_pct = 80 where id;
+  raise notice 'PASS: snapshot survived a 80->70 split change';
+end $$;
+
+\echo '=== 22. anon can track by code but read no table ==='
+reset role;
+select set_config('request.jwt.claims', '', false);
+set role anon;
+do $$
+declare j jsonb;
+begin
+  select public.track_order((select code from public.orders where status = 'delivered' limit 1)) into j;
+  raise exception 'FAIL: anon read the orders table directly';
+exception
+  when insufficient_privilege then raise notice 'PASS: anon has no table grants';
+end $$;
+reset role;
+do $$
+declare v_code text; j jsonb;
+begin
+  select code into v_code from public.orders where status = 'delivered' limit 1;
+  set local role anon;
+  select public.track_order(v_code) into j;
+  if j is null or j->>'status' <> 'delivered' then
+    raise exception 'FAIL: track_order returned %', j;
+  end if;
+  if j ? 'customer_phone' or j ? 'dropoff_address' then
+    raise exception 'FAIL: track_order leaked PII';
+  end if;
+  raise notice 'PASS: anon tracking works and leaks no PII: %', j->>'code';
+end $$;
+
+\echo ''
+\echo '######  ALL PHASE 1 CHECKS PASSED  ######'

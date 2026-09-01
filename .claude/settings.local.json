@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(timeout 300 npx --yes supabase@latest gen types typescript --db-url \"postgresql://postgres:postgres@127.0.0.1:55432/postgres\" --schema public)",
+      "Bash(echo \"rc=$?\")"
+    ]
+  }
+}

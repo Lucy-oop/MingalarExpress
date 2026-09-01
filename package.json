@@ -1,0 +1,41 @@
+{
+  "name": "mingalar-express",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Hyper-local delivery + COD platform for Thingangyun Township, Yangon",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "db:verify": "bash supabase/tests/reset_and_verify.sh",
+    "db:types": "supabase gen types typescript --local --schema public > types/database.types.ts",
+    "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --import ./scripts/register-ts-resolve.mjs --test 'lib/**/*.test.ts'",
+    "test:watch": "npm run test -- --watch",
+    "db:push": "bash scripts/db-push.sh"
+  },
+  "dependencies": {
+    "@supabase/ssr": "0.12.5",
+    "@supabase/supabase-js": "2.112.4",
+    "class-variance-authority": "0.7.1",
+    "clsx": "2.1.1",
+    "leaflet": "1.9.4",
+    "lucide-react": "0.545.0",
+    "next": "16.3.2",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "react-leaflet": "5.0.0",
+    "tailwind-merge": "3.6.0",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "4.3.3",
+    "@types/leaflet": "1.9.22",
+    "@types/node": "24.10.1",
+    "@types/react": "19.2.8",
+    "@types/react-dom": "19.2.4",
+    "tailwindcss": "4.3.3",
+    "typescript": "5.9.3"
+  }
+}
