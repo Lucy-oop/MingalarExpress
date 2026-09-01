@@ -1,17 +1,21 @@
 import { notFound } from 'next/navigation'
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { ExternalLink, Phone } from 'lucide-react'
+import { Bike, ExternalLink, Phone } from 'lucide-react'
 import { requireShop } from '@/lib/auth/guards'
-import { createClient } from '@/lib/supabase/server'
+import { getShopOrderDetail } from '@/lib/orders/queries'
 import { StatusBadge } from '@/components/orders/status-badge'
 import { StatusTimeline } from '@/components/orders/status-timeline'
+import { CancelOrderButton } from '@/components/orders/cancel-order-button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { formatDateTimeYangon, formatDistanceKm, formatMmk, formatMyanmarPhone } from '@/lib/utils'
 
 export const metadata: Metadata = { title: 'Order' }
+
+/** The proof link is signed and short-lived, so this page must not be cached. */
+export const dynamic = 'force-dynamic'
 
 export default async function ShopOrderDetailPage({
   params,
@@ -23,33 +27,33 @@ export default async function ShopOrderDetailPage({
   await requireShop()
   const { id } = await params
   const { created } = await searchParams
-  const supabase = await createClient()
 
   // RLS returns nothing for another shop's order, which surfaces as a 404 --
   // deliberately indistinguishable from a non-existent id, so the endpoint is
   // not an existence oracle for other shops' order codes.
-  const { data: order } = await supabase
-    .from('orders')
-    .select('*, service_areas:dropoff_area_id (name)')
-    .eq('id', id)
-    .maybeSingle()
+  const detail = await getShopOrderDetail(id)
+  if (!detail) notFound()
 
-  if (!order) notFound()
-
-  const { data: events } = await supabase
-    .from('order_status_events')
-    .select('to_status, created_at')
-    .eq('order_id', id)
-    .order('created_at', { ascending: true })
-
-  const timeline = (events ?? []).map((e) => ({ status: e.to_status, at: e.created_at }))
-  const area = (order.service_areas as { name: string } | null)?.name ?? null
+  const { order, areaName, route, events, rider, proofUrl } = detail
 
   return (
     <div className="space-y-5">
       {created ? (
         <Alert tone="success" title="Order created">
-          Dispatch has been notified and will assign the nearest rider.
+          Dispatch can see it now. It stays open until a rider is assigned.
+        </Alert>
+      ) : null}
+
+      {/* The two outcomes that used to be stored and never shown. A shop chasing
+          a parcel had no way to learn why it had not arrived. */}
+      {order.status === 'failed' ? (
+        <Alert tone="error" title="Delivery failed">
+          {order.fail_reason ?? 'No reason was recorded. Contact the office.'}
+        </Alert>
+      ) : null}
+      {order.status === 'cancelled' ? (
+        <Alert tone="info" title="Order cancelled">
+          {order.cancel_reason ?? 'No reason was recorded.'}
         </Alert>
       ) : null}
 
@@ -60,7 +64,7 @@ export default async function ShopOrderDetailPage({
             Created {formatDateTimeYangon(order.created_at)}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <StatusBadge status={order.status} />
           <Link
             href={`/track/${order.code}`}
@@ -68,6 +72,11 @@ export default async function ShopOrderDetailPage({
           >
             Customer tracking link <ExternalLink className="size-3.5" />
           </Link>
+          {/* RLS permits `pending -> cancelled` for the owning shop, and the
+              action has existed since Phase 2 with nothing calling it. */}
+          {order.status === 'pending' ? (
+            <CancelOrderButton orderId={order.id} orderCode={order.code} />
+          ) : null}
         </div>
       </div>
 
@@ -95,7 +104,7 @@ export default async function ShopOrderDetailPage({
 
             <Detail label="Deliver to">
               <p>{order.dropoff_address}</p>
-              {area ? <p className="text-muted-foreground">{area} ward</p> : null}
+              {areaName ? <p className="text-muted-foreground">{areaName}</p> : null}
               {order.dropoff_note ? (
                 <p className="text-muted-foreground">Note: {order.dropoff_note}</p>
               ) : null}
@@ -118,9 +127,51 @@ export default async function ShopOrderDetailPage({
                 ) : null}
               </p>
               {order.parcel_weight_g ? (
-                <p className="text-muted-foreground">{order.parcel_weight_g} g</p>
+                <p className="text-muted-foreground">
+                  {order.parcel_weight_g} g
+                </p>
               ) : null}
             </Detail>
+
+            {/* Proof of delivery. The photo has always been captured by the rider
+                and readable by the sending shop; nothing rendered it until now,
+                which left a shop with no answer to "it never arrived". */}
+            {order.status === 'delivered' ? (
+              <Detail label="Proof of delivery">
+                {order.proof_receiver ? (
+                  <p>
+                    Received by <span className="font-medium">{order.proof_receiver}</span>
+                  </p>
+                ) : null}
+                {proofUrl ? (
+                  <a
+                    href={proofUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-2 block w-fit overflow-hidden rounded-lg border"
+                  >
+                    {/*
+                      A plain img, not next/image. The source is a private,
+                      short-lived signed URL on a host that changes with the
+                      environment: it cannot be optimised or cached, so the
+                      component would add a remotePatterns entry and a loader
+                      hop for no benefit.
+                    */}
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={proofUrl}
+                      alt={`Delivery photo for ${order.code}`}
+                      width={320}
+                      className="h-auto w-full max-w-xs object-cover"
+                    />
+                  </a>
+                ) : (
+                  <p className="text-muted-foreground">
+                    The photo could not be loaded. Ask the office if you need it.
+                  </p>
+                )}
+              </Detail>
+            ) : null}
           </CardContent>
         </Card>
 
@@ -130,25 +181,74 @@ export default async function ShopOrderDetailPage({
               <CardTitle className="text-base">Money</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2 text-sm">
-              <Row label="Payment" value={order.payment_method === 'cod' ? 'Cash on delivery' : 'Prepaid'} />
+              <Row
+                label="Payment"
+                value={order.payment_method === 'cod' ? 'Cash on delivery' : 'Prepaid'}
+              />
               {order.payment_method === 'cod' ? (
-                <Row label="Rider collects" value={formatMmk(order.cod_amount)} strong />
+                <Row
+                  label="Rider collects"
+                  value={formatMmk(order.cod_amount)}
+                  strong
+                />
               ) : null}
               <Row label="Delivery fee" value={formatMmk(order.delivery_fee)} />
+              {route ? (
+                <div className="flex items-baseline justify-between gap-3">
+                  <span className="text-muted-foreground">Route</span>
+                  <span className="flex items-center gap-1.5">
+                    <span
+                      className="size-2.5 rounded-full"
+                      style={{ backgroundColor: route.colour }}
+                      aria-hidden="true"
+                    />
+                    {route.name}
+                  </span>
+                </div>
+              ) : null}
               <Row
                 label="Fee paid by"
                 value={order.fee_payer === 'customer' ? 'Customer' : 'Shop'}
               />
-              <Row label="Distance" value={formatDistanceKm(order.route_distance_km)} />
+              <Row
+                label="Distance"
+                value={formatDistanceKm(order.route_distance_km)}
+              />
             </CardContent>
           </Card>
+
+          {/* Who has it. A shop could always read orders.rider_id but never the
+              name behind it — profiles is not shop-readable. */}
+          {rider ? (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base">Rider</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-1 text-sm">
+                <p className="flex items-center gap-2 font-medium">
+                  <Bike className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                  {rider.fullName}
+                </p>
+                {rider.vehiclePlate ? (
+                  <p className="text-muted-foreground">{rider.vehiclePlate}</p>
+                ) : null}
+                <p className="pt-1 text-xs text-muted-foreground">
+                  To reach the rider, contact the office rather than calling directly.
+                </p>
+              </CardContent>
+            </Card>
+          ) : null}
 
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Progress</CardTitle>
             </CardHeader>
             <CardContent>
-              <StatusTimeline current={order.status} events={timeline} />
+              <StatusTimeline
+                current={order.status}
+                events={events}
+                reason={order.fail_reason ?? order.cancel_reason ?? null}
+              />
             </CardContent>
           </Card>
         </div>

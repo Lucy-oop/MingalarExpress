@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
-import { yangonToday } from '@/lib/admin/day'
-import type { OrderStatus } from '@/types/domain'
+import { isoDaysAgo, nextDay, yangonToday } from '@/lib/admin/day'
+import type { Order, OrderStatus } from '@/types/domain'
 
 /**
  * Shop-side reads.
@@ -159,12 +159,6 @@ export async function getShopMoney(from?: string, to?: string): Promise<ShopMone
   }
 }
 
-/** `YYYY-MM-DD` minus n days, staying on the Yangon calendar. */
-export function isoDaysAgo(iso: string, days: number): string {
-  const d = new Date(`${iso}T00:00:00Z`)
-  d.setUTCDate(d.getUTCDate() - days)
-  return d.toISOString().slice(0, 10)
-}
 
 // ---------------------------------------------------------------------------
 // Route pricing
@@ -268,4 +262,200 @@ export async function resolveAreaRoute(areaId: string): Promise<AreaRoute | null
 
   if (error || !data) return null
   return toAreaRoute(data as unknown as AreaRouteRow)
+}
+
+// ---------------------------------------------------------------------------
+// One order, in full
+// ---------------------------------------------------------------------------
+
+export type ShopOrderDetail = {
+  order: Order
+  areaName: string | null
+  route: { code: string; name: string; colour: string } | null
+  events: Array<{ status: OrderStatus; at: string }>
+  /** Name and plate of the rider carrying it. Never their phone — see the RPC. */
+  rider: { fullName: string; vehiclePlate: string | null } | null
+  /** Short-lived link to the delivery photo, or null when there isn't one. */
+  proofUrl: string | null
+}
+
+/** How long a proof-photo link stays valid. Long enough to look at, not to share. */
+const PROOF_URL_TTL_SECONDS = 300
+
+/**
+ * Everything the shop's order page shows.
+ *
+ * Three of these were stored but never rendered anywhere in the app before this:
+ * the delivery photo, the receiver's name, and the reason a delivery failed. The
+ * photo in particular is the shop's only evidence when a customer says the
+ * parcel never arrived, and `proofs_read_parties` (migration 0004) has always
+ * permitted the sending shop to read it — nothing ever asked.
+ *
+ * RLS returns nothing for another shop's order, so a miss is a 404 and needs no
+ * ownership check here.
+ */
+export async function getShopOrderDetail(orderId: string): Promise<ShopOrderDetail | null> {
+  const supabase = await createClient()
+
+  const { data: order } = await supabase
+    .from('orders')
+    .select(
+      '*, service_areas:dropoff_area_id (name), routes:route_id (code, name, colour)',
+    )
+    .eq('id', orderId)
+    .maybeSingle()
+
+  if (!order) return null
+
+  const [{ data: events }, { data: riderCard }, proofUrl] = await Promise.all([
+    supabase
+      .from('order_status_events')
+      .select('to_status, created_at')
+      .eq('order_id', orderId)
+      .order('created_at', { ascending: true }),
+    // A definer RPC because `profiles` and `rider_profiles` are not
+    // shop-readable — without it the shop only ever sees a bare UUID.
+    order.rider_id
+      ? supabase.rpc('order_rider_card', { p_order_id: orderId })
+      : Promise.resolve({ data: null }),
+    signProof(supabase, order.proof_photo_path),
+  ])
+
+  const card = riderCard as { full_name?: string; vehicle_plate?: string | null } | null
+
+  return {
+    order: order as unknown as ShopOrderDetail['order'],
+    areaName: (order.service_areas as unknown as { name: string } | null)?.name ?? null,
+    route:
+      (order.routes as unknown as { code: string; name: string; colour: string } | null) ?? null,
+    events: (events ?? []).map((e) => ({ status: e.to_status as OrderStatus, at: e.created_at })),
+    rider: card?.full_name
+      ? { fullName: card.full_name, vehiclePlate: card.vehicle_plate ?? null }
+      : null,
+    proofUrl,
+  }
+}
+
+async function signProof(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  path: string | null,
+): Promise<string | null> {
+  if (!path) return null
+  // The bucket is private, so the object needs a signed link. A failure here is
+  // never fatal: the rest of the page is still worth showing, and a missing
+  // photo is reported as a missing photo rather than as a broken order.
+  const { data } = await supabase.storage
+    .from('delivery-proofs')
+    .createSignedUrl(path, PROOF_URL_TTL_SECONDS)
+  return data?.signedUrl ?? null
+}
+
+// ---------------------------------------------------------------------------
+// Orders list: search, dates, pagination
+// ---------------------------------------------------------------------------
+
+export type OrderFilters = {
+  status?: OrderStatus | null
+  /** Free text against code, customer name, phone or address. */
+  q?: string | null
+  /** Inclusive Yangon calendar dates, `YYYY-MM-DD`. */
+  from?: string | null
+  to?: string | null
+  page?: number
+  pageSize?: number
+}
+
+export type OrderPage = {
+  rows: ShopOrderRow[]
+  total: number
+  page: number
+  pageSize: number
+  pageCount: number
+}
+
+export const DEFAULT_PAGE_SIZE = 25
+/** Ceiling on one export, so a shop cannot ask for a file nobody can open. */
+export const MAX_EXPORT_ROWS = 5000
+
+/**
+ * PostgREST `.or()` takes a comma-separated filter string, so a value containing
+ * a comma or a parenthesis would be read as more filters. Stripping those
+ * characters is safer than escaping them and costs nothing: they are not useful
+ * search terms in a code, a name or a phone number.
+ */
+function sanitiseSearch(raw: string): string {
+  return raw.trim().replace(/[,()*]/g, ' ').replace(/\s+/g, ' ').slice(0, 80)
+}
+
+function applyFilters<T>(query: T, f: OrderFilters): T {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let q = query as any
+  if (f.status) q = q.eq('status', f.status)
+  if (f.from) q = q.gte('created_at', `${f.from}T00:00:00+06:30`)
+  // `to` is inclusive of the whole day, so the bound is the START of the next
+  // one. Using `${to}T23:59:59` would silently drop orders in the final second.
+  if (f.to) q = q.lt('created_at', `${nextDay(f.to)}T00:00:00+06:30`)
+
+  const term = f.q ? sanitiseSearch(f.q) : ''
+  if (term) {
+    q = q.or(
+      [
+        `code.ilike.%${term}%`,
+        `customer_name.ilike.%${term}%`,
+        `customer_phone.ilike.%${term}%`,
+        `dropoff_address.ilike.%${term}%`,
+      ].join(','),
+    )
+  }
+  return q as T
+}
+
+/**
+ * One page of the shop's orders, with a real total.
+ *
+ * The list previously fetched a flat `.limit(100)` with no count, so a shop with
+ * more than a hundred orders simply could not see the older ones and was given
+ * no indication that anything was missing.
+ */
+export async function searchShopOrders(filters: OrderFilters): Promise<OrderPage> {
+  const supabase = await createClient()
+  const pageSize = Math.min(Math.max(filters.pageSize ?? DEFAULT_PAGE_SIZE, 1), 100)
+  const page = Math.max(filters.page ?? 1, 1)
+  const offset = (page - 1) * pageSize
+
+  const query = applyFilters(
+    supabase
+      .from('orders')
+      .select(ORDER_LIST_COLUMNS, { count: 'exact' })
+      .order('created_at', { ascending: false }),
+    filters,
+  ).range(offset, offset + pageSize - 1)
+
+  const { data, count, error } = await query
+  if (error) throw new Error(`orders unavailable: ${error.message}`)
+
+  const total = count ?? 0
+  return {
+    rows: (data ?? []) as unknown as ShopOrderRow[],
+    total,
+    page,
+    pageSize,
+    pageCount: Math.max(1, Math.ceil(total / pageSize)),
+  }
+}
+
+/** Every row matching the filters, for the CSV export. Capped, never paged. */
+export async function exportShopOrders(filters: OrderFilters): Promise<ShopOrderRow[]> {
+  const supabase = await createClient()
+  const query = applyFilters(
+    supabase
+      .from('orders')
+      .select(ORDER_LIST_COLUMNS)
+      .order('created_at', { ascending: false }),
+    filters,
+  ).limit(MAX_EXPORT_ROWS)
+
+  const { data, error } = await query
+  if (error) throw new Error(`export failed: ${error.message}`)
+  return (data ?? []) as unknown as ShopOrderRow[]
 }

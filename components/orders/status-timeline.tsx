@@ -13,9 +13,12 @@ export type TimelineEvent = { status: OrderStatus; at: string }
 export function StatusTimeline({
   current,
   events,
+reason,
 }: {
   current: OrderStatus
   events: TimelineEvent[]
+  /** Why it failed or was cancelled. Shown on the terminal step only. */
+  reason?: string | null
 }) {
   const stampFor = (s: OrderStatus) => events.find((e) => e.status === s)?.at ?? null
   const reachedIndex = ORDER_CHECKPOINTS.indexOf(current)
@@ -72,11 +75,14 @@ export function StatusTimeline({
               <X className="size-3.5" />
             )}
           </span>
-          <div>
+          <div className="min-w-0">
             <p className="text-sm font-medium">{ORDER_STATUS_LABEL[current]}</p>
             <p className="text-xs tabular-nums text-muted-foreground">
               {formatDateTimeYangon(stampFor(current))}
             </p>
+            {/* The reason was always recorded and never rendered, so a timeline
+                ending in "Failed" told nobody anything they could act on. */}
+            {reason ? <p className="mt-0.5 text-xs text-foreground">{reason}</p> : null}
           </div>
         </li>
       ) : null}

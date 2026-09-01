@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { parseDayParam, yangonToday } from './day'
+import { isoAddDays, isoDaysAgo, nextDay, parseDayParam, yangonToday } from './day'
 
 describe('yangonToday', () => {
   /**
@@ -46,4 +46,39 @@ describe('parseDayParam', () => {
       assert.equal(parseDayParam(raw, FALLBACK), FALLBACK)
     })
   }
+})
+
+/**
+ * Calendar arithmetic, not instant arithmetic.
+ *
+ * These strings are Yangon calendar dates. Anchoring them at UTC midnight is
+ * what keeps `isoDaysAgo(d, 1)` the previous calendar day regardless of where
+ * the server is, and what stops a range silently including or excluding a day
+ * for six and a half hours out of every twenty-four.
+ */
+describe('isoAddDays / isoDaysAgo / nextDay', () => {
+  test('moves a day forward and back', () => {
+    assert.equal(isoAddDays('2026-09-01', 1), '2026-09-02')
+    assert.equal(isoDaysAgo('2026-09-01', 1), '2026-08-31')
+    assert.equal(nextDay('2026-09-01'), '2026-09-02')
+  })
+
+  test('crosses a month boundary', () => {
+    assert.equal(nextDay('2026-08-31'), '2026-09-01')
+    assert.equal(isoDaysAgo('2026-09-01', 30), '2026-08-02')
+  })
+
+  test('crosses a year boundary', () => {
+    assert.equal(nextDay('2026-12-31'), '2027-01-01')
+    assert.equal(isoDaysAgo('2027-01-01', 1), '2026-12-31')
+  })
+
+  test('handles a leap day', () => {
+    assert.equal(nextDay('2028-02-28'), '2028-02-29')
+    assert.equal(nextDay('2028-02-29'), '2028-03-01')
+  })
+
+  test('zero is a no-op', () => {
+    assert.equal(isoAddDays('2026-09-01', 0), '2026-09-01')
+  })
 })

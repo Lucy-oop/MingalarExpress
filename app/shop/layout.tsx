@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { LayoutDashboard, LogOut, PackagePlus, Store, Table2 } from 'lucide-react'
+import { Coins, LayoutDashboard, LogOut, PackagePlus, Store, Table2 } from 'lucide-react'
 import { requireShop } from '@/lib/auth/guards'
 import { signOut } from '@/lib/auth/actions'
 import { BrandMark } from '@/components/shared/brand-mark'
@@ -9,6 +9,7 @@ const NAV = [
   { href: '/shop/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/shop/orders', label: 'Orders', icon: Table2 },
   { href: '/shop/orders/new', label: 'New order', icon: PackagePlus },
+  { href: '/shop/money', label: 'Money', icon: Coins },
   { href: '/shop/settings', label: 'Shop settings', icon: Store },
 ]
 

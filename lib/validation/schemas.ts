@@ -146,3 +146,24 @@ export const quoteRequestSchema = z.object({
   pickup: z.object({ lat, lng }),
   dropoff: z.object({ lat, lng }),
 })
+
+// ---------------------------------------------------------------------------
+// Shop self-service
+// ---------------------------------------------------------------------------
+
+/**
+ * What a shop owner may change about their own shop.
+ *
+ * Deliberately a subset of the columns `shops_owner_all` permits: `is_active` is
+ * an office decision and `owner_id` is identity, so neither is here. The pickup
+ * point mirrors the SQL CHECK on `shops.pickup_geog` via `servicePoint`.
+ */
+export const shopSettingsSchema = z.object({
+  name: z.string().trim().min(2, 'Shop name is required').max(120),
+  phone: myanmarPhone,
+  pickupAddress: z.string().trim().min(5, 'Pickup address is required').max(300),
+  pickupPoint: servicePoint,
+  pickupNote: z.string().trim().max(300).optional().or(z.literal('')),
+})
+
+export type ShopSettingsValues = z.output<typeof shopSettingsSchema>

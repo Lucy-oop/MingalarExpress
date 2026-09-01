@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { assertRole } from '@/lib/auth/guards'
-import { orderCreateSchema } from '@/lib/validation/schemas'
+import { orderCreateSchema, shopSettingsSchema } from '@/lib/validation/schemas'
 import { haversineKm } from '@/lib/geo/haversine'
 import { codCollectable } from '@/lib/pricing'
 import { resolveAreaRoute } from '@/lib/orders/queries'
@@ -281,4 +281,85 @@ export async function cancelOrder(orderId: string, reason: string) {
   revalidatePath('/shop/orders')
   revalidatePath(`/shop/orders/${orderId}`)
   return { ok: true as const }
+}
+
+// ---------------------------------------------------------------------------
+// Shop profile
+// ---------------------------------------------------------------------------
+
+export type ShopSettingsState = {
+  ok?: boolean
+  error?: string
+  fieldErrors?: Record<string, string[]>
+}
+
+/**
+ * Let a shop maintain its own pickup point and contact details.
+ *
+ * `shops_owner_all` has granted the owner full control of their own row since
+ * migration 0003; the app simply never offered a way to use it, so every change
+ * — a new phone number, a moved shopfront — needed a call to the office. The
+ * write is still RLS-scoped, so this cannot touch another shop.
+ *
+ * `is_active` is deliberately NOT editable here: suspension is an office
+ * decision, and a suspended shop reactivating itself would defeat the point.
+ */
+export async function updateShopSettings(
+  _prev: ShopSettingsState,
+  formData: FormData,
+): Promise<ShopSettingsState> {
+  const ctx = await assertRole('shop_owner').catch(() => null)
+  if (!ctx) {
+    return { error: 'Your session has expired. Sign in again and retry — nothing has been saved.' }
+  }
+
+  const parsed = shopSettingsSchema.safeParse({
+    name: formData.get('name'),
+    phone: formData.get('phone'),
+    pickupAddress: formData.get('pickupAddress'),
+    pickupPoint: {
+      lat: Number(formData.get('pickupLat')),
+      lng: Number(formData.get('pickupLng')),
+    },
+    pickupNote: formData.get('pickupNote') ?? '',
+  })
+
+  if (!parsed.success) {
+    const fieldErrors = parsed.error.flatten().fieldErrors as Record<string, string[]>
+    return {
+      error: 'Check the fields below.',
+      fieldErrors,
+    }
+  }
+  const v = parsed.data
+
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from('shops')
+    .update({
+      name: v.name,
+      phone: v.phone,
+      pickup_address: v.pickupAddress,
+      pickup_lat: v.pickupPoint.lat,
+      pickup_lng: v.pickupPoint.lng,
+      pickup_note: v.pickupNote || null,
+    })
+    .eq('owner_id', ctx.userId)
+
+  if (error) {
+    if (error.message.includes('in_service_area')) {
+      return {
+        error: 'That pickup point is outside our delivery area.',
+        fieldErrors: { pickupAddress: ['Move the pin inside Greater Yangon.'] },
+      }
+    }
+    return { error: 'Could not save your shop details. Try again.' }
+  }
+
+  revalidatePath('/shop/settings')
+  revalidatePath('/shop/dashboard')
+  // The pickup point pre-fills every new order, so a stale copy would send the
+  // next rider to the old address.
+  revalidatePath('/shop/orders/new')
+  return { ok: true }
 }
