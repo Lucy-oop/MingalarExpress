@@ -75,7 +75,7 @@ describe('orderCreateSchema — a real shop submission', () => {
     customerPhone: '+959791234567',
     customerPhoneAlt: '',
     dropoffAddress: 'Shop 12, Sule Pagoda Road, Kyauktada, Yangon',
-    dropoffAreaId: null,
+    dropoffAreaId: '62a028e5-bcac-457d-889f-d0ea6bb7c728',
     dropoffPoint: { lat: 16.776, lng: 96.158 },
     dropoffNote: '',
     parcelDesc: 'Two coffee cartons',
@@ -112,6 +112,27 @@ describe('orderCreateSchema — a real shop submission', () => {
     const r = orderCreateSchema.safeParse({ ...valid, codAmount: 0 })
     assert.equal(r.success, false)
     assert.ok(r.error!.flatten().fieldErrors.codAmount)
+  })
+
+  /**
+   * The destination area became REQUIRED with flat-route pricing: it selects the
+   * route, and the route sets delivery_fee. An order with no area cannot be
+   * priced and could never be loaded onto a run either.
+   */
+  test('an order with no destination area is refused', () => {
+    const { dropoffAreaId: _omitted, ...withoutArea } = valid
+    const r = orderCreateSchema.safeParse(withoutArea)
+    assert.equal(r.success, false)
+    assert.equal(
+      r.error!.flatten().fieldErrors.dropoffAreaId?.[0],
+      'Choose the destination area',
+    )
+  })
+
+  test('a null destination area is refused too', () => {
+    const r = orderCreateSchema.safeParse({ ...valid, dropoffAreaId: null })
+    assert.equal(r.success, false)
+    assert.ok(r.error!.flatten().fieldErrors.dropoffAreaId)
   })
 
   test('a malformed shop id is still refused', () => {

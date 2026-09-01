@@ -258,6 +258,54 @@ begin
   raise notice 'PASS: Sule -> ROUTE_A, San Pya -> ROUTE_LOCAL, unmapped -> NULL';
 end $$;
 
+\echo '=== R2b. every area prices to the official schedule (shop billing) ==='
+--  Shops are charged routes.per_parcel_fee for the destination area's primary
+--  route. This walks the mapping the way createOrder does and checks each area
+--  lands on the signed-off figure -- the check that would have caught a
+--  Mingaladon parcel being billed 8,100 against an official 4,000.
+do $$
+declare r record; v_expected bigint; n int := 0;
+begin
+  for r in
+    select sa.name as area, rt.code, rt.per_parcel_fee
+      from public.route_areas ra
+      join public.service_areas sa on sa.id = ra.area_id
+      join public.routes rt        on rt.id = ra.route_id
+     where ra.is_primary and rt.is_active and sa.is_active
+  loop
+    v_expected := case r.code
+                    when 'ROUTE_LOCAL' then 2500
+                    when 'ROUTE_A'     then 3500
+                    when 'ROUTE_B'     then 3500
+                    when 'ROUTE_C'     then 4000
+                    when 'ROUTE_D'     then 4000
+                  end;
+    if v_expected is null then
+      raise exception 'FAIL: % maps to unknown route %', r.area, r.code;
+    end if;
+    if r.per_parcel_fee <> v_expected then
+      raise exception 'FAIL: % on % is priced %, official is %',
+        r.area, r.code, r.per_parcel_fee, v_expected;
+    end if;
+    n := n + 1;
+  end loop;
+
+  if n < 24 then raise exception 'FAIL: only % areas priced, expected 24', n; end if;
+
+  -- An area with no primary route cannot be quoted at all; the order form must
+  -- not offer it. Nothing should be in that state today.
+  if exists (
+    select 1 from public.service_areas sa
+     where sa.is_active
+       and not exists (select 1 from public.route_areas ra
+                        where ra.area_id = sa.id and ra.is_primary)
+  ) then
+    raise exception 'FAIL: an active area has no primary route and cannot be priced';
+  end if;
+
+  raise notice 'PASS: all % areas price to the official schedule', n;
+end $$;
+
 
 -- ============================================================================
 --  R3. FIXTURES — 25 downtown parcels for ROUTE_A
@@ -656,6 +704,48 @@ begin
   if t.total_pay <> 18600 then raise exception 'FAIL: total_pay %', t.total_pay; end if;
   if t.pay_tier_snapshot is null then raise exception 'FAIL: no tier snapshot'; end if;
   raise notice 'PASS: closed at 12 parcels — 15000 + 3600 = 18600, tier snapshotted';
+end $$;
+
+\echo '=== R6b2. the failed parcel is released back to the pool (0010) ==='
+--  Before 0010 a failed parcel stayed bound to its closed trip forever: the
+--  planning board's pool is `trip_id is null` and load_trip refuses anything
+--  with a trip_id, so nobody could see it and nobody could redeliver it.
+--
+--  It must come back WITHOUT costing the rider the pay for the attempt — they
+--  rode to the address either way. R6b above already asserted parcel_count = 12,
+--  which includes this one.
+do $$
+declare v_stuck int; v_free int; t_id uuid;
+begin
+  select id into t_id from public.trips where status = 'closed' limit 1;
+
+  select count(*) into v_stuck
+    from public.orders o join public.trips t on t.id = o.trip_id
+   where o.status = 'failed' and t.status = 'closed';
+  if v_stuck > 0 then
+    raise exception 'FAIL: % failed parcels still attached to a closed trip', v_stuck;
+  end if;
+
+  -- Released parcels go back to `pending`, which is what puts them in the pool.
+  select count(*) into v_free from public.orders
+   where trip_id is null and status = 'pending' and rider_id is null;
+  if v_free < 1 then
+    raise exception 'FAIL: the failed parcel did not return to the unrouted pool';
+  end if;
+
+  -- ...and releasing must not have driven the capacity counter negative.
+  if exists (select 1 from public.rider_profiles where active_order_count < 0) then
+    raise exception 'FAIL: a capacity counter went negative on release';
+  end if;
+
+  -- The rescue is recorded, so an operator can see it happened.
+  if not exists (select 1 from public.audit_log
+                  where action = 'trip.close' and entity_id = t_id::text
+                    and (after ->> 'released_for_retry')::int = 1) then
+    raise exception 'FAIL: the close audit row does not record the release';
+  end if;
+
+  raise notice 'PASS: failed parcel released to the pool, rider still paid for it';
 end $$;
 
 \echo '=== R6c. exactly one trip_pay line, negative, with no order behind it ==='

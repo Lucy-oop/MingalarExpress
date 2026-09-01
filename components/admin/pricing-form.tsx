@@ -4,17 +4,23 @@ import { useActionState, useMemo, useState } from 'react'
 import { useFormStatus } from 'react-dom'
 import { Percent, Save } from 'lucide-react'
 import { updatePricing, type AdminResult } from '@/lib/admin/actions'
-import { quoteFee, splitCommission } from '@/lib/pricing'
+import {
+  quoteTripPay,
+  routeMargin,
+  splitCommission,
+  type RoutePayTier,
+  type TripPayRates,
+} from '@/lib/pricing'
 import type { AppSettings } from '@/types/domain'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Field } from '@/components/ui/field'
 import { Alert } from '@/components/ui/alert'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { formatMmk } from '@/lib/utils'
+import { cn, formatMmk } from '@/lib/utils'
 
-/** Crow-fly distances the preview prices. Typical Thingangyun hops. */
-const PREVIEW_KM = [0.8, 1.5, 2.5, 4, 6, 9]
+/** Parcel counts the route preview is costed at: short, the rule, a full run. */
+const PREVIEW_PARCELS = 20
 
 function SaveButton() {
   const { pending } = useFormStatus()
@@ -26,22 +32,43 @@ function SaveButton() {
   )
 }
 
-export function PricingForm({ settings }: { settings: AppSettings }) {
+export type RoutePreview = {
+  id: string
+  code: string
+  name: string
+  colour: string
+  perParcelFee: number
+}
+
+export function PricingForm({
+  settings,
+  routes,
+  tiers,
+  rates,
+  minParcels,
+}: {
+  settings: AppSettings
+  routes: RoutePreview[]
+  tiers: RoutePayTier[]
+  rates: TripPayRates
+  minParcels: number
+}) {
   const [state, action] = useActionState<AdminResult, FormData>(updatePricing, {
     ok: false,
     message: '',
   })
   const err = (k: string) => (state.ok ? undefined : state.fieldErrors?.[k]?.[0])
 
-  // Draft values drive the preview so the operator sees the new tier table
-  // before committing. Nothing here is authoritative — createOrder recomputes
-  // every fee server-side from app_settings, never from the browser.
+  // The commission split is still LIVE: assign_order snapshots it onto every
+  // per-parcel job (a Route Local ad-hoc drop, or a failed parcel handed to a
+  // rider directly). Route runs pay by trip instead and never touch it.
+  //
+  // The distance knobs that used to live here — base fee, per-km, free km, road
+  // factor — were removed when shop pricing moved to flat route fees. They are
+  // no longer read by anything, so editing them changed nothing; the columns
+  // remain in app_settings, marked deprecated.
   const [draft, setDraft] = useState({
     riderCommissionPct: Number(settings.rider_commission_pct),
-    baseDeliveryFee: Number(settings.base_delivery_fee),
-    perKmFee: Number(settings.per_km_fee),
-    freeKm: Number(settings.free_km),
-    roadFactor: Number(settings.road_factor),
   })
 
   const set = (k: keyof typeof draft) => (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -49,19 +76,24 @@ export function PricingForm({ settings }: { settings: AppSettings }) {
     setDraft((d) => ({ ...d, [k]: Number.isFinite(n) ? n : 0 }))
   }
 
-  const tiers = useMemo(
+  /**
+   * What a route actually earns.
+   *
+   * The old preview priced a list of distances with `quoteFee`. Shops are no
+   * longer billed that way — the fee is flat per route — so that table showed an
+   * operator a number no shop would ever be charged.
+   *
+   * Margin is shown at the minimum-volume run because trip pay makes margin a
+   * RESIDUAL, not a percentage: the same route loses money at 4 parcels and
+   * makes money at 20, and the fee alone cannot tell you which.
+   */
+  const routeRows = useMemo(
     () =>
-      PREVIEW_KM.map((crow) => {
-        const quote = quoteFee(crow, {
-          base_delivery_fee: draft.baseDeliveryFee,
-          per_km_fee: draft.perKmFee,
-          free_km: draft.freeKm,
-          road_factor: draft.roadFactor,
-          rider_commission_pct: draft.riderCommissionPct,
-        })
-        return { crow, quote, split: splitCommission(quote.total, draft.riderCommissionPct) }
+      routes.map((r) => {
+        const pay = quoteTripPay(minParcels, 0, tiers, rates, r.id).total
+        return { route: r, margin: routeMargin(minParcels, r.perParcelFee, pay) }
       }),
-    [draft],
+    [routes, tiers, rates, minParcels],
   )
 
   const platformPct = Math.round((100 - draft.riderCommissionPct) * 100) / 100
@@ -119,95 +151,6 @@ export function PricingForm({ settings }: { settings: AppSettings }) {
               is snapshotted onto the order at assignment time, so last month&rsquo;s settlements
               never get rewritten. A per-rider override on the roster beats this rate.
             </Alert>
-          </CardContent>
-        </Card>
-
-        {/* ---------------------------------------------------------- */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm">Delivery fee tiers</CardTitle>
-          </CardHeader>
-          <CardContent className="grid gap-3 sm:grid-cols-2">
-            <Field
-              label="Base fee (Ks)"
-              htmlFor="baseDeliveryFee"
-              required
-              hint="Covers the free allowance below."
-              error={err('baseDeliveryFee')}
-            >
-              <Input
-                id="baseDeliveryFee"
-                name="baseDeliveryFee"
-                type="number"
-                min="0"
-                step="100"
-                value={draft.baseDeliveryFee}
-                onChange={set('baseDeliveryFee')}
-                required
-                aria-invalid={!!err('baseDeliveryFee')}
-              />
-            </Field>
-
-            <Field
-              label="Free allowance (km)"
-              htmlFor="freeKm"
-              required
-              hint="Road distance included in the base fee."
-              error={err('freeKm')}
-            >
-              <Input
-                id="freeKm"
-                name="freeKm"
-                type="number"
-                step="0.1"
-                min="0"
-                value={draft.freeKm}
-                onChange={set('freeKm')}
-                required
-                aria-invalid={!!err('freeKm')}
-              />
-            </Field>
-
-            <Field
-              label="Per extra km (Ks)"
-              htmlFor="perKmFee"
-              required
-              hint="Each STARTED kilometre past the allowance."
-              error={err('perKmFee')}
-            >
-              <Input
-                id="perKmFee"
-                name="perKmFee"
-                type="number"
-                min="0"
-                step="50"
-                value={draft.perKmFee}
-                onChange={set('perKmFee')}
-                required
-                aria-invalid={!!err('perKmFee')}
-              />
-            </Field>
-
-            <Field
-              label="Road factor"
-              htmlFor="roadFactor"
-              required
-              hint="Straight line × this ≈ road distance. 1.35 fits Yangon."
-              error={err('roadFactor')}
-            >
-              <Input
-                id="roadFactor"
-                name="roadFactor"
-                type="number"
-                step="0.05"
-                min="1"
-                max="3"
-                value={draft.roadFactor}
-                onChange={set('roadFactor')}
-                required
-                aria-invalid={!!err('roadFactor')}
-              />
-            </Field>
           </CardContent>
         </Card>
 
@@ -304,9 +247,10 @@ export function PricingForm({ settings }: { settings: AppSettings }) {
       <div className="lg:sticky lg:top-4 lg:self-start">
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm">What shops will be quoted</CardTitle>
+            <CardTitle className="text-sm">What shops are charged</CardTitle>
             <p className="text-xs text-muted-foreground">
-              Recomputed live from the values on the left. Not yet saved.
+              A flat fee per parcel, set by the destination&rsquo;s route. Edit these under
+              Routes &mdash; they are not part of the form on the left.
             </p>
           </CardHeader>
           <CardContent className="p-0">
@@ -314,28 +258,38 @@ export function PricingForm({ settings }: { settings: AppSettings }) {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-y bg-muted/50 text-left text-[10px] uppercase tracking-wide text-muted-foreground">
-                    <th className="px-3 py-2 font-medium">Straight</th>
-                    <th className="px-3 py-2 font-medium">Road</th>
-                    <th className="px-3 py-2 text-right font-medium">Fee</th>
-                    <th className="px-3 py-2 text-right font-medium">Rider</th>
-                    <th className="px-3 py-2 text-right font-medium">Mingalar</th>
+                    <th className="px-3 py-2 font-medium">Route</th>
+                    <th className="px-3 py-2 text-right font-medium">Fee / parcel</th>
+                    <th className="px-3 py-2 text-right font-medium">Rider @ {PREVIEW_PARCELS}</th>
+                    <th className="px-3 py-2 text-right font-medium">Margin @ {PREVIEW_PARCELS}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {tiers.map(({ crow, quote, split }) => (
-                    <tr key={crow}>
-                      <td className="px-3 py-2 tabular-nums">{crow.toFixed(1)} km</td>
-                      <td className="px-3 py-2 tabular-nums text-muted-foreground">
-                        {quote.roadKm.toFixed(1)} km
+                  {routeRows.map(({ route, margin }) => (
+                    <tr key={route.id}>
+                      <td className="px-3 py-2">
+                        <span className="flex items-center gap-1.5">
+                          <span
+                            className="size-2 shrink-0 rounded-full"
+                            style={{ backgroundColor: route.colour }}
+                            aria-hidden="true"
+                          />
+                          {route.code.replace('ROUTE_', '')}
+                        </span>
                       </td>
                       <td className="px-3 py-2 text-right font-medium tabular-nums">
-                        {formatMmk(quote.total)}
+                        {formatMmk(route.perParcelFee)}
                       </td>
                       <td className="px-3 py-2 text-right tabular-nums text-emerald-700">
-                        {formatMmk(split.rider)}
+                        {formatMmk(margin.riderPay)}
                       </td>
-                      <td className="px-3 py-2 text-right tabular-nums">
-                        {formatMmk(split.platform)}
+                      <td
+                        className={cn(
+                          'px-3 py-2 text-right tabular-nums',
+                          margin.platform < 0 && 'font-semibold text-destructive',
+                        )}
+                      >
+                        {formatMmk(margin.platform)}
                       </td>
                     </tr>
                   ))}

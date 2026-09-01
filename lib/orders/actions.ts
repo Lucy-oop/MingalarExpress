@@ -6,7 +6,8 @@ import { createClient } from '@/lib/supabase/server'
 import { assertRole } from '@/lib/auth/guards'
 import { orderCreateSchema } from '@/lib/validation/schemas'
 import { haversineKm } from '@/lib/geo/haversine'
-import { quoteFee, codCollectable } from '@/lib/pricing'
+import { codCollectable } from '@/lib/pricing'
+import { resolveAreaRoute } from '@/lib/orders/queries'
 
 /** What the confirmation modal needs. Every money figure is the SERVER's. */
 export type CreatedOrder = {
@@ -140,16 +141,27 @@ export async function createOrder(
   }
   const v = parsed.data
 
-  const { data: settings } = await supabase
-    .from('app_settings')
-    .select('base_delivery_fee, per_km_fee, free_km, road_factor, rider_commission_pct')
-    .eq('id', true)
-    .single()
+  // THE PRICE.
+  //
+  // Flat, per route, from `routes.per_parcel_fee` — the schedule the business
+  // signed off. It replaced distance quoting, which had survived the route
+  // migration and was charging a Mingaladon parcel 8,100 Ks against an official
+  // 4,000. The browser shows the same number from `getAreaRoutes()`, but this is
+  // the one that gets stored: a fee posted from a form is user input.
+  const route = await resolveAreaRoute(v.dropoffAreaId)
+  if (!route) {
+    return {
+      error: 'We do not deliver to that area yet.',
+      fieldErrors: {
+        dropoffAreaId: ['No route serves this area, so the parcel cannot be priced or dispatched.'],
+      },
+    }
+  }
+  const fee = route.fee
 
-  if (!settings) return { error: 'Pricing is unavailable right now. Try again shortly.' }
-
+  // Kept as information, not as a price. A shop still finds "how far is this"
+  // useful, and dispatch uses it when ordering stops.
   const crowKm = haversineKm(v.pickupPoint, v.dropoffPoint)
-  const fee = quoteFee(crowKm, settings).total
 
   const goodsValue = v.paymentMethod === 'cod' ? v.codAmount : 0
   const codTotal = v.paymentMethod === 'cod' ? codCollectable(goodsValue, fee, v.feePayer) : 0
@@ -171,7 +183,7 @@ export async function createOrder(
       customer_phone: v.customerPhone,
       customer_phone_alt: v.customerPhoneAlt ?? null,
       dropoff_address: v.dropoffAddress,
-      dropoff_area_id: v.dropoffAreaId ?? null,
+      dropoff_area_id: v.dropoffAreaId,
       dropoff_lat: v.dropoffPoint.lat,
       dropoff_lng: v.dropoffPoint.lng,
       dropoff_note: v.dropoffNote || null,
@@ -186,6 +198,10 @@ export async function createOrder(
       delivery_fee: fee,
       fee_payer: v.feePayer,
       route_distance_km: Math.round(crowKm * 100) / 100,
+      // Snapshot, for the same reason the commission split is one (D5): a later
+      // remap of route_areas must not change the answer to "what was this shop
+      // charged, and why".
+      route_id: route.routeId,
     })
     .select(
       'id, code, customer_name, dropoff_address, dropoff_area_id, payment_method, fee_payer, delivery_fee, cod_amount',

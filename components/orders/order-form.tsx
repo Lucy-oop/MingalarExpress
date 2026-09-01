@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useFormStatus } from 'react-dom'
 import { CheckCircle2, PackagePlus } from 'lucide-react'
 import { createOrder, type CreatedOrder, type OrderFormState } from '@/lib/orders/actions'
+import type { AreaRoute } from '@/lib/orders/queries'
 import { LocationPicker } from '@/components/map/location-picker'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -14,21 +15,16 @@ import { Field } from '@/components/ui/field'
 import { Alert } from '@/components/ui/alert'
 import { Overlay } from '@/components/ui/overlay'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { haversineKm, etaMinutes } from '@/lib/geo/haversine'
-import { quoteFee, codCollectable, type FeeQuote } from '@/lib/pricing'
+import { haversineKm } from '@/lib/geo/haversine'
+import { codCollectable } from '@/lib/pricing'
 import { formatMmk, formatDistanceKm, cn } from '@/lib/utils'
 import { isInServiceArea } from '@/lib/geo/thingangyun'
-import type { AppSettings, LatLng, ServiceArea } from '@/types/domain'
-
-type PricingSettings = Pick<
-  AppSettings,
-  'base_delivery_fee' | 'per_km_fee' | 'free_km' | 'road_factor' | 'rider_commission_pct'
->
+import type { LatLng } from '@/types/domain'
 
 export type OrderFormProps = {
   shop: { id: string; pickup_address: string; pickup_lat: number; pickup_lng: number }
-  areas: Pick<ServiceArea, 'id' | 'name' | 'name_mm'>[]
-  settings: PricingSettings
+  /** Deliverable areas WITH the route that prices each one. */
+  areas: AreaRoute[]
 }
 
 function SubmitButton({ disabled }: { disabled: boolean }) {
@@ -64,7 +60,7 @@ const RENDERED_ERROR_KEYS = new Set([
   'codAmount',
 ])
 
-export function OrderForm({ shop, areas, settings }: OrderFormProps) {
+export function OrderForm({ shop, areas }: OrderFormProps) {
   const [state, action] = useActionState<OrderFormState, FormData>(createOrder, {})
   const err = (k: string) => state.fieldErrors?.[k]?.[0]
 
@@ -96,6 +92,7 @@ export function OrderForm({ shop, areas, settings }: OrderFormProps) {
   const [dropoff, setDropoff] = useState<LatLng | null>(null)
   const [dropoffAddress, setDropoffAddress] = useState('')
 
+  const [areaId, setAreaId] = useState('')
   const [paymentMethod, setPaymentMethod] = useState<'cod' | 'prepaid'>('cod')
   const [feePayer, setFeePayer] = useState<'customer' | 'shop'>('customer')
   const [goodsValue, setGoodsValue] = useState('')
@@ -126,18 +123,25 @@ export function OrderForm({ shop, areas, settings }: OrderFormProps) {
   }
 
   /**
-   * The quote is computed locally for instant feedback and confirmed by the
-   * server on submit. Same `quoteFee` function on both sides, same settings row,
-   * so the number the shop sees is the number that gets written -- but the
-   * server's copy is the one that counts.
+   * The price is the route's flat fee, chosen by the destination area.
+   *
+   * Not distance any more. Distance quoting survived the route migration and was
+   * charging a Mingaladon parcel 8,100 Ks against the official 4,000 — the fee
+   * the shop pays and the cost the platform carries were computed off two
+   * unrelated models. The server recomputes this from the same table on submit;
+   * what is shown here is a preview, never the stored number.
    */
-  const quote: FeeQuote | null = useMemo(() => {
-    if (!dropoff || !isInServiceArea(dropoff)) return null
-    return quoteFee(haversineKm(pickup, dropoff), settings)
-  }, [pickup, dropoff, settings])
+  const area = useMemo(() => areas.find((a) => a.areaId === areaId) ?? null, [areas, areaId])
+  const fee = area?.fee ?? 0
+
+  /** Informational only: a shop still likes to know how far the parcel goes. */
+  const crowKm = useMemo(
+    () => (dropoff ? haversineKm(pickup, dropoff) : null),
+    [pickup, dropoff],
+  )
 
   const goods = Number(goodsValue) || 0
-  const codTotal = quote && paymentMethod === 'cod' ? codCollectable(goods, quote.total, feePayer) : 0
+  const codTotal = area && paymentMethod === 'cod' ? codCollectable(goods, fee, feePayer) : 0
 
   // Mirrors what the server will accept. Pickup is included because a shop whose
   // saved pickup point predates the geofence change would otherwise submit an
@@ -145,6 +149,7 @@ export function OrderForm({ shop, areas, settings }: OrderFormProps) {
   // input of its own.
   const canSubmit =
     !!dropoff &&
+    !!area &&
     isInServiceArea(dropoff) &&
     isInServiceArea(pickup) &&
     dropoffAddress.trim().length >= 5
@@ -236,14 +241,41 @@ export function OrderForm({ shop, areas, settings }: OrderFormProps) {
             <Field label="Alternate phone" htmlFor="customerPhoneAlt" error={err('customerPhoneAlt')}>
               <Input id="customerPhoneAlt" name="customerPhoneAlt" type="tel" inputMode="tel" />
             </Field>
-            <Field label="Ward" htmlFor="dropoffAreaId" hint="Helps dispatch pick the nearest rider">
-              <Select id="dropoffAreaId" name="dropoffAreaId" defaultValue="">
-                <option value="">Select a ward…</option>
-                {areas.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.name}
-                    {a.name_mm ? ` · ${a.name_mm}` : ''}
-                  </option>
+            {/*
+              Required, because it sets the price. Grouped by route so a shop can
+              see which run their parcel joins, and each option carries its fee —
+              the number is the point of the field, not a detail of it.
+            */}
+            <Field
+              label="Destination area"
+              htmlFor="dropoffAreaId"
+              required
+              hint="Sets the route and the delivery fee"
+              error={err('dropoffAreaId')}
+            >
+              <Select
+                id="dropoffAreaId"
+                name="dropoffAreaId"
+                value={areaId}
+                onChange={(e) => setAreaId(e.target.value)}
+                required
+                aria-invalid={!!err('dropoffAreaId')}
+              >
+                <option value="">Choose an area…</option>
+                {Object.entries(
+                  areas.reduce<Record<string, AreaRoute[]>>((acc, a) => {
+                    ;(acc[a.routeName] ??= []).push(a)
+                    return acc
+                  }, {}),
+                ).map(([routeName, group]) => (
+                  <optgroup key={routeName} label={routeName}>
+                    {group.map((a) => (
+                      <option key={a.areaId} value={a.areaId}>
+                        {a.areaName}
+                        {a.areaNameMm ? ` · ${a.areaNameMm}` : ''} — {formatMmk(a.fee)}
+                      </option>
+                    ))}
+                  </optgroup>
                 ))}
               </Select>
             </Field>
@@ -361,7 +393,8 @@ export function OrderForm({ shop, areas, settings }: OrderFormProps) {
 
       {/* ---------------------------------------------------------------- */}
       <QuoteSummary
-        quote={quote}
+        area={area}
+        crowKm={crowKm}
         paymentMethod={paymentMethod}
         feePayer={feePayer}
         goods={goods}
@@ -409,7 +442,8 @@ function OrderCreatedDialog({
   onCreateAnother: () => void
 }) {
   const router = useRouter()
-  const areaName = areas.find((a) => a.id === order.dropoffAreaId)?.name ?? null
+  const area = areas.find((a) => a.areaId === order.dropoffAreaId) ?? null
+  const areaName = area?.areaName ?? null
   const isCod = order.paymentMethod === 'cod'
 
   return (
@@ -446,6 +480,18 @@ function OrderCreatedDialog({
             {areaName ? ' · ' : null}
             <span className="text-muted-foreground">{order.dropoffAddress}</span>
           </DetailRow>
+          {area ? (
+            <DetailRow label="Route">
+              <span className="inline-flex items-center gap-1.5">
+                <span
+                  className="size-2.5 rounded-full"
+                  style={{ backgroundColor: area.colour }}
+                  aria-hidden="true"
+                />
+                {area.routeName}
+              </span>
+            </DetailRow>
+          ) : null}
           <DetailRow label="Delivery fee">
             {formatMmk(order.deliveryFee)}
             <span className="text-muted-foreground">
@@ -480,14 +526,16 @@ function DetailRow({ label, children }: { label: string; children: React.ReactNo
 }
 
 function QuoteSummary({
-  quote,
+  area,
+  crowKm,
   paymentMethod,
   feePayer,
   goods,
   codTotal,
   hasDropoff,
 }: {
-  quote: FeeQuote | null
+  area: AreaRoute | null
+  crowKm: number | null
   paymentMethod: 'cod' | 'prepaid'
   feePayer: 'customer' | 'shop'
   goods: number
@@ -500,24 +548,31 @@ function QuoteSummary({
         <CardTitle className="text-base">Delivery fee</CardTitle>
       </CardHeader>
       <CardContent className="space-y-2 text-sm">
-        {!quote ? (
+        {!area ? (
           <p className="text-muted-foreground">
-            {hasDropoff
-              ? 'Move the pin inside Thingangyun to see the fee.'
-              : 'Drop the delivery pin to calculate the fee.'}
+            Choose the destination area to see the fee.
+            {hasDropoff ? null : ' Then drop the delivery pin.'}
           </p>
         ) : (
           <>
-            <Row label="Distance (straight line)" value={formatDistanceKm(quote.crowKm)} />
-            <Row label="By road (estimated)" value={formatDistanceKm(quote.roadKm)} />
-            <Row label="Estimated ride time" value={`${etaMinutes(quote.crowKm)} min`} />
+            <div className="flex items-center gap-2">
+              <span
+                className="size-2.5 shrink-0 rounded-full"
+                style={{ backgroundColor: area.colour }}
+                aria-hidden="true"
+              />
+              <span className="font-medium">{area.routeName}</span>
+            </div>
+            <Row label="Destination" value={area.areaName} />
+            {crowKm !== null ? (
+              <Row label="Distance (straight line)" value={formatDistanceKm(crowKm)} />
+            ) : null}
             <hr className="my-2" />
-            <Row label="Base fee" value={formatMmk(quote.baseFee)} />
-            <Row
-              label={`Distance charge (${quote.billableKm.toFixed(1)} km billable)`}
-              value={formatMmk(quote.distanceFee)}
-            />
-            <Row label="Delivery fee" value={formatMmk(quote.total)} strong />
+            {/*
+              One line, because there is one number. The fee is flat per route —
+              there is no base plus distance to break down any more.
+            */}
+            <Row label="Delivery fee" value={formatMmk(area.fee)} strong />
 
             {paymentMethod === 'cod' ? (
               <>

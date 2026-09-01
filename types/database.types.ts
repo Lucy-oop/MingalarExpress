@@ -1,4 +1,4 @@
-// Generated from migrations 0001-0009 via postgres-meta (the same generator
+// Generated from migrations 0001-0010 via postgres-meta (the same generator
 // the Supabase CLI uses). DO NOT EDIT BY HAND.
 // Regenerate:  npm run db:types      (supabase gen types typescript --local)
 export type Json =
@@ -395,6 +395,7 @@ export type Database = {
           rider_commission_pct: number | null
           rider_id: string | null
           route_distance_km: number | null
+          route_id: string | null
           shop_id: string
           status: Database["public"]["Enums"]["order_status"]
           trip_id: string | null
@@ -445,6 +446,7 @@ export type Database = {
           rider_commission_pct?: number | null
           rider_id?: string | null
           route_distance_km?: number | null
+          route_id?: string | null
           shop_id: string
           status?: Database["public"]["Enums"]["order_status"]
           trip_id?: string | null
@@ -495,6 +497,7 @@ export type Database = {
           rider_commission_pct?: number | null
           rider_id?: string | null
           route_distance_km?: number | null
+          route_id?: string | null
           shop_id?: string
           status?: Database["public"]["Enums"]["order_status"]
           trip_id?: string | null
@@ -528,6 +531,13 @@ export type Database = {
             columns: ["rider_id"]
             isOneToOne: false
             referencedRelation: "rider_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orders_route_id_fkey"
+            columns: ["route_id"]
+            isOneToOne: false
+            referencedRelation: "routes"
             referencedColumns: ["id"]
           },
           {
@@ -1126,6 +1136,7 @@ export type Database = {
           rider_commission_pct: number | null
           rider_id: string | null
           route_distance_km: number | null
+          route_id: string | null
           shop_id: string
           status: Database["public"]["Enums"]["order_status"]
           trip_id: string | null
@@ -1212,6 +1223,7 @@ export type Database = {
           rider_commission_pct: number | null
           rider_id: string | null
           route_distance_km: number | null
+          route_id: string | null
           shop_id: string
           status: Database["public"]["Enums"]["order_status"]
           trip_id: string | null
@@ -1525,6 +1537,7 @@ export type Database = {
       mm_day_end: { Args: { p_date: string }; Returns: string }
       mm_day_start: { Args: { p_date: string }; Returns: string }
       mm_today: { Args: never; Returns: string }
+      order_rider_card: { Args: { p_order_id: string }; Returns: Json }
       owns_shop: { Args: { p_shop_id: string }; Returns: boolean }
       plan_trip: {
         Args: {

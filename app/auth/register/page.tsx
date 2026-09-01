@@ -11,7 +11,7 @@ export default function RegisterPage() {
       <CardHeader>
         <CardTitle>Create a shop account</CardTitle>
         <CardDescription>
-          For online shops in Thingangyun sending parcels with Mingalar Express.
+          For online shops sending parcels across Greater Yangon with Mingalar Express.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">

@@ -95,17 +95,6 @@ export const riderUpdateSchema = z.object({
 
 export const pricingSchema = z.object({
   riderCommissionPct: commissionPct,
-  baseDeliveryFee: mmk,
-  perKmFee: mmk,
-  freeKm: z.coerce
-    .number({ error: 'Enter a distance' })
-    .min(0, 'Cannot be negative')
-    .max(30, 'A free allowance above 30 km is not a delivery fee'),
-  // road_factor < 1 would price a route as shorter than the crow flies.
-  roadFactor: z.coerce
-    .number({ error: 'Enter a road factor' })
-    .min(1, 'Roads are never shorter than the straight line — minimum 1.0')
-    .max(3, 'Above 3.0 is not a road factor, it is a surcharge'),
   defaultCoverageKm: coverageKm,
   // Replaced offerTtlSeconds, which died with the offer engine in 0009. Mirrors
    // the CHECK on app_settings.min_parcels_per_trip (0 .. 500). 0 is allowed and

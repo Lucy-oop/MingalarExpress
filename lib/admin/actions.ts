@@ -300,10 +300,6 @@ export async function updatePricing(
 
   const parsed = pricingSchema.safeParse({
     riderCommissionPct: formData.get('riderCommissionPct'),
-    baseDeliveryFee: formData.get('baseDeliveryFee'),
-    perKmFee: formData.get('perKmFee'),
-    freeKm: formData.get('freeKm'),
-    roadFactor: formData.get('roadFactor'),
     defaultCoverageKm: formData.get('defaultCoverageKm'),
     minParcelsPerTrip: formData.get('minParcelsPerTrip'),
     riderPingStaleMin: formData.get('riderPingStaleMin'),
@@ -318,10 +314,6 @@ export async function updatePricing(
     .from('app_settings')
     .update({
       rider_commission_pct: v.riderCommissionPct,
-      base_delivery_fee: v.baseDeliveryFee,
-      per_km_fee: v.perKmFee,
-      free_km: v.freeKm,
-      road_factor: v.roadFactor,
       default_coverage_km: v.defaultCoverageKm,
       min_parcels_per_trip: v.minParcelsPerTrip,
       rider_ping_stale_min: v.riderPingStaleMin,

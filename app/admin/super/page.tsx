@@ -27,7 +27,7 @@ export default async function SuperAdminOverviewPage() {
     <div className="space-y-4">
       <PageHeader
         title="Super Admin"
-        description="Fleet, money and configuration for Thingangyun. Figures come from the COD ledger, which is the book of record — never recomputed from orders."
+        description="Fleet, money and configuration for the Greater Yangon routes. Figures come from the COD ledger, which is the book of record — never recomputed from orders."
       />
 
       {/* Things that need a human today, before the numbers. */}

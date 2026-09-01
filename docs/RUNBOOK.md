@@ -462,16 +462,16 @@ Sign in `shop@mingalar.test` / `mingalar123`.
 |---|---|---|
 | 1.1 | Land after login | `/shop/dashboard` |
 | 1.2 | **New order** → `/shop/orders/new` | Pickup pre-filled from the shop's saved point |
-| 1.3 | Drop the dropoff pin inside Thingangyun | Fee quote appears and updates as you move the pin |
-| 1.4 | Drag the pin **outside** the township | Field error: outside the service area. Submit stays blocked |
+| 1.3 | Choose the destination area and drop the dropoff pin | The route and its flat fee appear as soon as the area is chosen |
+| 1.4 | Drag the pin **outside** Greater Yangon | Field error: outside the service area. Submit stays blocked |
 | 1.5 | Restore a valid pin. Payment **COD**, goods value `25000`, fee payer **customer** | COD to collect = goods + delivery fee |
-| 1.6 | Submit | Redirect to `/shop/orders/[id]`, status **Pending**, code `MGE-YYMMDD-NNNNNN` |
+| 1.6 | Submit | Confirmation modal with the code `MGE-YYMMDD-NNNNNN`, recipient, destination and collectable total. **Create another order** resets the form; **View orders** goes to `/shop/orders` |
 | 1.7 | Open `/track/<code>` in a private window | Timeline visible, **no** customer phone, exact address or rider identity |
 
 > **Do not trust the fee shown in the browser.** `createOrder` recomputes it
-> server-side from the two map points and `app_settings`. If the stored
-> `delivery_fee` differs from the quote, that is the bug this test exists to
-> find.
+> server-side from the destination area's route (`routes.per_parcel_fee`). If the
+> stored `delivery_fee` differs from the official schedule for that route, that is
+> the bug this test exists to find.
 
 ### Step 2 — Dispatcher assigns
 

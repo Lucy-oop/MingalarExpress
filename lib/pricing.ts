@@ -1,5 +1,4 @@
-import { roadKm } from '@/lib/geo/haversine'
-import type { AppSettings, Mmk } from '@/types/domain'
+import type { Mmk } from '@/types/domain'
 
 /**
  * Fee and commission arithmetic. Everything here is integer MMK.
@@ -11,41 +10,19 @@ import type { AppSettings, Mmk } from '@/types/domain'
  * will reject the assignment.
  */
 
-export type PricingSettings = Pick<
-  AppSettings,
-  'base_delivery_fee' | 'per_km_fee' | 'free_km' | 'road_factor' | 'rider_commission_pct'
->
-
-export type FeeQuote = {
-  crowKm: number
-  roadKm: number
-  billableKm: number
-  baseFee: Mmk
-  distanceFee: Mmk
-  total: Mmk
-}
-
 /**
- * Base fee covers the first `free_km`; beyond that each *started* kilometre is
- * charged. Ceil, not round: a 2.1 km trip past the free allowance costs one km,
- * which is how every delivery service in Yangon prices and what shops expect.
+ * Distance quoting was REMOVED in the shop-panel round.
+ *
+ * `quoteFee` priced a parcel as base + per-km past a free allowance. Shops are
+ * now charged a flat `routes.per_parcel_fee` chosen by the destination area
+ * (`resolveAreaRoute` in lib/orders/queries.ts), because the two models
+ * disagreed badly — a Mingaladon parcel quoted 8,100 Ks against an official
+ * 4,000 — and only one of them was the price the business had signed off.
+ *
+ * `app_settings.base_delivery_fee`, `per_km_fee`, `free_km` and `road_factor`
+ * are the columns it read. They are still in the schema and are no longer read
+ * by anything.
  */
-export function quoteFee(crowKm: number, s: PricingSettings): FeeQuote {
-  const factor = Number(s.road_factor) || 1.35
-  const road = roadKm(crowKm, factor)
-  const billable = Math.max(0, road - Number(s.free_km))
-  const baseFee = Number(s.base_delivery_fee)
-  const distanceFee = Math.ceil(billable) * Number(s.per_km_fee)
-
-  return {
-    crowKm: round2(crowKm),
-    roadKm: round2(road),
-    billableKm: round2(billable),
-    baseFee,
-    distanceFee,
-    total: baseFee + distanceFee,
-  }
-}
 
 export type CommissionSplit = { riderPct: number; rider: Mmk; platform: Mmk }
 

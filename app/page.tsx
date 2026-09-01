@@ -48,7 +48,7 @@ export default function HomePage() {
       </div>
 
       <p className="text-center text-xs text-muted-foreground">
-        Serving Thingangyun Township, Yangon · Fast · Friendly · Trusted
+        Serving Greater Yangon · Fast · Friendly · Trusted
       </p>
     </main>
   )

@@ -194,10 +194,6 @@ describe('areaSchema', () => {
 describe('pricingSchema', () => {
   const BASE_PRICING = {
     riderCommissionPct: '80',
-    baseDeliveryFee: '1500',
-    perKmFee: '300',
-    freeKm: '2',
-    roadFactor: '1.35',
     defaultCoverageKm: '5',
     minParcelsPerTrip: '20',
     riderPingStaleMin: '10',
@@ -211,9 +207,24 @@ describe('pricingSchema', () => {
     assert.equal(r.data?.supportPhone, null)
   })
 
-  // road_factor < 1 would price a route as SHORTER than the crow flies.
-  test('rejects a road factor below 1', () => {
-    assert.equal(pricingSchema.safeParse({ ...BASE_PRICING, roadFactor: '0.9' }).success, false)
+  /**
+   * The distance knobs (base fee, per-km, free km, road factor) left this schema
+   * when shop pricing moved to flat route fees. They are asserted ABSENT rather
+   * than simply deleted from the fixture: zod strips unknown keys silently, so
+   * without this a well-meaning re-add would validate nothing and write nothing,
+   * and the form would look like it worked.
+   */
+  test('the retired distance knobs are no longer part of the schema', () => {
+    const r = pricingSchema.safeParse({
+      ...BASE_PRICING,
+      baseDeliveryFee: '1500.5',
+      perKmFee: '300.25',
+      roadFactor: '0.9',
+      freeKm: '-4',
+    })
+    assert.equal(r.success, true, 'unknown keys should be ignored, not validated')
+    assert.equal('baseDeliveryFee' in (r.data ?? {}), false)
+    assert.equal('roadFactor' in (r.data ?? {}), false)
   })
 
   test('mirrors the SQL CHECK on min_parcels_per_trip (0..500)', () => {
@@ -237,11 +248,6 @@ describe('pricingSchema', () => {
 
   test('rejects a commission above 100%', () => {
     assert.equal(pricingSchema.safeParse({ ...BASE_PRICING, riderCommissionPct: '101' }).success, false)
-  })
-
-  test('rejects fractional kyat in the fee tiers', () => {
-    assert.equal(pricingSchema.safeParse({ ...BASE_PRICING, baseDeliveryFee: '1500.5' }).success, false)
-    assert.equal(pricingSchema.safeParse({ ...BASE_PRICING, perKmFee: '300.25' }).success, false)
   })
 
   test('normalises a local support number to E.164', () => {

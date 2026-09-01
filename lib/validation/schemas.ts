@@ -110,7 +110,11 @@ export const orderCreateSchema = z
     customerPhone: myanmarPhone,
     customerPhoneAlt: optionalMyanmarPhone.optional(),
     dropoffAddress: z.string().trim().min(5, 'Delivery address is required').max(300),
-    dropoffAreaId: dbId('Select a valid area').nullable().optional(),
+    // REQUIRED since the flat-route pricing change: the destination area is
+    // what selects the route, and the route is what sets delivery_fee. An order
+    // with no area cannot be priced, and could never be loaded onto a run
+    // either — the planning board groups the unrouted pool by area.
+    dropoffAreaId: dbId('Choose the destination area'),
     dropoffPoint: servicePoint,
     dropoffNote: z.string().trim().max(300).optional().or(z.literal('')),
 

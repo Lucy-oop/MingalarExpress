@@ -405,7 +405,7 @@ function AddressSearch({ onSelect }: { onSelect: (candidate: GeocodeCandidate) =
               setOpen(false)
             }
           }}
-          placeholder="Search an address or place in Thingangyun…"
+          placeholder="Search an address or place in Yangon…"
           className="pl-9 pr-9"
           role="combobox"
           aria-expanded={showList}
@@ -448,7 +448,7 @@ function AddressSearch({ onSelect }: { onSelect: (candidate: GeocodeCandidate) =
         >
           {results.length === 0 ? (
             <li className="px-3 py-3 text-sm text-muted-foreground">
-              Nothing found in Thingangyun. Try a landmark or road name, or tap the map.
+              Nothing found in the delivery area. Try a landmark or road name, or tap the map.
             </li>
           ) : (
             results.map((c, i) => (

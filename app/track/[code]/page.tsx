@@ -65,7 +65,7 @@ export default async function TrackPage({ params }: { params: Promise<{ code: st
           </div>
           <div className="flex items-center justify-between gap-3">
             <span className="text-muted-foreground">Delivering to</span>
-            <span className="font-medium">{order.dropoff_area ?? 'Thingangyun'}</span>
+            <span className="font-medium">{order.dropoff_area ?? 'Yangon'}</span>
           </div>
           {order.is_cod ? (
             <div className="flex items-center justify-between gap-3">
@@ -97,7 +97,7 @@ export default async function TrackPage({ params }: { params: Promise<{ code: st
       ) : null}
 
       <p className="text-center text-xs text-muted-foreground">
-        Mingalar Express · Thingangyun Township, Yangon
+        Mingalar Express · Greater Yangon
       </p>
     </main>
   )

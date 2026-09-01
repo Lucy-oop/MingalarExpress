@@ -6,7 +6,7 @@ export const metadata: Metadata = {
     default: 'Mingalar Express',
     template: '%s · Mingalar Express',
   },
-  description: 'Fast, friendly, trusted delivery in Thingangyun Township, Yangon.',
+  description: 'Fast, friendly, trusted parcel delivery across Greater Yangon.',
   applicationName: 'Mingalar Express',
   formatDetection: { telephone: true },
 }

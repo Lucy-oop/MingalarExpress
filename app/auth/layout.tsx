@@ -6,7 +6,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
       <BrandMark />
       <div className="w-full max-w-sm">{children}</div>
       <p className="text-center text-xs text-muted-foreground">
-        Serving Thingangyun Township, Yangon
+        Serving Greater Yangon
       </p>
     </main>
   )
