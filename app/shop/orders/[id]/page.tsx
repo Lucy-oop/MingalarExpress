@@ -7,6 +7,7 @@ import { getShopOrderDetail } from '@/lib/orders/queries'
 import { StatusBadge } from '@/components/orders/status-badge'
 import { StatusTimeline } from '@/components/orders/status-timeline'
 import { CancelOrderButton } from '@/components/orders/cancel-order-button'
+import { FailedOrderPanel } from '@/components/orders/failed-order-panel'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -34,7 +35,8 @@ export default async function ShopOrderDetailPage({
   const detail = await getShopOrderDetail(id)
   if (!detail) notFound()
 
-  const { order, areaName, route, events, rider, proofUrl } = detail
+  const { order, areaName, route, events, rider, proofUrl, attempts, maxAttempts, awaitingDecision } =
+    detail
 
   return (
     <div className="space-y-5">
@@ -44,13 +46,26 @@ export default async function ShopOrderDetailPage({
         </Alert>
       ) : null}
 
-      {/* The two outcomes that used to be stored and never shown. A shop chasing
-          a parcel had no way to learn why it had not arrived. */}
-      {order.status === 'failed' ? (
-        <Alert tone="error" title="Delivery failed">
-          {order.fail_reason ?? 'No reason was recorded. Contact the office.'}
-        </Alert>
+      {/*
+        A failure is not just a status to report — it is a decision the shop has
+        to make. Until 0011 it was retried silently and forever, so the shop was
+        never told and never asked. `attempts > 0` rather than
+        `status = 'failed'` because close_trip may already have auto-retried it
+        back to `pending`, and that is exactly the moment a shop might want to
+        say "stop, bring it back".
+      */}
+      {attempts > 0 && order.status !== 'delivered' && order.status !== 'cancelled' ? (
+        <FailedOrderPanel
+          orderId={order.id}
+          orderCode={order.code}
+          failReason={order.fail_reason}
+          attempts={attempts}
+          maxAttempts={maxAttempts}
+          awaitingDecision={awaitingDecision}
+          resolution={order.resolution}
+        />
       ) : null}
+
       {order.status === 'cancelled' ? (
         <Alert tone="info" title="Order cancelled">
           {order.cancel_reason ?? 'No reason was recorded.'}

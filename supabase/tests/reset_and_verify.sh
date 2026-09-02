@@ -23,7 +23,7 @@ for f in supabase/migrations/*.sql; do
   run < "$f"
 done
 echo "--- seed"; run < supabase/seed.sql
-for t in rls_smoke lifecycle_edge storage_policies assign_flow settlement_flow route_flow; do
+for t in rls_smoke lifecycle_edge storage_policies assign_flow settlement_flow route_flow failed_flow; do
   echo "--- test $t"
   # each suite assumes a clean DB, so reseed between them
   if [ "$t" != "rls_smoke" ]; then
@@ -38,7 +38,8 @@ for t in rls_smoke lifecycle_edge storage_policies assign_flow settlement_flow r
       delete from public.shops where id='aaaaaaaa-0000-0000-0000-000000000002';
       delete from public.profiles where id='77777777-7777-7777-7777-777777777777';
       delete from auth.users where id='77777777-7777-7777-7777-777777777777';
-      update public.app_settings set rider_commission_pct=80, min_parcels_per_trip=20 where id;
+      update public.app_settings set rider_commission_pct=80, min_parcels_per_trip=20,
+             max_delivery_attempts=3 where id;
       -- route_flow flips these while proving the ceilings bite; put them back so
       -- a re-run starts from the shipped configuration.
       update public.routes set is_active=true, max_parcels_per_trip=60,

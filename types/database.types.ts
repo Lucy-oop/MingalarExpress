@@ -1,4 +1,4 @@
-// Generated from migrations 0001-0010 via postgres-meta (the same generator
+// Generated from migrations 0001-0011 via postgres-meta (the same generator
 // the Supabase CLI uses). DO NOT EDIT BY HAND.
 // Regenerate:  npm run db:types      (supabase gen types typescript --local)
 export type Json =
@@ -29,6 +29,7 @@ export type Database = {
           map_center_lng: number
           map_default_zoom: number
           map_provider: string
+          max_delivery_attempts: number
           min_parcels_per_trip: number
           offer_ttl_seconds: number
           order_code_prefix: string
@@ -60,6 +61,7 @@ export type Database = {
           map_center_lng?: number
           map_default_zoom?: number
           map_provider?: string
+          max_delivery_attempts?: number
           min_parcels_per_trip?: number
           offer_ttl_seconds?: number
           order_code_prefix?: string
@@ -91,6 +93,7 @@ export type Database = {
           map_center_lng?: number
           map_default_zoom?: number
           map_provider?: string
+          max_delivery_attempts?: number
           min_parcels_per_trip?: number
           offer_ttl_seconds?: number
           order_code_prefix?: string
@@ -391,6 +394,10 @@ export type Database = {
           platform_fee_amount: number | null
           proof_photo_path: string | null
           proof_receiver: string | null
+          resolution: string | null
+          resolution_note: string | null
+          resolved_at: string | null
+          resolved_by: string | null
           rider_commission_amount: number | null
           rider_commission_pct: number | null
           rider_id: string | null
@@ -442,6 +449,10 @@ export type Database = {
           platform_fee_amount?: number | null
           proof_photo_path?: string | null
           proof_receiver?: string | null
+          resolution?: string | null
+          resolution_note?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
           rider_commission_amount?: number | null
           rider_commission_pct?: number | null
           rider_id?: string | null
@@ -493,6 +504,10 @@ export type Database = {
           platform_fee_amount?: number | null
           proof_photo_path?: string | null
           proof_receiver?: string | null
+          resolution?: string | null
+          resolution_note?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
           rider_commission_amount?: number | null
           rider_commission_pct?: number | null
           rider_id?: string | null
@@ -524,6 +539,13 @@ export type Database = {
             columns: ["dropoff_area_id"]
             isOneToOne: false
             referencedRelation: "service_areas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orders_resolved_by_fkey"
+            columns: ["resolved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
           {
@@ -1132,6 +1154,10 @@ export type Database = {
           platform_fee_amount: number | null
           proof_photo_path: string | null
           proof_receiver: string | null
+          resolution: string | null
+          resolution_note: string | null
+          resolved_at: string | null
+          resolved_by: string | null
           rider_commission_amount: number | null
           rider_commission_pct: number | null
           rider_id: string | null
@@ -1219,6 +1245,10 @@ export type Database = {
           platform_fee_amount: number | null
           proof_photo_path: string | null
           proof_receiver: string | null
+          resolution: string | null
+          resolution_note: string | null
+          resolved_at: string | null
+          resolved_by: string | null
           rider_commission_amount: number | null
           rider_commission_pct: number | null
           rider_id: string | null
@@ -1537,6 +1567,7 @@ export type Database = {
       mm_day_end: { Args: { p_date: string }; Returns: string }
       mm_day_start: { Args: { p_date: string }; Returns: string }
       mm_today: { Args: never; Returns: string }
+      order_attempt_count: { Args: { p_order_id: string }; Returns: number }
       order_rider_card: { Args: { p_order_id: string }; Returns: Json }
       owns_shop: { Args: { p_shop_id: string }; Returns: boolean }
       plan_trip: {
@@ -1607,6 +1638,70 @@ export type Database = {
         SetofOptions: {
           from: "*"
           to: "settlements"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      resolve_failed_order: {
+        Args: { p_note?: string; p_order_id: string; p_resolution: string }
+        Returns: {
+          assign_distance_km: number | null
+          assigned_at: string | null
+          assigned_by: string | null
+          cancel_reason: string | null
+          closed_at: string | null
+          cod_amount: number
+          cod_status: Database["public"]["Enums"]["cod_status"]
+          code: string
+          created_at: string
+          created_by: string
+          customer_name: string
+          customer_phone: string
+          customer_phone_alt: string | null
+          delivered_at: string | null
+          delivery_fee: number
+          dropoff_address: string
+          dropoff_area_id: string | null
+          dropoff_geog: unknown
+          dropoff_lat: number
+          dropoff_lng: number
+          dropoff_note: string | null
+          fail_reason: string | null
+          fee_payer: string
+          id: string
+          is_fragile: boolean
+          parcel_desc: string
+          parcel_value: number | null
+          parcel_weight_g: number | null
+          payment_method: Database["public"]["Enums"]["payment_method"]
+          picked_up_at: string | null
+          pickup_address: string
+          pickup_contact: string | null
+          pickup_geog: unknown
+          pickup_lat: number
+          pickup_lng: number
+          pickup_note: string | null
+          platform_fee_amount: number | null
+          proof_photo_path: string | null
+          proof_receiver: string | null
+          resolution: string | null
+          resolution_note: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+          rider_commission_amount: number | null
+          rider_commission_pct: number | null
+          rider_id: string | null
+          route_distance_km: number | null
+          route_id: string | null
+          shop_id: string
+          status: Database["public"]["Enums"]["order_status"]
+          trip_id: string | null
+          trip_leg: string | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "orders"
           isOneToOne: true
           isSetofReturn: false
         }

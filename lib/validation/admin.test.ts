@@ -196,6 +196,7 @@ describe('pricingSchema', () => {
     riderCommissionPct: '80',
     defaultCoverageKm: '5',
     minParcelsPerTrip: '20',
+    maxDeliveryAttempts: '3',
     riderPingStaleMin: '10',
     supportPhone: '',
   }
@@ -225,6 +226,19 @@ describe('pricingSchema', () => {
     assert.equal(r.success, true, 'unknown keys should be ignored, not validated')
     assert.equal('baseDeliveryFee' in (r.data ?? {}), false)
     assert.equal('roadFactor' in (r.data ?? {}), false)
+  })
+
+  /**
+   * Mirrors the CHECK on app_settings.max_delivery_attempts. Zero is refused on
+   * purpose: "never retry automatically" is a per-parcel decision the shop makes
+   * (return or cancel), not a global switch that would strand every failure.
+   */
+  test('mirrors the SQL CHECK on max_delivery_attempts (1..10)', () => {
+    assert.equal(pricingSchema.safeParse({ ...BASE_PRICING, maxDeliveryAttempts: '0' }).success, false)
+    assert.equal(pricingSchema.safeParse({ ...BASE_PRICING, maxDeliveryAttempts: '11' }).success, false)
+    assert.equal(pricingSchema.safeParse({ ...BASE_PRICING, maxDeliveryAttempts: '2.5' }).success, false)
+    assert.equal(pricingSchema.safeParse({ ...BASE_PRICING, maxDeliveryAttempts: '1' }).success, true)
+    assert.equal(pricingSchema.safeParse({ ...BASE_PRICING, maxDeliveryAttempts: '10' }).success, true)
   })
 
   test('mirrors the SQL CHECK on min_parcels_per_trip (0..500)', () => {

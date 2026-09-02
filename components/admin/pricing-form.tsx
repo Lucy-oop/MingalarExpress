@@ -184,6 +184,25 @@ export function PricingForm({
                 at. Distinct from break-even (about 5-7 parcels): a 14-parcel run
                 makes money but still fails this rule. */}
             <Field
+              label="Automatic delivery attempts"
+              htmlFor="maxDeliveryAttempts"
+              required
+              hint="How many times a failed parcel goes back out before we stop and ask the shop."
+              error={err('maxDeliveryAttempts')}
+            >
+              <Input
+                id="maxDeliveryAttempts"
+                name="maxDeliveryAttempts"
+                type="number"
+                min="1"
+                max="10"
+                defaultValue={settings.max_delivery_attempts}
+                required
+                aria-invalid={!!err('maxDeliveryAttempts')}
+              />
+            </Field>
+
+            <Field
               label="Minimum parcels per run"
               htmlFor="minParcelsPerTrip"
               required

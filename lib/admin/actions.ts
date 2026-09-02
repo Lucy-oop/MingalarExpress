@@ -302,6 +302,7 @@ export async function updatePricing(
     riderCommissionPct: formData.get('riderCommissionPct'),
     defaultCoverageKm: formData.get('defaultCoverageKm'),
     minParcelsPerTrip: formData.get('minParcelsPerTrip'),
+    maxDeliveryAttempts: formData.get('maxDeliveryAttempts'),
     riderPingStaleMin: formData.get('riderPingStaleMin'),
     supportPhone: formData.get('supportPhone') || '',
   })
@@ -316,6 +317,7 @@ export async function updatePricing(
       rider_commission_pct: v.riderCommissionPct,
       default_coverage_km: v.defaultCoverageKm,
       min_parcels_per_trip: v.minParcelsPerTrip,
+      max_delivery_attempts: v.maxDeliveryAttempts,
       rider_ping_stale_min: v.riderPingStaleMin,
       support_phone: v.supportPhone || null,
     })

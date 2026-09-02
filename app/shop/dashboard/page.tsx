@@ -71,12 +71,17 @@ export default async function ShopDashboardPage() {
           tone={codInTransit > 0 ? 'warn' : 'default'}
         />
         <Kpi label="Delivered" value={counts.delivered} href="/shop/orders?status=delivered" />
+        {/*
+          Points at the parcels waiting on the SHOP, not at every failure. A
+          parcel that failed while its run is still out is dispatch's problem
+          and there is nothing for the shop to do about it yet.
+        */}
         <Kpi
-          label="Needs attention"
-          value={counts.failed}
-          href="/shop/orders?status=failed"
-          hint="Failed delivery"
-          tone={counts.failed > 0 ? 'bad' : 'default'}
+          label="Needs your decision"
+          value={counts.needsDecision}
+          href="/shop/orders?needs=1"
+          hint={counts.failed > counts.needsDecision ? `${counts.failed} failed in total` : 'Retry, return or cancel'}
+          tone={counts.needsDecision > 0 ? 'bad' : 'default'}
         />
       </div>
 

@@ -105,6 +105,14 @@ export const pricingSchema = z.object({
     .int('Whole parcels only')
     .min(0, 'Cannot be negative — use 0 to switch the rule off')
     .max(500, 'A minimum above 500 exceeds what any run can carry'),
+  // Mirrors the CHECK on app_settings.max_delivery_attempts (1..10). Not
+  // optional and not zero: "never retry" is expressed by the shop choosing
+  // return or cancel, not by switching the default off for everyone.
+  maxDeliveryAttempts: z.coerce
+    .number({ error: 'Enter a number of attempts' })
+    .int('Whole attempts only')
+    .min(1, 'At least one attempt')
+    .max(10, 'More than 10 attempts is not a retry policy'),
   riderPingStaleMin: z.coerce
     .number({ error: 'Enter a number of minutes' })
     .int('Whole minutes only')

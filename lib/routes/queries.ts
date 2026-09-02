@@ -109,6 +109,10 @@ export type BoardRider = {
 export type PlanningBoard = {
   serviceDate: string
   minParcels: number
+  /** Parcels the shop asked to have brought back. Not deliverable. */
+  returns: UnroutedParcel[]
+  /** Parcels stopped at the attempt cap, waiting on their shop to decide. */
+  stalled: UnroutedParcel[]
   rates: TripPayRates
   tiers: RoutePayTier[]
   routes: BoardRoute[]
@@ -181,18 +185,54 @@ export async function getPlanningBoard(serviceDate?: string): Promise<PlanningBo
 
   const tripIds = (tripRows ?? []).map((t) => t.id)
 
-  const [{ data: tripOrderRows }, { data: unroutedRows, error: unroutedErr }, riders] =
-    await Promise.all([
+  const [
+    { data: tripOrderRows },
+    { data: unroutedRows, error: unroutedErr },
+    { data: returnRows },
+    { data: stalledRows },
+    riders,
+  ] = await Promise.all([
       tripIds.length
         ? supabase.from('orders').select(TRIP_ORDER_COLUMNS).in('trip_id', tripIds)
         : Promise.resolve({ data: [] as unknown[] }),
+      // The deliverable pool. Three exclusions worth stating, because getting
+      // any of them wrong puts a parcel on a bike that should not be on one:
+      //
+      //  status = 'pending' only  — a detached `failed` parcel is one 0011 held
+      //    back at the attempt cap. It is waiting on the SHOP, not on dispatch,
+      //    and offering it here would restart the silent retry loop the cap
+      //    exists to stop. Retries the shop approves come back as `pending`.
+      //  resolution <> 'return'   — the shop asked for it back. It must not be
+      //    loaded for delivery again, whatever its status says.
+      //  trip_id is null          — already on a run.
       supabase
         .from('orders')
         .select(UNROUTED_COLUMNS)
         .is('trip_id', null)
-        .in('status', ['pending', 'failed'])
+        .eq('status', 'pending')
+        .or('resolution.is.null,resolution.eq.retry')
         .order('created_at', { ascending: true })
         .limit(500),
+      // Parcels the shop has asked back. Not deliverable, but dispatch has to
+      // see them or nobody ever carries them home.
+      supabase
+        .from('orders')
+        .select(UNROUTED_COLUMNS)
+        .eq('resolution', 'return')
+        .not('status', 'in', '(cancelled,delivered)')
+        .order('resolved_at', { ascending: true })
+        .limit(200),
+      // Parcels stopped at the attempt cap, waiting on their shop. Dispatch
+      // cannot act on these, but a board that hides them hides work that has
+      // silently stalled.
+      supabase
+        .from('orders')
+        .select(UNROUTED_COLUMNS)
+        .is('trip_id', null)
+        .eq('status', 'failed')
+        .is('resolution', null)
+        .order('created_at', { ascending: true })
+        .limit(200),
       getBoardRiders(),
     ])
 
@@ -322,30 +362,31 @@ export async function getPlanningBoard(serviceDate?: string): Promise<PlanningBo
     }
   })
 
-  const unrouted: UnroutedParcel[] = (
-    (unroutedRows ?? []) as unknown as Array<Record<string, unknown>>
-  ).map((raw) => {
-    const areaId = (raw.dropoff_area_id as string | null) ?? null
-    const area = raw.dropoff_area as { name: string; kind: string } | null
-    return {
-      id: raw.id as string,
-      code: raw.code as string,
-      status: raw.status as string,
-      customerName: raw.customer_name as string,
-      customerPhone: raw.customer_phone as string,
-      dropoffAddress: raw.dropoff_address as string,
-      areaId,
-      areaName: area?.name ?? null,
-      areaKind: (area?.kind as 'ward' | 'township' | undefined) ?? null,
-      suggestedRouteId: areaId ? primaryRouteByArea.get(areaId) ?? null : null,
-      codAmount: Number(raw.cod_amount ?? 0),
-      deliveryFee: Number(raw.delivery_fee ?? 0),
-      paymentMethod: raw.payment_method as 'cod' | 'prepaid',
-      parcelDesc: raw.parcel_desc as string,
-      isFragile: Boolean(raw.is_fragile),
-      createdAt: raw.created_at as string,
-    }
-  })
+  const toParcels = (rows: unknown): UnroutedParcel[] =>
+    ((rows ?? []) as Array<Record<string, unknown>>).map((raw) => {
+      const areaId = (raw.dropoff_area_id as string | null) ?? null
+      const area = raw.dropoff_area as { name: string; kind: string } | null
+      return {
+        id: raw.id as string,
+        code: raw.code as string,
+        status: raw.status as string,
+        customerName: raw.customer_name as string,
+        customerPhone: raw.customer_phone as string,
+        dropoffAddress: raw.dropoff_address as string,
+        areaId,
+        areaName: area?.name ?? null,
+        areaKind: (area?.kind as 'ward' | 'township' | undefined) ?? null,
+        suggestedRouteId: areaId ? primaryRouteByArea.get(areaId) ?? null : null,
+        codAmount: Number(raw.cod_amount ?? 0),
+        deliveryFee: Number(raw.delivery_fee ?? 0),
+        paymentMethod: raw.payment_method as 'cod' | 'prepaid',
+        parcelDesc: raw.parcel_desc as string,
+        isFragile: Boolean(raw.is_fragile),
+        createdAt: raw.created_at as string,
+      }
+    })
+
+  const unrouted = toParcels(unroutedRows)
 
   return {
     serviceDate: day,
@@ -355,6 +396,8 @@ export async function getPlanningBoard(serviceDate?: string): Promise<PlanningBo
     routes,
     trips,
     unrouted,
+    returns: toParcels(returnRows),
+    stalled: toParcels(stalledRows),
     riders: riders.map((r) => ({ ...r, onOpenTrip: openTripRiders.has(r.id) })),
   }
 }

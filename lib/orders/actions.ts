@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { assertRole } from '@/lib/auth/guards'
 import { orderCreateSchema, shopSettingsSchema } from '@/lib/validation/schemas'
+import { explainResolutionError } from '@/lib/orders/errors'
 import { haversineKm } from '@/lib/geo/haversine'
 import { codCollectable } from '@/lib/pricing'
 import { resolveAreaRoute } from '@/lib/orders/queries'
@@ -362,4 +363,74 @@ export async function updateShopSettings(
   // next rider to the old address.
   revalidatePath('/shop/orders/new')
   return { ok: true }
+}
+
+// ---------------------------------------------------------------------------
+// Failed parcels
+// ---------------------------------------------------------------------------
+
+export type OrderResolution = 'retry' | 'return' | 'cancel'
+
+export type ResolutionResult =
+  | { ok: true; message: string }
+  | { ok: false; message: string }
+
+/**
+ * The shop's decision on a parcel that failed delivery.
+ *
+ * Before this existed, `close_trip` sent every failure straight back into the
+ * dispatch pool — silently, and without limit. A customer who was out on Monday
+ * was tried again on Tuesday and Wednesday and the shop was never asked. This is
+ * how they say otherwise.
+ *
+ * Routed through `resolve_failed_order` rather than an UPDATE because
+ * `orders_update_shop` only lets a shop write while the parcel is `pending`: a
+ * failed parcel is not writable by its own shop through RLS at all. The RPC
+ * re-authorises with `owns_shop()` and does the whole decision in one locked
+ * statement.
+ *
+ * There is no 'refund' option on purpose — a failed COD parcel collected no
+ * money, so there is nothing in this system to give back. `return` is what a
+ * shop asking for a refund actually wants.
+ */
+export async function resolveFailedOrder(
+  orderId: string,
+  resolution: OrderResolution,
+  note?: string,
+): Promise<ResolutionResult> {
+  const ctx = await assertRole('shop_owner').catch(() => null)
+  if (!ctx) {
+    return { ok: false, message: 'Your session has expired. Sign in again and retry.' }
+  }
+
+  const supabase = await createClient()
+  const { error } = await supabase.rpc('resolve_failed_order', {
+    p_order_id: orderId,
+    p_resolution: resolution,
+    p_note: note?.trim() || undefined,
+  })
+
+  if (error) return { ok: false, message: explainResolutionError(error.message) }
+
+  refreshShopViews(orderId)
+  // Dispatch sees the consequence immediately: a retry rejoins the pool, a
+  // return or a cancel leaves it.
+  revalidatePath('/admin/dispatcher')
+
+  return {
+    ok: true,
+    message:
+      resolution === 'retry'
+        ? 'Back in the queue. Dispatch will try again on the next run.'
+        : resolution === 'return'
+          ? 'We will stop delivering it and bring it back to you.'
+          : 'Order cancelled.',
+  }
+}
+
+function refreshShopViews(orderId: string) {
+  revalidatePath('/shop/dashboard')
+  revalidatePath('/shop/orders')
+  revalidatePath(`/shop/orders/${orderId}`)
+  revalidatePath('/shop/money')
 }

@@ -19,7 +19,14 @@ const isStatus = (v: string | undefined): v is OrderStatus =>
   !!v && (STATUSES as string[]).includes(v)
 const isDate = (v: string | undefined): v is string => !!v && /^\d{4}-\d{2}-\d{2}$/.test(v)
 
-type Search = { status?: string; q?: string; from?: string; to?: string; page?: string }
+type Search = {
+  status?: string
+  q?: string
+  from?: string
+  to?: string
+  page?: string
+  needs?: string
+}
 
 export default async function ShopOrdersPage({
   searchParams,
@@ -33,6 +40,7 @@ export default async function ShopOrdersPage({
   // falls back to page 1 rather than erroring — the list is the shop's main
   // working surface and must not be takeable down by a URL.
   const filters = {
+    needsDecision: sp.needs === '1',
     status: isStatus(sp.status) ? sp.status : null,
     q: sp.q?.trim() || null,
     from: isDate(sp.from) ? sp.from : null,
@@ -66,7 +74,20 @@ export default async function ShopOrdersPage({
 
       <h1 className="text-xl font-semibold">Orders</h1>
 
-      <OrderFilters total={total} exportHref={`/shop/orders/export?${qs.toString()}`} />
+      {/* OrderFilters holds status/search/dates; `needs` is a distinct view, so
+          it gets its own banner and its own way out rather than a select option
+          that would read as just another status. */}
+      {filters.needsDecision ? (
+        <Alert tone="error" title="Waiting on your decision">
+          These parcels failed delivery and we have stopped trying. Open one to retry it, ask for
+          it back, or cancel it.{' '}
+          <Link href="/shop/orders" className="underline">
+            Show all orders
+          </Link>
+        </Alert>
+      ) : (
+        <OrderFilters total={total} exportHref={`/shop/orders/export?${qs.toString()}`} />
+      )}
 
       <OrderTable orders={rows} />
 

@@ -215,6 +215,35 @@ export function RouteBoard({ board }: { board: PlanningBoard }) {
 
       {feedback ? <Alert tone={feedback.tone}>{feedback.message}</Alert> : null}
 
+      {/*
+        Two pools dispatch cannot load but must not lose sight of. A board that
+        only shows deliverable work hides parcels that have silently stalled —
+        which is the failure mode 0011 exists to end, so hiding them here would
+        just move it.
+      */}
+      {board.stalled.length > 0 ? (
+        <Alert tone="info" title={`${board.stalled.length} waiting on a shop`}>
+          <ParcelLine parcels={board.stalled} />
+          <span className="mt-1 block text-xs">
+            These reached the attempt limit. Nothing happens to
+            them until the shop chooses retry, return or cancel — chase the shop, not the parcel.
+          </span>
+        </Alert>
+      ) : null}
+
+      {board.returns.length > 0 ? (
+        <Alert
+          tone="info"
+          title={`${board.returns.length} to return to a shop`}
+        >
+          <ParcelLine parcels={board.returns} />
+          <span className="mt-1 block text-xs">
+            The shop asked for these back. They are out of the delivery pool; the return leg is
+            not automated yet, so arrange to carry them home.
+          </span>
+        </Alert>
+      ) : null}
+
       {unmapped > 0 ? (
         <Alert tone="error" title="Parcels with no route">
           {unmapped} parcel{unmapped === 1 ? '' : 's'} sit in an area that is not mapped to any
@@ -333,5 +362,23 @@ export function RouteBoard({ board }: { board: PlanningBoard }) {
         />
       ) : null}
     </div>
+  )
+}
+
+/** Codes and destinations, compactly — enough to act on without a whole table. */
+function ParcelLine({ parcels }: { parcels: PlanningBoard['returns'] }) {
+  return (
+    <ul className="space-y-0.5 text-xs">
+      {parcels.slice(0, 6).map((p) => (
+        <li key={p.id} className="flex flex-wrap gap-x-2">
+          <span className="font-mono font-semibold">{p.code}</span>
+          <span>{p.areaName ?? 'no area'}</span>
+          <span className="text-muted-foreground">{p.customerName}</span>
+        </li>
+      ))}
+      {parcels.length > 6 ? (
+        <li className="text-muted-foreground">and {parcels.length - 6} more…</li>
+      ) : null}
+    </ul>
   )
 }

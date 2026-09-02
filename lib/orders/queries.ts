@@ -32,7 +32,10 @@ export type ShopOrderRow = {
 
 export type ShopDashboard = {
   shop: { id: string; name: string; pickup_address: string } | null
-  counts: Record<'open' | 'pending' | 'inFlight' | 'delivered' | 'failed' | 'total', number>
+  counts: Record<
+    'open' | 'pending' | 'inFlight' | 'delivered' | 'failed' | 'needsDecision' | 'total',
+    number
+  >
   /** Cash the riders are still carrying for this shop, in MMK. */
   codInTransit: number
   recent: ShopOrderRow[]
@@ -67,6 +70,7 @@ export async function getShopDashboard(): Promise<ShopDashboard> {
     { count: inFlight },
     { count: delivered },
     { count: failed },
+    { count: needsDecision },
   ] = await Promise.all([
     supabase.from('shops').select('id, name, pickup_address').limit(1).maybeSingle(),
     supabase
@@ -84,6 +88,8 @@ export async function getShopDashboard(): Promise<ShopDashboard> {
     ordersQuery().in('status', ['assigned', 'picked_up']),
     ordersQuery().eq('status', 'delivered'),
     ordersQuery().eq('status', 'failed'),
+    // Waiting on the shop specifically — see OrderFilters.needsDecision.
+    ordersQuery().eq('status', 'failed').is('trip_id', null).is('resolution', null),
   ])
 
   return {
@@ -94,6 +100,7 @@ export async function getShopDashboard(): Promise<ShopDashboard> {
       inFlight: inFlight ?? 0,
       delivered: delivered ?? 0,
       failed: failed ?? 0,
+      needsDecision: needsDecision ?? 0,
       total: total ?? 0,
     },
     codInTransit: (openCod ?? []).reduce((sum, o) => sum + Number(o.cod_amount ?? 0), 0),
@@ -277,6 +284,16 @@ export type ShopOrderDetail = {
   rider: { fullName: string; vehiclePlate: string | null } | null
   /** Short-lived link to the delivery photo, or null when there isn't one. */
   proofUrl: string | null
+  /** Failed delivery attempts, counted from the checkpoint trail. */
+  attempts: number
+  /** How many attempts happen automatically before the shop must decide. */
+  maxAttempts: number
+  /**
+   * True when this parcel is waiting on the shop and nothing will happen to it
+   * until they answer: it failed, it is off every run, and no decision is
+   * recorded. That is a state the shop has to be shown, not one to infer.
+   */
+  awaitingDecision: boolean
 }
 
 /** How long a proof-photo link stays valid. Long enough to look at, not to share. */
@@ -307,7 +324,8 @@ export async function getShopOrderDetail(orderId: string): Promise<ShopOrderDeta
 
   if (!order) return null
 
-  const [{ data: events }, { data: riderCard }, proofUrl] = await Promise.all([
+  const [{ data: events }, { data: riderCard }, proofUrl, { data: attempts }, { data: settings }] =
+    await Promise.all([
     supabase
       .from('order_status_events')
       .select('to_status, created_at')
@@ -319,9 +337,16 @@ export async function getShopOrderDetail(orderId: string): Promise<ShopOrderDeta
       ? supabase.rpc('order_rider_card', { p_order_id: orderId })
       : Promise.resolve({ data: null }),
     signProof(supabase, order.proof_photo_path),
+    supabase.rpc('order_attempt_count', { p_order_id: orderId }),
+    supabase
+      .from('app_settings')
+      .select('max_delivery_attempts')
+      .eq('id', true)
+      .maybeSingle(),
   ])
 
   const card = riderCard as { full_name?: string; vehicle_plate?: string | null } | null
+  const attemptCount = Number(attempts ?? 0)
 
   return {
     order: order as unknown as ShopOrderDetail['order'],
@@ -333,6 +358,13 @@ export async function getShopOrderDetail(orderId: string): Promise<ShopOrderDeta
       ? { fullName: card.full_name, vehiclePlate: card.vehicle_plate ?? null }
       : null,
     proofUrl,
+    attempts: attemptCount,
+    maxAttempts: Number(settings?.max_delivery_attempts ?? 3),
+    // `status = 'failed'` alone is not enough: a parcel that failed while its run
+    // is still out is dispatch's problem, not the shop's. It becomes the shop's
+    // only once close_trip has detached it and declined to auto-retry.
+    awaitingDecision:
+      order.status === 'failed' && order.trip_id === null && order.resolution === null,
   }
 }
 
@@ -356,6 +388,12 @@ async function signProof(
 
 export type OrderFilters = {
   status?: OrderStatus | null
+  /**
+   * Parcels waiting on the shop: failed, off every run, no decision recorded.
+   * Its own filter rather than `status=failed` because a parcel that failed
+   * while its run is still out is dispatch's problem, not the shop's.
+   */
+  needsDecision?: boolean
   /** Free text against code, customer name, phone or address. */
   q?: string | null
   /** Inclusive Yangon calendar dates, `YYYY-MM-DD`. */
@@ -390,7 +428,11 @@ function sanitiseSearch(raw: string): string {
 function applyFilters<T>(query: T, f: OrderFilters): T {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let q = query as any
-  if (f.status) q = q.eq('status', f.status)
+  if (f.needsDecision) {
+    q = q.eq('status', 'failed').is('trip_id', null).is('resolution', null)
+  } else if (f.status) {
+    q = q.eq('status', f.status)
+  }
   if (f.from) q = q.gte('created_at', `${f.from}T00:00:00+06:30`)
   // `to` is inclusive of the whole day, so the bound is the START of the next
   // one. Using `${to}T23:59:59` would silently drop orders in the final second.
