@@ -54,11 +54,11 @@ do $$
 declare before_amt bigint; after_amt bigint;
 begin
   before_amt := public.rider_cod_in_hand('44444444-4444-4444-4444-444444444444');
-  if before_amt <> 22900 then raise exception 'FAIL: expected 22900 in hand, got %', before_amt; end if;
+  if before_amt <> 23000 then raise exception 'FAIL: expected 23000 in hand, got %', before_amt; end if;
 
   after_amt := public.remit_cod('44444444-4444-4444-4444-444444444444', 10000, 'Mid-shift deposit');
-  if after_amt <> 12900 then raise exception 'FAIL: expected 12900 after deposit, got %', after_amt; end if;
-  raise notice 'PASS: 22900 - 10000 = % in hand', after_amt;
+  if after_amt <> 13000 then raise exception 'FAIL: expected 13000 after deposit, got %', after_amt; end if;
+  raise notice 'PASS: 23000 - 10000 = % in hand', after_amt;
 end $$;
 
 \echo '=== S5. cannot hand in more than you are holding ==='
@@ -81,15 +81,15 @@ declare s public.settlements; in_hand bigint;
 begin
   s := public.build_settlement('44444444-4444-4444-4444-444444444444', public.mm_today());
 
-  if s.gross_cod <> 24500 then raise exception 'FAIL: gross_cod %', s.gross_cod; end if;
-  if s.rider_earnings <> 1600 then raise exception 'FAIL: rider_earnings %', s.rider_earnings; end if;
-  -- 24500 collected - 1600 commission - 10000 already handed in = 12900
-  if s.net_due_platform <> 12900 then raise exception 'FAIL: net_due %', s.net_due_platform; end if;
+  if s.gross_cod <> 25000 then raise exception 'FAIL: gross_cod %', s.gross_cod; end if;
+  if s.rider_earnings <> 2000 then raise exception 'FAIL: rider_earnings %', s.rider_earnings; end if;
+  -- 25000 collected - 2000 commission - 10000 already handed in = 13000
+  if s.net_due_platform <> 13000 then raise exception 'FAIL: net_due %', s.net_due_platform; end if;
   if s.status <> 'submitted' then raise exception 'FAIL: status %', s.status; end if;
 
   in_hand := public.rider_cod_in_hand('44444444-4444-4444-4444-444444444444');
   if in_hand <> 0 then raise exception 'FAIL: cash in hand is % after settling, expected 0', in_hand; end if;
-  raise notice 'PASS: net due 12900, cash-in-hand cleared to 0';
+  raise notice 'PASS: net due 13000, cash-in-hand cleared to 0';
 end $$;
 
 \echo '=== S7. approve -> paid, in order, once each ==='
@@ -165,11 +165,20 @@ begin
   update public.rider_profiles set is_online=true, availability='available', active_order_count=0, last_ping_at=now();
   declare oid uuid; o public.orders;
   begin
+    -- Area-bound and route-priced, like anything createOrder() would make.
+    -- It carried a hardcoded 1,600 distance-era fee and no area at all, which is
+    -- a parcel the app cannot produce and dispatch could never route.
     insert into public.orders (shop_id,pickup_address,pickup_lat,pickup_lng,customer_name,customer_phone,
-      dropoff_address,dropoff_lat,dropoff_lng,parcel_desc,payment_method,cod_amount,delivery_fee,created_by)
+      dropoff_address,dropoff_area_id,dropoff_lat,dropoff_lng,parcel_desc,payment_method,
+      cod_amount,delivery_fee,route_id,created_by)
     select s.id,s.pickup_address,s.pickup_lat,s.pickup_lng,'Fleet Sweep','+959791110022',
-      'Baho St, Lhay Htaung Kan',16.8402,96.1808,'sweep parcel','cod',7000,1600,s.owner_id
-    from public.shops s where s.id='aaaaaaaa-0000-0000-0000-000000000001' returning id into oid;
+      'Baho St, Lhay Htaung Kan',a.id,16.8402,96.1808,'sweep parcel','cod',
+      5400 + r.per_parcel_fee, r.per_parcel_fee, r.id, s.owner_id
+    from public.shops s
+    join public.service_areas a on a.name = 'Lhay Htaung Kan'
+    join public.route_areas ra on ra.area_id = a.id and ra.is_primary
+    join public.routes r on r.id = ra.route_id
+    where s.id='aaaaaaaa-0000-0000-0000-000000000001' returning id into oid;
     o := public.assign_order(oid,'66666666-6666-6666-6666-666666666666');
     o := public.advance_order(oid,'picked_up');
     o := public.advance_order(oid,'delivered',null,null,oid::text||'/p.webp','X');
@@ -192,11 +201,11 @@ begin
 
   select * into r from public.cod_positions()
    where rider_id='44444444-4444-4444-4444-444444444444';
-  if r.cod_collected <> 24500 then raise exception 'FAIL: collected %', r.cod_collected; end if;
+  if r.cod_collected <> 25000 then raise exception 'FAIL: collected %', r.cod_collected; end if;
   if r.cod_remitted <> 10000 then raise exception 'FAIL: remitted %', r.cod_remitted; end if;
-  if r.commission <> 1600 then raise exception 'FAIL: commission %', r.commission; end if;
+  if r.commission <> 2000 then raise exception 'FAIL: commission %', r.commission; end if;
   if r.open_balance <> 0 then raise exception 'FAIL: open_balance %', r.open_balance; end if;
-  raise notice 'PASS: positions reconcile — collected 24500, remitted 10000, commission 1600, open 0';
+  raise notice 'PASS: positions reconcile — collected 25000, remitted 10000, commission 2000, open 0';
 end $$;
 
 \echo '=== S12. cod_by_shop splits goods value from platform fees ==='

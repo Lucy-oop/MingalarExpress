@@ -40,10 +40,10 @@ begin
   o := public.assign_order(oid, '44444444-4444-4444-4444-444444444444');
 
   if o.status <> 'assigned' then raise exception 'FAIL: status %', o.status; end if;
-  -- 80% of a 2,000 fee. Snapshotted at assignment (decision D5) so a later
-  -- pricing change cannot rewrite it.
-  if o.rider_commission_amount <> 1600 then
-    raise exception 'FAIL: commission %, expected 1600', o.rider_commission_amount;
+  -- 80% of the 2,500 route fee for Lhay Htaung Kan (ROUTE_LOCAL). Snapshotted
+  -- at assignment (decision D5) so a later repricing cannot rewrite it.
+  if o.rider_commission_amount <> 2000 then
+    raise exception 'FAIL: commission %, expected 2000', o.rider_commission_amount;
   end if;
   if o.rider_commission_amount + o.platform_fee_amount <> o.delivery_fee then
     raise exception 'FAIL: split does not sum to the fee';
@@ -54,7 +54,7 @@ begin
   if h.response <> 'accepted' then
     raise exception 'FAIL: history response %, expected accepted', h.response;
   end if;
-  raise notice 'PASS: assigned, 1600/400 split snapshotted, history row written';
+  raise notice 'PASS: assigned, 2000/500 split snapshotted, history row written';
 end $$;
 
 \echo '=== A3. the same order cannot be assigned twice ==='

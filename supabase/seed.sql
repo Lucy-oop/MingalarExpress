@@ -226,27 +226,50 @@ where r.id = v.id;
 -- Two pending orders for the dispatcher queue
 -- ----------------------------------------------------------------------------
 
+-- The fee and the COD total are DERIVED, not written down.
+--
+-- Before migration 0010 these rows carried hand-written fees from the old
+-- distance model (2,000 and 2,600) for two wards whose route charges 2,500. The
+-- seed was creating orders the application itself could no longer produce, which
+-- is the worst kind of fixture: every test passed while every number was wrong.
+--
+-- So the fee comes from the same place createOrder() reads it — the primary
+-- route for the destination area — and cod_amount is computed from it. Reprice a
+-- route and this seed follows; it cannot drift again.
+--
+-- `v.goods` is the value of the parcel's contents. cod_amount is goods + fee
+-- when the customer pays the fee (see the column comment on orders.cod_amount in
+-- 0001), which is why the two are not the same number.
 insert into public.orders (
   shop_id, pickup_address, pickup_lat, pickup_lng, pickup_contact,
   customer_name, customer_phone, dropoff_address, dropoff_area_id, dropoff_lat, dropoff_lng, dropoff_note,
-  parcel_desc, parcel_weight_g, payment_method, cod_amount, delivery_fee, created_by
+  parcel_desc, parcel_weight_g, payment_method, cod_amount, delivery_fee, route_id, created_by
 )
 select
   s.id, s.pickup_address, s.pickup_lat, s.pickup_lng, s.phone,
   v.cust, v.phone, v.addr,
-  (select id from public.service_areas where name = v.area),
+  a.id,
   v.lat, v.lng, v.note,
-  v.parcel, v.grams, v.pay::public.payment_method, v.cod, v.fee,
+  v.parcel, v.grams, v.pay::public.payment_method,
+  case when v.pay = 'cod' then v.goods + r.per_parcel_fee else 0 end,
+  r.per_parcel_fee,
+  r.id,
   '33333333-3333-3333-3333-333333333333'
-from public.shops s,
-(values
+from public.shops s
+cross join (values
   ('Daw Khin Myo', '+959791234567', 'No. 7, Baho Street, Lhay Htaung Kan Ward, Thingangyun',
    'Lhay Htaung Kan', 16.8402, 96.1808, 'Blue gate, 2nd floor, ring twice',
-   '2x instant coffee cartons', 1800, 'cod', 24500, 2000),
+   '2x instant coffee cartons', 1800, 'cod', 22500),
   ('U Tin Maung',   '+959795550101', 'Bldg C, Room 402, Yadanar Housing, Thingangyun',
    'Yadanar', 16.8291, 96.1922, 'Call on arrival, lift is out',
-   'Phone accessories (fragile)', 400, 'prepaid', 0, 2600)
-) as v(cust, phone, addr, area, lat, lng, note, parcel, grams, pay, cod, fee)
+   'Phone accessories (fragile)', 400, 'prepaid', 0)
+) as v(cust, phone, addr, area, lat, lng, note, parcel, grams, pay, goods)
+join public.service_areas a on a.name = v.area
+-- An INNER join on purpose: an area with no primary route cannot be priced, so
+-- a seeded order for one would be an order the app could never have created.
+-- Better to seed nothing and notice than to seed an unroutable parcel.
+join public.route_areas ra on ra.area_id = a.id and ra.is_primary
+join public.routes      r  on r.id = ra.route_id
 where s.id = 'aaaaaaaa-0000-0000-0000-000000000001';
 
 

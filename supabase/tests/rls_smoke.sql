@@ -310,13 +310,13 @@ begin
     into v_cod, v_com
     from public.cod_ledger where rider_id = auth.uid();
 
-  if v_cod <> 24500 then raise exception 'FAIL: cod leg is %, expected 24500', v_cod; end if;
-  if v_com <> -1600 then raise exception 'FAIL: commission leg is %, expected -1600 (80%% of 2000)', v_com; end if;
+  if v_cod <> 25000 then raise exception 'FAIL: cod leg is %, expected 25000', v_cod; end if;
+  if v_com <> -2000 then raise exception 'FAIL: commission leg is %, expected -2000 (80%% of the 2500 route fee)', v_com; end if;
 
   select sum(amount) into v_hand from public.cod_ledger
    where rider_id = auth.uid() and settlement_id is null;
-  if v_hand <> 22900 then raise exception 'FAIL: cash owed is %, expected 22900', v_hand; end if;
-  raise notice 'PASS: ledger = +24500 cod, -1600 commission, 22900 due to platform';
+  if v_hand <> 23000 then raise exception 'FAIL: cash owed is %, expected 23000', v_hand; end if;
+  raise notice 'PASS: ledger = +25000 cod, -2000 commission, 23000 due to platform';
 end $$;
 reset role;
 
@@ -344,10 +344,11 @@ declare s1 public.settlements; s2 public.settlements;
 begin
   s1 := public.build_settlement('44444444-4444-4444-4444-444444444444', public.mm_today());
 
-  if s1.gross_cod        <> 24500 then raise exception 'FAIL: gross_cod %', s1.gross_cod; end if;
-  if s1.rider_earnings   <> 1600  then raise exception 'FAIL: rider_earnings %', s1.rider_earnings; end if;
-  if s1.delivery_fees    <> 2000  then raise exception 'FAIL: delivery_fees %', s1.delivery_fees; end if;
-  if s1.platform_share   <> 400   then raise exception 'FAIL: platform_share %', s1.platform_share; end if;
+  if s1.gross_cod        <> 25000 then raise exception 'FAIL: gross_cod %', s1.gross_cod; end if;
+  if s1.rider_earnings   <> 2000  then raise exception 'FAIL: rider_earnings %', s1.rider_earnings; end if;
+  -- The ROUTE_LOCAL fee, and what is left of it after the 80/20 split.
+  if s1.delivery_fees    <> 2500  then raise exception 'FAIL: delivery_fees %', s1.delivery_fees; end if;
+  if s1.platform_share   <> 500   then raise exception 'FAIL: platform_share %', s1.platform_share; end if;
   if s1.net_due_platform <> s1.gross_cod - s1.rider_earnings then
     raise exception 'FAIL: net % <> % - %', s1.net_due_platform, s1.gross_cod, s1.rider_earnings;
   end if;
@@ -357,7 +358,7 @@ begin
   if s2.id <> s1.id or s2.net_due_platform <> s1.net_due_platform or s2.order_count <> s1.order_count then
     raise exception 'FAIL: build_settlement is not idempotent';
   end if;
-  raise notice 'PASS: settlement 24500 cod - 1600 rider = % due; idempotent', s1.net_due_platform;
+  raise notice 'PASS: settlement 25000 cod - 2000 rider = % due; idempotent', s1.net_due_platform;
 end $$;
 
 \echo '=== 20. a locked settlement refuses to be rebuilt ==='
