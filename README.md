@@ -20,21 +20,23 @@ Architecture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · Database: [supabas
 | 8 | Failed parcels: shop decides retry / return / cancel, capped auto-retry, return leg | **Done** — migrations 0011–0013 |
 | 9 | All-orders screen for the office (`/admin/orders`) | **Done** — every parcel, every shop, every status |
 | 9b | Rider/trip integrity: a parcel on a run always names the run's rider | **Done** — migration 0015, found live on staging |
+| 10 | Contact log: the office records what was said, and shares `/o/<code>` | **Done** — migration 0017, append-only and dispatch-only |
 
 Every route in the table above now ships. `/admin/super/*` is gated three times over:
 middleware (longest-prefix), `requireAdmin` in its layout, and RLS `is_admin()` on every write.
 
-**16 migrations · 154 SQL assertions across seven suites · 289 unit tests.**
+**17 migrations · 163 SQL assertions across seven suites · 299 unit tests.**
 `docs/ARCHITECTURE.md` describes the Phase 1–5 design and is partly superseded by
 phases 6–9 — it carries a banner saying exactly where. `docs/RUNBOOK.md` is
 current.
 
 **There is no automated messaging.** An SMS outbox was built in 0014 and removed
 in 0016 in favour of a human loop: the rider phones the office, the office phones
-the shop and records the decision. What the outbox used to raise,
-`/admin/orders?view=awaiting` already shows — every parcel that failed, came off
-its run, and is waiting on a shop to choose. Commit `c501237` has the outbox if
-the volume ever justifies it again.
+the shop. Three things carry it. `/admin/orders?view=awaiting` lists every parcel
+that failed, came off its run, and is waiting on a shop to choose. The **contact
+log** on each parcel records what was said, by whom, over which channel —
+append-only, dispatch-only. And `/o/<code>` is a short link the office pastes
+into Viber. Commit `c501237` has the outbox if the volume ever justifies it.
 
 ## Getting started
 

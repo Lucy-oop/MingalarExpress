@@ -1,4 +1,4 @@
-// Generated from migrations 0001-0016 via postgres-meta (the same generator
+// Generated from migrations 0001-0017 via postgres-meta (the same generator
 // the Supabase CLI uses). DO NOT EDIT BY HAND.
 // Regenerate:  npm run db:types      (supabase gen types typescript --local)
 export type Json =
@@ -295,6 +295,57 @@ export type Database = {
             columns: ["rider_id"]
             isOneToOne: false
             referencedRelation: "rider_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      order_notes: {
+        Row: {
+          author_id: string | null
+          author_role: Database["public"]["Enums"]["user_role"] | null
+          body: string
+          channel: string | null
+          created_at: string
+          id: number
+          kind: string
+          order_id: string
+          party: string | null
+        }
+        Insert: {
+          author_id?: string | null
+          author_role?: Database["public"]["Enums"]["user_role"] | null
+          body: string
+          channel?: string | null
+          created_at?: string
+          id?: number
+          kind?: string
+          order_id: string
+          party?: string | null
+        }
+        Update: {
+          author_id?: string | null
+          author_role?: Database["public"]["Enums"]["user_role"] | null
+          body?: string
+          channel?: string | null
+          created_at?: string
+          id?: number
+          kind?: string
+          order_id?: string
+          party?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_notes_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_notes_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
             referencedColumns: ["id"]
           },
         ]

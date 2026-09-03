@@ -593,5 +593,169 @@ begin
   raise notice 'PASS: a failed return stays a return (status %), ready to try again', v_status;
 end $$;
 
+-- ============================================================================
+--  F6. THE CONTACT LOG  (migration 0017)
+--
+--  0016 removed the automated SMS and put people in its place. This is the only
+--  thing standing between "the office rang the shop on Tuesday" and nobody
+--  knowing that on Wednesday.
+-- ============================================================================
+
+\echo '=== F6a. the log is append-only and shaped ==='
+do $$
+declare oid uuid; v_id bigint;
+begin
+  if to_regclass('public.order_notes') is null then
+    raise exception 'FAIL: order_notes missing';
+  end if;
+
+  oid := pg_temp.mk_parcel('Log Shape');
+
+  insert into public.order_notes (order_id, kind, body)
+  values (oid, 'note', 'Rider says the shopfront is shuttered')
+  returning id into v_id;
+
+  -- An empty body is not an entry.
+  begin
+    insert into public.order_notes (order_id, body) values (oid, '   ');
+    raise exception 'FAIL: a blank note was accepted';
+  exception when check_violation then
+    raise notice 'PASS: a blank note is refused';
+  end;
+
+  -- Only a `contact` says who was reached; a note claiming a channel would read
+  -- as a call that never happened.
+  begin
+    insert into public.order_notes (order_id, kind, channel, body)
+    values (oid, 'note', 'viber', 'no call was made');
+    raise exception 'FAIL: a plain note carried a channel';
+  exception when check_violation then
+    raise notice 'PASS: party and channel belong to a contact only';
+  end;
+
+  insert into public.order_notes (order_id, kind, party, channel, body)
+  values (oid, 'contact', 'shop', 'viber', 'U Aung will collect it Thursday');
+  raise notice 'PASS: a contact records who was reached and how';
+
+  -- The parcel owns its log.
+  delete from public.orders where id = oid;
+  if exists (select 1 from public.order_notes where order_id = oid) then
+    raise exception 'FAIL: notes outlived their parcel';
+  end if;
+  raise notice 'PASS: the log is deleted with the parcel';
+end $$;
+
+\echo '=== F6b. a resolution files itself in the log ==='
+do $$
+declare oid uuid; n int; v_body text;
+begin
+  oid := pg_temp.mk_parcel('Log Decision');
+  perform public.assign_order(oid, '44444444-4444-4444-4444-444444444444');
+  perform public.advance_order(oid, 'picked_up');
+  perform public.advance_order(oid, 'failed', null, null, null, null, 'Nobody home');
+
+  perform set_config('request.jwt.claims',
+    '{"sub":"33333333-3333-3333-3333-333333333333","role":"authenticated"}', false);
+  perform public.resolve_failed_order(oid, 'return', 'Customer refused it');
+  perform set_config('request.jwt.claims','',false);
+
+  select count(*), max(body) into n, v_body
+    from public.order_notes where order_id = oid and kind = 'decision';
+  if n <> 1 then raise exception 'FAIL: % decision rows, expected 1', n; end if;
+  if v_body not like '%return%' then raise exception 'FAIL: decision body reads %', v_body; end if;
+  if v_body not like '%Customer refused it%' then
+    raise exception 'FAIL: the shop''s own words were dropped: %', v_body;
+  end if;
+
+  -- The shop wrote it, so the shop is on it. A log with no author is a rumour.
+  if (select author_id from public.order_notes where order_id = oid and kind = 'decision')
+     <> '33333333-3333-3333-3333-333333333333' then
+    raise exception 'FAIL: the decision is not attributed to the shop';
+  end if;
+  raise notice 'PASS: the decision and its note are filed, attributed to the shop';
+end $$;
+
+\echo '=== F6c. dispatch writes and reads it; a shop does neither ==='
+do $$
+declare oid uuid; n int;
+begin
+  oid := pg_temp.mk_parcel('Log RLS');
+  insert into public.order_notes (order_id, kind, body)
+  values (oid, 'note', 'Internal: this address has failed three times');
+
+  set local role authenticated;
+
+  -- Dispatch reads.
+  perform set_config('request.jwt.claims',
+    '{"sub":"22222222-2222-2222-2222-222222222222","role":"authenticated"}', true);
+  select count(*) into n from public.order_notes where order_id = oid;
+  if n <> 1 then raise exception 'FAIL: dispatch read % rows, expected 1', n; end if;
+
+  -- The shop owns the parcel and still cannot read the office's log. That is
+  -- the point: half of what makes it useful is the unguarded half.
+  perform set_config('request.jwt.claims',
+    '{"sub":"33333333-3333-3333-3333-333333333333","role":"authenticated"}', true);
+  select count(*) into n from public.order_notes where order_id = oid;
+  if n <> 0 then raise exception 'FAIL: a shop read % log rows', n; end if;
+
+  -- Nor write one.
+  begin
+    insert into public.order_notes (order_id, author_id, kind, body)
+    values (oid, '33333333-3333-3333-3333-333333333333', 'note', 'shop wrote this');
+    raise exception 'FAIL: a shop wrote in the office log';
+  exception when insufficient_privilege then
+    raise notice 'PASS: the contact log is dispatch-only, read and write';
+  end;
+
+  reset role;
+  perform set_config('request.jwt.claims','',false);
+end $$;
+
+\echo '=== F6d. nobody files a note under a colleague''s name ==='
+do $$
+declare oid uuid;
+begin
+  oid := pg_temp.mk_parcel('Log Attribution');
+
+  set local role authenticated;
+  perform set_config('request.jwt.claims',
+    '{"sub":"22222222-2222-2222-2222-222222222222","role":"authenticated"}', true);
+
+  -- Their own name: fine.
+  insert into public.order_notes (order_id, author_id, kind, body)
+  values (oid, '22222222-2222-2222-2222-222222222222', 'note', 'Rang the shop, no answer');
+
+  -- The admin's name: refused. An attributed log that accepts any author is not
+  -- an attributed log.
+  begin
+    insert into public.order_notes (order_id, author_id, kind, body)
+    values (oid, '11111111-1111-1111-1111-111111111111', 'note', 'the admin said so');
+    raise exception 'FAIL: a note was filed under another user';
+  exception when insufficient_privilege then
+    raise notice 'PASS: author_id must be the writer';
+  end;
+
+  -- And append-only means append-only, even for the author.
+  begin
+    update public.order_notes set body = 'actually they answered' where order_id = oid;
+    if found then raise exception 'FAIL: a dispatcher edited the log'; end if;
+    raise notice 'PASS: no update policy exists, so an edit changes nothing';
+  exception when insufficient_privilege then
+    raise notice 'PASS: editing the log is refused';
+  end;
+
+  begin
+    delete from public.order_notes where order_id = oid;
+    if found then raise exception 'FAIL: a dispatcher deleted from the log'; end if;
+    raise notice 'PASS: no delete policy exists, so a delete removes nothing';
+  exception when insufficient_privilege then
+    raise notice 'PASS: deleting from the log is refused';
+  end;
+
+  reset role;
+  perform set_config('request.jwt.claims','',false);
+end $$;
+
+
 \echo ''
 \echo '####  ALL FAILED-PARCEL CHECKS PASSED  ####'

@@ -14,7 +14,7 @@ Three facts about **this machine** that change the commands below.
 |---|---|
 | **The Supabase CLI is not installed.** | `supabase db push`, `supabase status` and `npm run db:types` all need it. Install it (§1) or use the `psql` path, which needs nothing extra. |
 | **Check what is on ports 54321/54322 before trusting it.** | It is now the Mingalar stack (`supabase_db_mingalar`), but it has been a different project's before. `docker ps --format '{{.Names}}'` settles it in a second, and `.env.local` normally points at the cloud project regardless. |
-| **There are SIXTEEN migrations.** | `0001`–`0016`, applied in filename order. Three are easy to skip and each breaks something silently: `0006` carries the settlement lifecycle and `admin_overview` (the Super Admin panel is dead without it), `0012` exists only to add one enum value because `ALTER TYPE … ADD VALUE` cannot be *used* in the transaction that adds it, and `0015` repairs data as well as code — it realigns any parcel naming a different rider from its run. `0014` adds an SMS outbox that `0016` removes again; both are kept so a fresh database and staging agree. |
+| **There are SEVENTEEN migrations.** | `0001`–`0017`, applied in filename order. Three are easy to skip and each breaks something silently: `0006` carries the settlement lifecycle and `admin_overview` (the Super Admin panel is dead without it), `0012` exists only to add one enum value because `ALTER TYPE … ADD VALUE` cannot be *used* in the transaction that adds it, and `0015` repairs data as well as code — it realigns any parcel naming a different rider from its run. `0014` adds an SMS outbox that `0016` removes again — both are kept so a fresh database and staging agree — and `0017` puts a contact log in its place. |
 
 ### The one genuinely destructive command
 
@@ -331,7 +331,7 @@ which is the whole point of having built them.
 ## 6. `npm run db:verify`
 
 Resets a throwaway container, applies all sixteen migrations, seeds, and runs
-seven SQL suites (154 assertions). One `ERROR` line in `route_flow` (R4i2) is
+seven SQL suites (163 assertions). One `ERROR` line in `route_flow` (R4i2) is
 deliberate — a commit that must be refused — and is labelled in the output. **Never** point it at anything else (§0).
 
 One-time container setup:

@@ -5,9 +5,11 @@ import { ArrowLeft, Bike, ExternalLink, Phone, Store } from 'lucide-react'
 import { requireDispatch } from '@/lib/auth/guards'
 import { createClient } from '@/lib/supabase/server'
 import { getShopOrderDetail } from '@/lib/orders/queries'
+import { getOrderNotes } from '@/lib/admin/notes'
 import { StatusBadge } from '@/components/orders/status-badge'
 import { StatusTimeline } from '@/components/orders/status-timeline'
 import { FailedOrderPanel } from '@/components/orders/failed-order-panel'
+import { OrderNotes } from '@/components/admin/order-notes'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -37,11 +39,14 @@ export default async function AdminOrderDetailPage({
     detail
 
   const supabase = await createClient()
-  const { data: shop } = await supabase
-    .from('shops')
-    .select('id, name, phone, pickup_address')
-    .eq('id', order.shop_id)
-    .maybeSingle()
+  const [{ data: shop }, notes] = await Promise.all([
+    supabase
+      .from('shops')
+      .select('id, name, phone, pickup_address')
+      .eq('id', order.shop_id)
+      .maybeSingle(),
+    getOrderNotes(id),
+  ])
 
   return (
     <div className="space-y-5">
@@ -244,6 +249,16 @@ export default async function AdminOrderDetailPage({
           </Card>
         </div>
       </div>
+
+      {/* Full width, below the fold. It is the longest thing on the page once a
+          parcel has had any history, and squeezing a conversation into a
+          third-width column makes it unreadable. */}
+      <OrderNotes
+        orderId={order.id}
+        orderCode={order.code}
+        notes={notes}
+        needsAttention={awaitingDecision}
+      />
     </div>
   )
 }

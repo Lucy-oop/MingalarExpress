@@ -167,3 +167,43 @@ export const shopSettingsSchema = z.object({
 })
 
 export type ShopSettingsValues = z.output<typeof shopSettingsSchema>
+
+// ---------------------------------------------------------------------------
+// Contact log (migration 0017)
+// ---------------------------------------------------------------------------
+
+export const NOTE_KINDS = ['note', 'contact'] as const
+export const NOTE_PARTIES = ['shop', 'customer', 'rider', 'other'] as const
+export const NOTE_CHANNELS = ['phone', 'viber', 'telegram', 'in_person', 'other'] as const
+
+/**
+ * One entry in a parcel's contact log.
+ *
+ * `decision` is absent from NOTE_KINDS on purpose: those rows are written by
+ * `resolve_failed_order` and must not be typeable by hand, or the log stops
+ * being evidence of what the system actually did.
+ *
+ * The party/channel pair is cleared unless the entry is a `contact`, mirroring
+ * the `order_notes_contact_shape` CHECK. Sending "phone" with a plain note gets
+ * a 23514 from Postgres, which reaches the user as an unexplainable failure —
+ * so it is normalised here instead of validated into an error.
+ */
+export const orderNoteSchema = z
+  .object({
+    orderId: dbId('Unknown order'),
+    kind: z.enum(NOTE_KINDS, { error: 'Pick note or contact' }).default('note'),
+    party: z.union([z.literal(''), z.enum(NOTE_PARTIES)]).optional(),
+    channel: z.union([z.literal(''), z.enum(NOTE_CHANNELS)]).optional(),
+    body: z
+      .string()
+      .trim()
+      .min(1, 'Write what happened')
+      .max(2000, 'Keep it under 2,000 characters'),
+  })
+  .transform((v) => ({
+    ...v,
+    party: v.kind === 'contact' ? (v.party || null) : null,
+    channel: v.kind === 'contact' ? (v.channel || null) : null,
+  }))
+
+export type OrderNoteValues = z.output<typeof orderNoteSchema>
