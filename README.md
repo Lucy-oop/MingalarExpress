@@ -15,9 +15,17 @@ Architecture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · Database: [supabas
 | 3 | Dispatch engine (`/admin/dispatcher`) | **Done** — 63 unit tests, race proven live |
 | 4 | Rider PWA + proof of delivery (`/rider`) | **Done** — 85 unit tests, full lifecycle verified live |
 | 5 | Commission, COD settlement, Super Admin, shop management | **Done** — 198 unit tests, build green |
+| 6 | Route model: scheduled runs, flat route pricing, trip pay, offer engine retired | **Done** — migrations 0007–0010 |
+| 7 | Shop panel: real KPIs, proof of delivery, orders workspace + CSV, money page | **Done** — migration 0010 |
+| 8 | Failed parcels: shop decides retry / return / cancel, capped auto-retry, return leg | **Done** — migrations 0011–0013 |
 
 Every route in the table above now ships. `/admin/super/*` is gated three times over:
 middleware (longest-prefix), `requireAdmin` in its layout, and RLS `is_admin()` on every write.
+
+**13 migrations · 143 SQL assertions across seven suites · 289 unit tests.**
+`docs/ARCHITECTURE.md` describes the Phase 1–5 design and is partly superseded by
+phases 6–8 — it carries a banner saying exactly where. `docs/RUNBOOK.md` is
+current.
 
 ## Getting started
 

@@ -1,5 +1,26 @@
 # Mingalar Express — Technical Architecture
 
+> ## ⚠ Partly superseded — read this first
+>
+> This document describes the system as designed through **Phase 5 (migrations
+> 0001–0006)**. Migrations **0007–0013** changed four of its load-bearing
+> assumptions, and the sections below have NOT been rewritten to match. Where
+> they disagree, the migrations and `docs/RUNBOOK.md` are correct.
+>
+> | This doc says | Reality since |
+> |---|---|
+> | Hyper-local, Thingangyun-only, distance-priced | **Greater Yangon on four scheduled routes**, flat fee per route (`routes.per_parcel_fee`) — 0007, 0010 |
+> | Riders are matched by proximity and offered work | **Offer engine retired.** `offer_order`, `respond_to_offer`, `expire_stale_offers`, `nearby_available_riders` and `assign_order_internal` are dropped — 0009. Parcels are loaded onto a scheduled run at the hub |
+> | Riders earn a commission split per parcel | **Trip pay** — base by volume + per parcel + per pickup, booked once per run as a `trip_pay` ledger line — 0007, 0008. The commission split survives only on the per-parcel `assign_order` path |
+> | A failed parcel is reassigned by a dispatcher | **The shop decides** — retry / return / cancel, with an automatic-retry cap, and a real return leg ending at `returned` — 0011, 0012, 0013 |
+>
+> Anything below mentioning `nearby_available_riders`, `RiderRankList`, offers or
+> distance quoting is history. The parts that remain accurate and load-bearing:
+> the §0 decision table, RLS as the security boundary, the COD double-entry
+> ledger, money as integer MMK, the Yangon business day, and the snapshot rule
+> (D5) that the route model reuses for `orders.route_id`.
+
+
 **Hyper-local parcel delivery + COD platform · Thingangyun Township, Yangon**
 Stack: Next.js 15 (App Router) · Supabase (Postgres 15 + PostGIS, Auth, Realtime, Storage) · Tailwind + shadcn/ui · Leaflet + OpenStreetMap
 
@@ -1499,6 +1520,19 @@ Each phase ends in something demonstrable. Prompt me with the phase name and I'l
 ### Phase 5 — Money: commission, COD settlement, admin  *(~1.5 weeks)*
 **Generate:** super-admin rider registration (service-role `createUser` + `rider_profiles` insert with `base_area`/`coverage_km`), shops CRUD, `service_areas` editor with centroid picker, pricing page (base fee, per-km, free km, 80/20 split), `build_settlement` RPC + daily settlement page + approve/mark-paid, `cod_ledger` audit explorer with rider cash-in-hand balances, CSV export, Postgres cron job for nightly settlement drafts, `/admin/audit` order timeline viewer.
 **Exit criteria:** a day of deliveries produces a settlement whose `net_due_platform` equals `sum(cod_amount) − sum(rider_commission_amount)` and matches the ledger to the kyat; re-running `build_settlement` is idempotent; changing the split to 70/30 leaves yesterday's settlement untouched.
+
+### Phases 6–8 — route model, shop panel, returns  *(delivered, not planned here)*
+**Shipped in migrations 0007–0013:** scheduled routes out of Thingangyun Base with
+flat per-route pricing; trip-based rider pay with a 20-parcel departure gate and a
+logged override; the offer engine retired; the shop panel rebuilt (real KPIs,
+proof of delivery, orders workspace with CSV export, self-service settings, a
+derived money page); and the failed-parcel loop — shop decides retry/return/
+cancel, automatic retries capped, and a return leg that carries a parcel home and
+ends at `returned` without ever being counted as revenue.
+**Exit criteria, all verified:** 143 SQL assertions across seven suites and 289
+unit tests; a shop-created parcel is billed the signed-off route fee; a failed
+parcel stops at the attempt cap rather than retrying forever; a returned parcel
+charges the shop nothing and books no ledger line.
 
 ### Post-MVP backlog
 Bulk order CSV import for shops · Viber/SMS customer notifications on `picked_up`/`delivered` · rider batch/multi-drop routing · true route distance via OSRM · Burmese/English i18n toggle · township polygon replacing the bbox · shop-side wallet top-up · rider leaderboard.

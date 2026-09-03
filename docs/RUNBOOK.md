@@ -218,12 +218,19 @@ done
 Applied in this order:
 
 ```
-20260825090100_init.sql             enums, 11 tables, constraints, indexes, grants
-20260825090200_triggers_rpc.sql     role helpers, guards, state machine, COD ledger, dispatch RPCs
-20260825090300_rls.sql              RLS on all 11 tables + immutability revokes
-20260825090400_storage.sql          delivery-proofs + avatars buckets and policies
-20260825090500_offers_realtime.sql  offer/accept flow, realtime publication
-20260825090600_settlement_admin.sql settlement lifecycle, cod_positions, admin_overview
+20260825090100_init.sql                  enums, 11 tables, constraints, indexes, grants
+20260825090200_triggers_rpc.sql          role helpers, guards, state machine, COD ledger, RPCs
+20260825090300_rls.sql                   RLS on all tables + immutability revokes
+20260825090400_storage.sql               delivery-proofs + avatars buckets and policies
+20260825090500_offers_realtime.sql       offer/accept flow (RETIRED in 0009), realtime publication
+20260825090600_settlement_admin.sql      settlement lifecycle, cod_positions, admin_overview
+20260825090700_routes.sql                routes, route_areas, pay tiers, trips; Greater Yangon geofence
+20260825090800_trips_rpc.sql             trip RPCs, trip_pay, depart_trip's 20-parcel override
+20260825090900_retire_offer_engine.sql   offer engine dropped; assign_order inlined and kept
+20260901090100_shop_panel.sql            orders.route_id, failed-parcel release, order_rider_card
+20260902090100_failed_parcel_resolution  orders.resolution, attempt cap, resolve_failed_order
+20260903090100_returned_status.sql       the `returned` enum value, alone (see the file's header)
+20260903090200_return_leg.sql            return legs, receiver requirement, close/depart accounting
 ```
 
 Two things that need **no dashboard clicks** because the migrations do them:
@@ -404,12 +411,14 @@ Expected: 11 tables, 41 functions, 11 RLS-enabled, 30 policies, 2 buckets,
 **Verified output on this machine — 82 assertions, 0 failures:**
 
 ```
---- apply 20260825090100_init.sql   … through … 20260825090600_settlement_admin.sql
+--- apply 20260825090100_init.sql   … through … 20260903090200_return_leg.sql
 ######  ALL PHASE 1 CHECKS PASSED  ######
 ####  ALL EDGE CHECKS PASSED  ####
 ####  ALL STORAGE CHECKS PASSED  ####
-####  ALL OFFER-FLOW CHECKS PASSED  ####
+####  ALL ASSIGNMENT CHECKS PASSED  ####
 ####  ALL SETTLEMENT CHECKS PASSED  ####
+####  ALL ROUTE / TRIP CHECKS PASSED  ####
+####  ALL FAILED-PARCEL CHECKS PASSED  ####
 ```
 
 Application tests are separate and need no database:
@@ -473,19 +482,26 @@ Sign in `shop@mingalar.test` / `mingalar123`.
 > stored `delivery_fee` differs from the official schedule for that route, that is
 > the bug this test exists to find.
 
-### Step 2 — Dispatcher assigns
+### Step 2 — Dispatcher plans the run
 
 Sign in `dispatch@mingalar.test` in a second profile → `/admin/dispatcher`.
 
+This is a ROUTE PLANNING board. There is no rider ranking and no offer/accept —
+0009 retired both. Work moves by loading parcels onto a scheduled run.
+
 | # | Action | Expect |
 |---|---|---|
-| 2.1 | Queue panel | The new order at the top, ageing counter running |
-| 2.2 | Select it | Map centres on pickup; ranked riders load in the right panel |
-| 2.3 | Read the ranking | Zaw Zaw (0.33 km) above Thiha (1.6 km). Myo Min excluded — 4.2 km exceeds his 3 km radius |
-| 2.4 | Check COD headroom | A rider at or over `cod_float_limit` is flagged **blocked** but still assignable — a deliberate human override |
-| 2.5 | **Assign** to Zaw Zaw | Order → **Assigned**, leaves the needs-rider filter, `active_order_count` +1 |
-| 2.6 | *(race check)* Assign the same order again from a duplicate tab | Fails loudly: "another dispatcher…". Must **not** silently reassign |
-| 2.7 | *(optional)* On a second order use **Offer** to 3 riders | Three `order_assignments` rows, order stays **Pending** until someone accepts |
+| 2.1 | Right-hand panel | The new parcel, grouped under its destination area, badged with the route that area maps to |
+| 2.2 | Filter to that route | Only its parcels remain; the group header select-all ticks them all at once |
+| 2.3 | **New run** on that route | A `planned` trip appears with a grey volume pill reading `0/20 parcels` |
+| 2.4 | Choose a rider | A rider already out on another run is listed but **disabled** — the board explains the gap rather than hiding it |
+| 2.5 | Tick the parcel, **Load selected** | It leaves the pool and joins the run's manifest, ordered by the route's `stop_order` |
+| 2.6 | Watch the volume banner | Amber under 20 parcels, red if the run would actually lose money. It renders nothing when the run is fine |
+| 2.7 | **Depart trip** | Under 20 parcels a modal demands a reason of 10+ characters. Cancel it and the run stays; supply one and the override lands in `audit_log` as `trip.depart_below_minimum` with the projected margin |
+
+> **Two dispatchers, one board.** Every action ends in a server round trip and a
+> refresh — nothing is optimistic. Realtime keeps both screens current, so a
+> parcel loaded in one tab leaves the pool in the other within ~400 ms.
 
 ### Step 3 — Rider delivers
 
@@ -495,7 +511,7 @@ Use device emulation (Chrome DevTools → iPhone/Pixel) — this is a phone UI.
 | # | Action | Expect |
 |---|---|---|
 | 3.1 | Flip **Go online** | Toggle turns green; heartbeat every 20 s |
-| 3.2 | *(offer path)* Offer arrives | Card with a 90-second countdown; **Accept** commits, **Decline** frees it |
+| 3.2 | Open the manifest | The run's parcels in stop order. There is no offer to accept — a parcel is loaded onto the rider's run at the hub, so it is already theirs |
 | 3.3 | Open the job | Pickup address, customer, COD amount to collect |
 | 3.4 | **Picked up** | Status → **Picked up**, checkpoint written |
 | 3.5 | **Delivered** → camera/file | Photo downscales to WebP before upload |
