@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { MapCanvas } from '@/components/map'
 import { JobActions } from '@/components/rider/job-actions'
 import type { LatLng, OrderStatus } from '@/types/domain'
+import type { Translate } from '@/lib/i18n'
 
 /**
  * Client half of the job page: the map and the state buttons.
@@ -23,6 +24,7 @@ export function JobSheet({
   customerName,
   pickup,
   dropoff,
+  t,
 }: {
   orderId: string
   orderCode: string
@@ -31,6 +33,7 @@ export function JobSheet({
   customerName: string
   pickup: LatLng
   dropoff: LatLng
+  t: Translate
 }) {
   const [position, setPosition] = useState<LatLng | null>(null)
 
@@ -61,13 +64,13 @@ export function JobSheet({
             // delivering now, and on a return leg the shop is already the
             // destination pin below.
             ...(leg !== 'return' && status === 'assigned'
-              ? [{ id: 'pickup', point: pickup, kind: 'pickup' as const, label: 'Pickup', emphasis: true }]
+              ? [{ id: 'pickup', point: pickup, kind: 'pickup' as const, label: t('parcel.pickUp'), emphasis: true }]
               : []),
             {
               id: 'dropoff',
               point: leg === 'return' ? pickup : dropoff,
               kind: 'dropoff' as const,
-              label: leg === 'return' ? 'Back to shop' : 'Delivery',
+              label: leg === 'return' ? t('parcel.returnTo') : t('parcel.deliverTo'),
               emphasis: status === 'picked_up' || leg === 'return',
             },
             ...(position ? [{ id: 'me', point: position, kind: 'rider' as const, label: 'You' }] : []),
@@ -82,6 +85,7 @@ export function JobSheet({
         leg={leg}
         customerName={customerName}
         position={position}
+        t={t}
       />
     </div>
   )

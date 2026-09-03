@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { Power, Satellite, TriangleAlert } from 'lucide-react'
 import { useRiderBeacon } from '@/lib/rider/use-rider-beacon'
 import { cn } from '@/lib/utils'
+import type { Translate } from '@/lib/i18n'
 
 /**
  * The single most important control in the rider app: while it is off, dispatch
@@ -16,10 +17,12 @@ export function OnlineToggle({
   riderId,
   initialOnline,
   onOnlineChange,
+  t,
 }: {
   riderId: string
   initialOnline: boolean
   onOnlineChange?: (online: boolean) => void
+  t: Translate
 }) {
   const { online, position, geoError, pending, toggle } = useRiderBeacon(riderId, initialOnline)
   const [error, setError] = useState<string | null>(null)
@@ -39,22 +42,27 @@ export function OnlineToggle({
         disabled={pending}
         aria-pressed={online}
         className={cn(
-          'flex min-h-14 w-full items-center justify-between gap-3 rounded-xl px-4 py-3 text-left transition-colors',
+          // 72px tall. This is the control a rider hits first thing in the
+          // morning with gloves on, and the one that decides whether they get
+          // any work at all.
+          'flex min-h-18 w-full items-center justify-between gap-3 rounded-xl px-4 py-3 text-left transition-colors',
           online
             ? 'bg-emerald-600 text-white'
             : 'border border-dashed bg-card text-muted-foreground',
         )}
       >
         <span className="flex items-center gap-3">
-          <Power className={cn('size-5', pending && 'animate-pulse')} />
+          <Power className={cn('size-7', pending && 'animate-pulse')} />
           <span>
-            <span className="block font-semibold">{online ? 'Online' : 'Offline'}</span>
-            <span className={cn('block text-xs', online ? 'text-white/80' : 'text-muted-foreground')}>
+            <span className="block text-lg font-bold">
+              {online ? t('online.on') : t('online.goOn')}
+            </span>
+            <span className={cn('block text-sm', online ? 'text-white/80' : 'text-muted-foreground')}>
               {pending
-                ? 'Saving…'
+                ? t('action.saving')
                 : online
-                  ? 'Dispatch can see you'
-                  : 'Tap to start receiving jobs'}
+                  ? t('online.visible')
+                  : t('online.tapToStart')}
             </span>
           </span>
         </span>
@@ -77,8 +85,8 @@ export function OnlineToggle({
         <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <Satellite className="size-3.5" />
           {position
-            ? `GPS locked · ±${Math.round(position.accuracy)} m`
-            : 'Waiting for a GPS fix…'}
+            ? `${t('online.gpsLocked')} · ±${Math.round(position.accuracy)} m`
+            : t('online.gpsWaiting')}
         </p>
       ) : null}
 

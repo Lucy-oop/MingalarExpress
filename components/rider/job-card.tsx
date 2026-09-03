@@ -1,10 +1,9 @@
 import Link from 'next/link'
-import { ChevronRight, Coins, MapPin, Package, Phone } from 'lucide-react'
+import { ChevronRight, Coins, MapPin } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
-import { StatusBadge } from '@/components/orders/status-badge'
-import { formatDistanceKm, formatMmk, formatMyanmarPhone } from '@/lib/utils'
+import { localeNumber, type Locale, type Translate } from '@/lib/i18n'
+import { formatMmk } from '@/lib/utils'
 import type { OrderStatus } from '@/types/domain'
-import { cn } from '@/lib/utils'
 
 export type RiderJob = {
   id: string
@@ -16,6 +15,9 @@ export type RiderJob = {
   customerPhone: string
   dropoffAddress: string
   dropoffArea: string | null
+  /** Where the rider is actually going — already flipped for a return leg. */
+  dropoffLat: number
+  dropoffLng: number
   parcelDesc: string
   isFragile: boolean
   paymentMethod: 'cod' | 'prepaid'
@@ -24,83 +26,65 @@ export type RiderJob = {
   routeKm: number | null
   /** Stop sequence along the run, from route_areas.stop_order. */
   stopOrder?: number | null
+  /** Place in the drive, from sortRoute — 1 is the next stop. */
+  stopNumber?: number
+  /** Straight-line km from the hub, used to build that order. */
+  hubKm?: number | null
   /** 'pickup' means collected on the return leg, not dropped off. */
   leg?: 'delivery' | 'pickup' | 'return' | null
 }
 
-export function JobCard({ job }: { job: RiderJob }) {
+/**
+ * One stop, after the next one.
+ *
+ * Radically thinner than it was. It used to carry the pickup address, the
+ * parcel description, the trip distance, the commission, the phone number, a
+ * status badge and a fragile badge — nine facts about a stop the rider has not
+ * reached yet. On a 5-inch screen that is a wall of grey text to scroll past to
+ * find the address.
+ *
+ * What survived is what a rider scanning the list actually uses: which stop,
+ * where, and how much to collect. Everything else is one tap away on the parcel
+ * page, where there is room for it.
+ */
+export function JobCard({
+  job,
+  locale,
+  t,
+}: {
+  job: RiderJob
+  locale: Locale
+  t: Translate
+}) {
+  const collect = job.paymentMethod === 'cod' ? formatMmk(job.codAmount) : t('money.prepaid')
+
   return (
     <Link
       href={`/rider/jobs/${job.id}`}
-      className="block rounded-xl border bg-card p-3 active:scale-[0.99]"
+      className="flex items-center gap-3 rounded-xl border bg-card p-3 active:scale-[0.99]"
     >
-      <div className="flex items-start justify-between gap-2">
-        <span className="flex min-w-0 items-center gap-2">
-          {/* Stop number, not an offer countdown: on a route run the useful
-              thing to know is where this parcel sits in the drive. */}
-          {job.stopOrder !== null && job.stopOrder !== undefined ? (
-            <span className="inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-muted text-[10px] font-semibold tabular-nums">
-              {job.stopOrder}
-            </span>
-          ) : null}
-          <span className="truncate font-mono text-xs font-semibold">{job.code}</span>
-        </span>
-        <span className="flex shrink-0 items-center gap-1">
-          {job.leg === 'pickup' ? <Badge tone="neutral">Pickup</Badge> : null}
-          {job.leg === 'return' ? <Badge tone="blue">Return</Badge> : null}
-          <StatusBadge status={job.status} />
-        </span>
-      </div>
+      {/* The place in the drive, from sortRoute — big enough to find with a
+          thumb, because it is how a rider keeps their place in the list. */}
+      <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-muted text-base font-bold tabular-nums">
+        {job.stopNumber !== undefined ? localeNumber(locale, job.stopNumber) : '·'}
+      </span>
 
-      <div className="mt-2 space-y-1.5 text-sm">
-        <p className="flex items-start gap-1.5">
-          <MapPin className="mt-0.5 size-3.5 shrink-0 text-brand-red" />
-          <span className="min-w-0">
-            <span className="block text-xs text-muted-foreground">Pick up</span>
-            <span className="block truncate">{job.shopName ?? job.pickupAddress}</span>
-          </span>
-        </p>
-        <p className="flex items-start gap-1.5">
-          <MapPin className="mt-0.5 size-3.5 shrink-0 text-brand-gold" />
-          <span className="min-w-0">
-            <span className="block text-xs text-muted-foreground">
-              {job.leg === 'return' ? 'Return to' : 'Deliver to'}
-            </span>
-            <span className="block truncate">{job.dropoffAddress}</span>
-            {job.dropoffArea ? (
-              <span className="block text-xs text-muted-foreground">{job.dropoffArea}</span>
-            ) : null}
-          </span>
-        </p>
-      </div>
-
-      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-        <span className="tabular-nums">{formatDistanceKm(job.routeKm)} trip</span>
-        {job.paymentMethod === 'cod' ? (
-          <span className="flex items-center gap-1 font-medium tabular-nums text-foreground">
-            <Coins className="size-3.5" />
-            collect {formatMmk(job.codAmount)}
-          </span>
-        ) : (
-          <Badge tone="neutral">Prepaid</Badge>
-        )}
-        {job.commission !== null ? (
-          <span className="tabular-nums text-emerald-700">you earn {formatMmk(job.commission)}</span>
-        ) : null}
-        {job.isFragile ? <Badge tone="amber">Fragile</Badge> : null}
-      </div>
-
-      <div className="mt-2 flex items-center justify-between gap-2 border-t pt-2 text-xs">
-        <span className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
-          <Package className="size-3.5 shrink-0" />
-          <span className="truncate">{job.parcelDesc}</span>
+      <span className="min-w-0 flex-1">
+        <span className="flex items-center gap-1.5">
+          {job.leg === 'pickup' ? <Badge tone="neutral">{t('parcel.pickupBadge')}</Badge> : null}
+          {job.leg === 'return' ? <Badge tone="blue">{t('parcel.returnBadge')}</Badge> : null}
+          <span className="min-w-0 truncate text-base font-semibold">{job.dropoffAddress}</span>
         </span>
-        <span className="flex shrink-0 items-center gap-1 text-primary">
-          <Phone className="size-3" />
-          {formatMyanmarPhone(job.customerPhone)}
-          <ChevronRight className="size-3.5" />
+        <span className="mt-0.5 flex items-center gap-2 text-sm text-muted-foreground">
+          {job.dropoffArea ? <span className="truncate">{job.dropoffArea}</span> : null}
+          <span className="flex shrink-0 items-center gap-1 font-medium text-foreground">
+            <Coins className="size-3.5" aria-hidden="true" />
+            <span className="tabular-nums">{collect}</span>
+          </span>
         </span>
-      </div>
+      </span>
+
+      <ChevronRight className="size-6 shrink-0 text-muted-foreground" aria-hidden="true" />
     </Link>
   )
 }

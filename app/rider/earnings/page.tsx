@@ -1,6 +1,8 @@
 import type { Metadata } from 'next'
 import { Coins, TrendingUp } from 'lucide-react'
 import { requireRider } from '@/lib/auth/guards'
+import { getLocale } from '@/lib/i18n/locale'
+import { translator } from '@/lib/i18n'
 import { createClient } from '@/lib/supabase/server'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert } from '@/components/ui/alert'
@@ -11,7 +13,8 @@ export const dynamic = 'force-dynamic'
 
 export default async function RiderEarningsPage() {
   await requireRider()
-  const supabase = await createClient()
+  const [locale, supabase] = await Promise.all([getLocale(), createClient()])
+  const t = translator(locale)
 
   // All figures come from the ledger — the book of record — never recomputed
   // from orders. RLS scopes both reads to this rider.
@@ -29,13 +32,14 @@ export default async function RiderEarningsPage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-lg font-semibold">Earnings</h1>
+      <h1 className="text-lg font-semibold">{t('earnings.title')}</h1>
 
       <div className="grid grid-cols-2 gap-2">
-        <Tile label="Earned today" value={formatMmk(Number(s.earned_today ?? 0))} />
-        <Tile label="Earned this week" value={formatMmk(Number(s.earned_week ?? 0))} />
-        <Tile label="Delivered today" value={String(s.delivered_today ?? 0)} />
-        <Tile label="Active jobs" value={String(s.active_orders ?? 0)} />
+        <Tile label={t('stat.earnedToday')} value={formatMmk(Number(s.earned_today ?? 0))} />
+        <Tile label={t('earnings.week')} value={formatMmk(Number(s.earned_week ?? 0))} />
+        <Tile label={t('stat.delivered')} value={String(s.delivered_today ?? 0)} />
+        <Tile label={t('stat.collected')} value={String(s.picked_up_today ?? 0)} />
+        <Tile label={t('earnings.activeJobs')} value={String(s.active_orders ?? 0)} />
       </div>
 
       <Card className={codInHand > 0 ? 'border-amber-300 bg-amber-50' : undefined}>
@@ -66,7 +70,7 @@ export default async function RiderEarningsPage() {
           Recent entries
         </h2>
         {(ledger ?? []).length === 0 ? (
-          <Alert tone="info">Nothing recorded yet. Completed deliveries appear here.</Alert>
+          <Alert tone="info">{t('earnings.empty')}</Alert>
         ) : (
           <ul className="divide-y rounded-lg border bg-card">
             {(ledger ?? []).map((row) => (

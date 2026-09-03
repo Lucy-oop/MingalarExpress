@@ -4,6 +4,9 @@ import { requireRider } from '@/lib/auth/guards'
 import { signOut } from '@/lib/auth/actions'
 import { Button } from '@/components/ui/button'
 import { QueueBanner } from '@/components/rider/queue-banner'
+import { LanguageToggle } from '@/components/shared/language-toggle'
+import { getLocale } from '@/lib/i18n/locale'
+import { translator } from '@/lib/i18n'
 import { ServiceWorkerRegistrar } from '@/components/shared/service-worker'
 
 /**
@@ -12,6 +15,8 @@ import { ServiceWorkerRegistrar } from '@/components/shared/service-worker'
  */
 export default async function RiderLayout({ children }: { children: React.ReactNode }) {
   const { profile } = await requireRider()
+  const locale = await getLocale()
+  const t = translator(locale)
 
   return (
     <div className="flex min-h-dvh flex-col bg-muted/30">
@@ -20,15 +25,18 @@ export default async function RiderLayout({ children }: { children: React.ReactN
         <div className="flex items-center justify-between gap-3 px-4 py-2.5">
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold">{profile.full_name}</p>
-            <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
-              Mingalar Express rider
-            </p>
+            <p className="truncate text-[11px] text-muted-foreground">{t('app.rider')}</p>
           </div>
-          <form action={signOut}>
-            <Button variant="ghost" size="sm" type="submit" aria-label="Sign out">
-              <LogOut />
-            </Button>
-          </form>
+          {/* Both scripts visible and both tappable: a rider who cannot read the
+              current language cannot read a dropdown's closed state either. */}
+          <div className="flex shrink-0 items-center gap-1">
+            <LanguageToggle locale={locale} />
+            <form action={signOut}>
+              <Button variant="ghost" size="icon" type="submit" aria-label={t('action.signOut')}>
+                <LogOut />
+              </Button>
+            </form>
+          </div>
         </div>
       </header>
 
@@ -40,8 +48,8 @@ export default async function RiderLayout({ children }: { children: React.ReactN
       {/* Bottom tabs, above the iOS home indicator. */}
       <nav className="fixed inset-x-0 bottom-0 z-20 border-t bg-background pb-[env(safe-area-inset-bottom)]">
         <div className="grid grid-cols-2">
-          <Tab href="/rider/dashboard" label="Jobs" icon={<LayoutList className="size-5" />} />
-          <Tab href="/rider/earnings" label="Earnings" icon={<Coins className="size-5" />} />
+          <Tab href="/rider/dashboard" label={t('nav.jobs')} icon={<LayoutList className="size-6" />} />
+          <Tab href="/rider/earnings" label={t('nav.earnings')} icon={<Coins className="size-6" />} />
         </div>
       </nav>
     </div>

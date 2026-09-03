@@ -14,6 +14,7 @@ import { explainRiderError } from '@/lib/rider/errors'
 import { proofObjectPath, type PreparedImage } from '@/lib/rider/image'
 import { createClient } from '@/lib/supabase/client'
 import type { OrderStatus } from '@/types/domain'
+import type { Translate } from '@/lib/i18n'
 
 type Feedback = { tone: 'success' | 'error' | 'info'; message: string } | null
 
@@ -26,6 +27,7 @@ export type JobActionsProps = {
   customerName: string
   /** Current GPS fix, stamped onto the checkpoint. */
   position: { lat: number; lng: number } | null
+  t: Translate
 }
 
 /**
@@ -54,6 +56,7 @@ export function JobActions({
   leg,
   customerName,
   position,
+  t,
 }: JobActionsProps) {
   const router = useRouter()
   const supabase = createClient()
@@ -104,7 +107,7 @@ export function JobActions({
         setCompleted(true)
         setFeedback({
           tone: 'info',
-          message: 'No signal — saved on your phone. It will send when you reconnect.',
+          message: t('offline.saved'),
         })
       } else {
         // A logical failure is genuinely retryable after the rider fixes
@@ -126,7 +129,7 @@ export function JobActions({
    */
   const onReturned = async () => {
     if (!receiver.trim()) {
-      setFeedback({ tone: 'error', message: 'Write who at the shop took it back.' })
+      setFeedback({ tone: 'error', message: t('proof.returnReceiverRequired') })
       return
     }
     setBusy('returned')
@@ -187,7 +190,7 @@ export function JobActions({
 
   const onDelivered = async () => {
     if (!proof) {
-      setFeedback({ tone: 'error', message: 'Take a photo of the delivery first.' })
+      setFeedback({ tone: 'error', message: t('fail.photoFirst') })
       return
     }
     setBusy('delivered')
@@ -233,7 +236,7 @@ export function JobActions({
 
   const onFailed = async () => {
     if (!failReason.trim()) {
-      setFeedback({ tone: 'error', message: 'Say what went wrong.' })
+      setFeedback({ tone: 'error', message: t('fail.required') })
       return
     }
     setBusy('failed')
@@ -289,12 +292,13 @@ export function JobActions({
           rider to photograph a shop counter for a parcel nobody paid for. */}
       {leg === 'return' && (status === 'assigned' || status === 'picked_up') ? (
         <div className="space-y-3 rounded-lg border bg-card p-3">
-          <p className="text-sm font-medium">Returning to {customerName}</p>
+          <p className="text-base font-semibold">{t('parcel.returnTo')} · {customerName}</p>
           <Input
             value={receiver}
             onChange={(e) => setReceiver(e.target.value)}
-            placeholder="Who took it back?"
-            aria-label="Who at the shop took the parcel back"
+            placeholder={t('proof.returnReceiver')}
+            aria-label={t('proof.returnReceiver')}
+            className="h-14 text-base"
           />
           <Button
             size="touch"
@@ -303,7 +307,11 @@ export function JobActions({
             onClick={() => void onReturned()}
           >
             <PackageCheck />
-            {busy === 'returned' ? 'Saving…' : completed ? 'Saved' : 'Returned to shop'}
+            {busy === 'returned'
+              ? t('action.saving')
+              : completed
+                ? t('action.saved')
+                : t('action.markReturned')}
           </Button>
         </div>
       ) : null}
@@ -312,22 +320,30 @@ export function JobActions({
         <Button
           size="touch"
           block
+          className="bg-emerald-600 text-lg font-bold hover:bg-emerald-700"
           disabled={busy !== null || completed}
           onClick={() => void onPickedUp()}
         >
           <Truck />
-          {busy === 'picked_up' ? 'Saving…' : completed ? 'Saved' : 'Mark picked up'}
+          {busy === 'picked_up'
+            ? t('action.saving')
+            : completed
+              ? t('action.saved')
+              : t('action.markPickedUp')}
         </Button>
       ) : null}
 
       {leg !== 'return' && status === 'picked_up' ? (
         <div className="space-y-3 rounded-lg border bg-card p-3">
-          <p className="text-sm font-medium">Proof of delivery</p>
-          <ProofCapture onReady={setProof} disabled={busy !== null || completed} />
+          <p className="text-base font-semibold">{t('proof.title')}</p>
+          <ProofCapture onReady={setProof} disabled={busy !== null || completed} t={t} />
 
           <div className="space-y-1.5">
-            <label htmlFor="receiver" className="text-xs font-medium text-muted-foreground">
-              Who received it? (optional)
+            <label htmlFor="receiver" className="text-sm font-medium">
+              {t('proof.receiver')}{' '}
+              <span className="font-normal text-muted-foreground">
+                ({t('proof.receiverOptional')})
+              </span>
             </label>
             <Input
               id="receiver"
@@ -335,21 +351,27 @@ export function JobActions({
               onChange={(e) => setReceiver(e.target.value)}
               placeholder={customerName}
               disabled={busy !== null}
+              className="h-14 text-base"
             />
           </div>
 
           <Button
             size="touch"
             block
+            className="bg-emerald-600 text-lg font-bold hover:bg-emerald-700"
             disabled={busy !== null || !proof || completed}
             onClick={() => void onDelivered()}
           >
             <PackageCheck />
-            {busy === 'delivered' ? 'Saving…' : completed ? 'Saved' : 'Mark delivered'}
+            {busy === 'delivered'
+              ? t('action.saving')
+              : completed
+                ? t('action.saved')
+                : t('action.markDelivered')}
           </Button>
           {!proof && !completed ? (
-            <p className="text-center text-xs text-muted-foreground">
-              A photo is required before this can be marked delivered.
+            <p className="text-center text-sm font-medium text-muted-foreground">
+              {t('proof.required')}
             </p>
           ) : null}
         </div>
@@ -358,31 +380,37 @@ export function JobActions({
       {status === 'assigned' || status === 'picked_up' ? (
         failing ? (
           <div className="space-y-2 rounded-lg border border-amber-300 bg-amber-50 p-3">
-            <p className="text-sm font-medium text-amber-900">What went wrong?</p>
+            <p className="text-base font-semibold text-amber-900">{t('fail.title')}</p>
             <Textarea
               value={failReason}
               onChange={(e) => setFailReason(e.target.value)}
               rows={2}
-              placeholder="Customer not home, wrong address, phone off…"
+              placeholder={t('fail.placeholder')}
+              className="text-base"
             />
             <div className="flex gap-2">
               <Button
-                size="sm"
+                size="touch"
                 variant="destructive"
+                className="flex-1 font-bold"
                 disabled={busy !== null || completed}
                 onClick={() => void onFailed()}
               >
-                {busy === 'failed' ? 'Saving…' : completed ? 'Saved' : 'Confirm failed'}
+                {busy === 'failed'
+                  ? t('action.saving')
+                  : completed
+                    ? t('action.saved')
+                    : t('action.confirmFailed')}
               </Button>
-              <Button size="sm" variant="ghost" onClick={() => setFailing(false)}>
-                Cancel
+              <Button size="touch" variant="ghost" onClick={() => setFailing(false)}>
+                {t('action.cancel')}
               </Button>
             </div>
           </div>
         ) : (
-          <Button variant="ghost" size="sm" block onClick={() => setFailing(true)}>
+          <Button variant="ghost" size="touch" block onClick={() => setFailing(true)}>
             <TriangleAlert />
-            Cannot complete this delivery
+            {t('action.cannotDeliver')}
           </Button>
         )
       ) : null}

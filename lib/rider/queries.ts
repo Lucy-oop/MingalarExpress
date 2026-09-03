@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { sortRoute, DEFAULT_HUB } from '@/lib/rider/route-order'
 import type { RiderJob } from '@/components/rider/job-card'
 
 /**
@@ -69,6 +70,8 @@ function toJob(row: RawJob, extra?: Partial<RiderJob>): RiderJob {
     customerPhone: row.customer_phone,
     dropoffAddress: row.dropoff_address,
     dropoffArea: row.dropoff_area?.name ?? null,
+    dropoffLat: row.dropoff_lat,
+    dropoffLng: row.dropoff_lng,
     parcelDesc: row.parcel_desc,
     isFragile: row.is_fragile,
     paymentMethod: row.payment_method,
@@ -84,6 +87,10 @@ function toJob(row: RawJob, extra?: Partial<RiderJob>): RiderJob {
       ? {
           dropoffAddress: row.pickup_address,
           dropoffArea: null,
+          // The map link and the CALL button must point at the shop too, or a
+          // rider taps Directions and is sent to the customer they just failed.
+          dropoffLat: row.pickup_lat,
+          dropoffLng: row.pickup_lng,
           customerName: row.shops?.name ?? 'the shop',
           customerPhone: row.shops?.phone ?? row.customer_phone,
         }
@@ -123,6 +130,8 @@ export type RiderFeed = {
     earnedToday: number
     earnedWeek: number
     deliveredToday: number
+    /** Collection legs completed today — the other half of a rider's output. */
+    pickedUpToday: number
     activeOrders: number
     /** Of `earnedToday`, the part that came from closed route runs. */
     tripPayToday: number
@@ -144,7 +153,7 @@ export async function getRiderFeed(riderId: string): Promise<RiderFeed> {
         .from('trips')
         .select(
           `id, status, service_date, departed_at, route_id,
-           routes:route_id (code, name, name_mm, colour)`,
+           routes:route_id (code, name, name_mm, colour, hub_lat, hub_lng)`,
         )
         .in('status', ['planned', 'loading', 'departed', 'returned'])
         .order('service_date', { ascending: false })
@@ -174,19 +183,54 @@ export async function getRiderFeed(riderId: string): Promise<RiderFeed> {
 
   const all = (rows ?? []) as unknown as RawJob[]
 
-  const active = all
-    .map((r) => toJob(r, { stopOrder: stopOrder[r.dropoff_area_id ?? ''] ?? null }))
-    .sort((a, b) => {
-      // Manifest order along the run, then code so the list is stable.
-      const sa = a.stopOrder ?? 9999
-      const sb = b.stopOrder ?? 9999
-      return sa - sb || a.code.localeCompare(b.code)
-    })
+  const route = tripRow?.routes as unknown as
+    | {
+        code: string
+        name: string
+        name_mm: string | null
+        colour: string
+        hub_lat: number
+        hub_lng: number
+      }
+    | null
+
+  // The run's own hub if it has one, else Thingangyun. `routes_hub_in_service_area`
+  // guarantees a real point, so there is nothing to validate here.
+  const hub =
+    route && Number.isFinite(route.hub_lat) && Number.isFinite(route.hub_lng)
+      ? { lat: route.hub_lat, lng: route.hub_lng }
+      : DEFAULT_HUB
+
+  /**
+   * Ordered by the drive, not by the dispatcher's area list.
+   *
+   * `route_areas.stop_order` is a per-AREA sequence maintained by hand; it cannot
+   * know which parcels are on today's bike or where within an area they sit.
+   * `sortRoute` measures the actual destinations from the hub: deliveries
+   * outwards, then collections back in, so the day ends beside the hub rather
+   * than at the far edge of the city holding all the cash. The area's own stop
+   * number is still carried on the card.
+   *
+   * A return's destination is the SHOP, which is why the flip happens here and
+   * not inside sortRoute.
+   */
+  const active = sortRoute(
+    all.map((r) => ({
+      ...toJob(r, { stopOrder: stopOrder[r.dropoff_area_id ?? ''] ?? null }),
+      leg: r.trip_leg,
+      destination:
+        r.trip_leg === 'return'
+          ? { lat: r.pickup_lat, lng: r.pickup_lng }
+          : { lat: r.dropoff_lat, lng: r.dropoff_lng },
+    })),
+    hub,
+  ).map(({ destination: _destination, hubKm, stopNumber, ...job }) => ({
+    ...job,
+    hubKm,
+    stopNumber,
+  }))
 
   const s = (summary ?? {}) as Record<string, number | string | null>
-  const route = tripRow?.routes as unknown as
-    | { code: string; name: string; name_mm: string | null; colour: string }
-    | null
 
   return {
     active,
@@ -220,6 +264,7 @@ export async function getRiderFeed(riderId: string): Promise<RiderFeed> {
       earnedToday: Number(s.earned_today ?? 0),
       earnedWeek: Number(s.earned_week ?? 0),
       deliveredToday: Number(s.delivered_today ?? 0),
+      pickedUpToday: Number(s.picked_up_today ?? 0),
       activeOrders: Number(s.active_orders ?? 0),
       tripPayToday: Number(s.trip_pay_today ?? 0),
     },

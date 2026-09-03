@@ -5,6 +5,7 @@ import { Camera, ImageUp, RotateCcw } from 'lucide-react'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { prepareProofImage, type PreparedImage } from '@/lib/rider/image'
 import { cn } from '@/lib/utils'
+import type { Translate } from '@/lib/i18n'
 
 /**
  * Delivery-proof camera.
@@ -32,9 +33,11 @@ import { cn } from '@/lib/utils'
 export function ProofCapture({
   onReady,
   disabled,
+  t,
 }: {
   onReady: (image: PreparedImage | null) => void
   disabled?: boolean
+  t: Translate
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
   const inputId = useId()
@@ -105,9 +108,9 @@ export function ProofCapture({
                 </span>
               ) : null}
             </span>
-            <Button type="button" variant="ghost" size="sm" onClick={reset} disabled={disabled}>
+            <Button type="button" variant="outline" size="touch" onClick={reset} disabled={disabled}>
               <RotateCcw />
-              Retake
+              {t('action.retakePhoto')}
             </Button>
           </div>
         </div>
@@ -116,14 +119,14 @@ export function ProofCapture({
           htmlFor={inputId}
           className={cn(
             buttonVariants({ variant: 'outline', size: 'touch', block: true }),
-            'cursor-pointer border-dashed',
+            'min-h-20 cursor-pointer border-2 border-dashed text-lg font-bold',
             error && 'border-destructive',
             // A label has no disabled state, so it is spelled out.
             (disabled || busy) && 'pointer-events-none opacity-50',
           )}
         >
-          {busy ? <ImageUp className="animate-pulse" /> : <Camera />}
-          {busy ? 'Preparing photo…' : 'Take delivery photo'}
+          {busy ? <ImageUp className="animate-pulse" /> : <Camera className="size-6" />}
+          {busy ? t('action.preparing') : t('action.takePhoto')}
         </label>
       )}
 

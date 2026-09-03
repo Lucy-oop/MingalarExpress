@@ -21,11 +21,12 @@ Architecture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · Database: [supabas
 | 9 | All-orders screen for the office (`/admin/orders`) | **Done** — every parcel, every shop, every status |
 | 9b | Rider/trip integrity: a parcel on a run always names the run's rider | **Done** — migration 0015, found live on staging |
 | 10 | Contact log: the office records what was said, and shares `/o/<code>` | **Done** — migration 0017, append-only and dispatch-only |
+| 11 | Rider app: Burmese, hub-centred drive order, day counts, one-touch screens | **Done** — migrations 0018–0019 |
 
 Every route in the table above now ships. `/admin/super/*` is gated three times over:
 middleware (longest-prefix), `requireAdmin` in its layout, and RLS `is_admin()` on every write.
 
-**18 migrations · 170 SQL assertions across seven suites · 341 unit tests.**
+**19 migrations · 170 SQL assertions across seven suites · 363 unit tests.**
 `docs/ARCHITECTURE.md` describes the Phase 1–5 design and is partly superseded by
 phases 6–9 — it carries a banner saying exactly where. `docs/RUNBOOK.md` is
 current.

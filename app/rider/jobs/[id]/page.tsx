@@ -3,6 +3,8 @@ import Link from 'next/link'
 import type { Metadata } from 'next'
 import { ArrowLeft, Coins, MapPin, Navigation, Package, Phone, Store } from 'lucide-react'
 import { requireRider } from '@/lib/auth/guards'
+import { getLocale } from '@/lib/i18n/locale'
+import { translator } from '@/lib/i18n'
 import { getRiderJob } from '@/lib/rider/queries'
 import { JobSheet } from '@/components/rider/job-sheet'
 import { StatusBadge } from '@/components/orders/status-badge'
@@ -18,8 +20,9 @@ export default async function RiderJobPage({ params }: { params: Promise<{ id: s
 
   // RLS returns nothing unless the parcel is theirs, so another rider's job is a
   // 404 — not a permission message that would confirm the order exists.
-  const result = await getRiderJob(id, userId)
+  const [result, locale] = await Promise.all([getRiderJob(id, userId), getLocale()])
   if (!result) notFound()
+  const t = translator(locale)
 
   const { job, raw } = result
 
@@ -40,7 +43,7 @@ export default async function RiderJobPage({ params }: { params: Promise<{ id: s
         className="inline-flex items-center gap-1 text-sm text-muted-foreground"
       >
         <ArrowLeft className="size-4" />
-        All jobs
+        {t('nav.jobs')}
       </Link>
 
       <div className="flex items-start justify-between gap-2">
@@ -65,18 +68,18 @@ export default async function RiderJobPage({ params }: { params: Promise<{ id: s
         {money.total > 0 ? (
           <>
             <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
-              Collect from customer
+              {t('money.collect')}
             </p>
             <dl className="mt-1.5 space-y-1 text-sm">
               <div className="flex items-baseline justify-between gap-3">
-                <dt className="text-muted-foreground">Goods</dt>
+                <dt className="text-muted-foreground">{t('money.goods')}</dt>
                 <dd className="tabular-nums">{formatMmk(money.goods)}</dd>
               </div>
               <div className="flex items-baseline justify-between gap-3">
                 <dt className="text-muted-foreground">
-                  Delivery fee
+                  {t('money.fee')}
                   {!money.feeFromCustomer ? (
-                    <span className="ml-1 text-xs">(billed to the shop)</span>
+                    <span className="ml-1 text-xs">({t('money.feeOnShop')})</span>
                   ) : null}
                 </dt>
                 <dd className="tabular-nums">
@@ -84,8 +87,8 @@ export default async function RiderJobPage({ params }: { params: Promise<{ id: s
                 </dd>
               </div>
               <div className="flex items-baseline justify-between gap-3 border-t pt-1.5">
-                <dt className="font-medium">Total at the door</dt>
-                <dd className="flex items-center gap-1 text-lg font-semibold tabular-nums">
+                <dt className="font-semibold">{t('money.total')}</dt>
+                <dd className="flex items-center gap-1 text-2xl font-bold tabular-nums">
                   <Coins className="size-4 text-brand-gold" aria-hidden="true" />
                   {formatMmk(money.total)}
                 </dd>
@@ -94,13 +97,12 @@ export default async function RiderJobPage({ params }: { params: Promise<{ id: s
           </>
         ) : (
           <>
-            <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Payment</p>
-            <p className="mt-0.5 text-lg font-semibold">Prepaid</p>
-            <p className="text-xs text-muted-foreground">Collect nothing at the door.</p>
+            <p className="text-lg font-semibold">{t('money.prepaid')}</p>
+            <p className="text-sm text-muted-foreground">{t('money.collectNothing')}</p>
           </>
         )}
         <div className="mt-3 flex items-baseline justify-between gap-3 border-t pt-2 text-sm">
-          <span className="text-muted-foreground">You earn</span>
+          <span className="text-muted-foreground">{t('money.youEarn')}</span>
           <span className="font-semibold tabular-nums text-emerald-700">
             {job.commission !== null ? formatMmk(job.commission) : '—'}
           </span>
@@ -114,7 +116,7 @@ export default async function RiderJobPage({ params }: { params: Promise<{ id: s
       {showPickup ? (
         <Leg
           tone="pickup"
-          label="Pick up"
+          label={t('parcel.pickUp')}
           address={raw.pickup_address}
           note={raw.pickup_note}
           phone={raw.pickup_contact ?? raw.shops?.phone ?? null}
@@ -124,7 +126,7 @@ export default async function RiderJobPage({ params }: { params: Promise<{ id: s
       ) : null}
       <Leg
         tone="dropoff"
-        label="Deliver to"
+        label={t('parcel.deliverTo')}
         address={raw.dropoff_address}
         note={raw.dropoff_note}
         subtitle={`${job.customerName}${job.dropoffArea ? ` · ${job.dropoffArea}` : ''}`}
@@ -137,12 +139,12 @@ export default async function RiderJobPage({ params }: { params: Promise<{ id: s
       <div className="rounded-lg border bg-card p-3">
         <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
           <Package className="size-3.5" />
-          Parcel
+          {t('parcel.contents')}
         </p>
         <p className="mt-1 text-sm">{job.parcelDesc}</p>
         <p className="mt-0.5 text-xs text-muted-foreground">
           {raw.parcel_weight_g ? `${raw.parcel_weight_g} g` : 'Weight not given'}
-          {job.isFragile ? ' · FRAGILE — handle with care' : ''}
+          {job.isFragile ? ` · ${t('parcel.fragile')}` : ''}
         </p>
       </div>
 
@@ -154,6 +156,7 @@ export default async function RiderJobPage({ params }: { params: Promise<{ id: s
         customerName={job.customerName}
         pickup={{ lat: raw.pickup_lat, lng: raw.pickup_lng }}
         dropoff={{ lat: raw.dropoff_lat, lng: raw.dropoff_lng }}
+        t={t}
       />
     </div>
   )
