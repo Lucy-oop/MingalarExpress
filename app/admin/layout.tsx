@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { Banknote, Bike, LayoutDashboard, LogOut, Radio, Scale, Store } from 'lucide-react'
+import { Banknote, Bike, LayoutDashboard, LogOut, Package, Radio, Scale, Store } from 'lucide-react'
 import { requireDispatch, isAdmin } from '@/lib/auth/guards'
 import { signOut } from '@/lib/auth/actions'
 import { BrandMark } from '@/components/shared/brand-mark'
@@ -17,6 +17,9 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   // areas.
   const nav = [
     { href: '/admin/dispatcher', label: 'Dispatch', icon: Radio, show: true },
+    // Visible to dispatchers, not just admins: answering "where is this parcel"
+    // is the job of whoever picks up the phone.
+    { href: '/admin/orders', label: 'Orders', icon: Package, show: true },
     { href: '/admin/super', label: 'Overview', icon: LayoutDashboard, show: admin },
     { href: '/admin/super/riders', label: 'Riders', icon: Bike, show: admin },
     { href: '/admin/shops', label: 'Shops', icon: Store, show: admin },

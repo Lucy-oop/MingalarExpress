@@ -20,7 +20,19 @@ const STATUSES = Object.keys(ORDER_STATUS_LABEL) as OrderStatus[]
  * Every change resets to page 1. Staying on page 4 while narrowing a search to
  * six results shows an empty table and looks like the search is broken.
  */
-export function OrderFilters({ total, exportHref }: { total: number; exportHref: string }) {
+export function OrderFilters({
+  total,
+  exportHref,
+  basePath = '/shop/orders',
+  extra,
+}: {
+  total: number
+  exportHref: string
+  /** Which list this bar drives. The office's is the same bar, different route. */
+  basePath?: string
+  /** Slot for filters only one of the two lists has, e.g. the office's shop picker. */
+  extra?: React.ReactNode
+}) {
   const router = useRouter()
   const params = useSearchParams()
 
@@ -43,9 +55,9 @@ export function OrderFilters({ total, exportHref }: { total: number; exportHref:
         else next.delete(k)
       }
       next.delete('page')
-      router.push(`/shop/orders?${next.toString()}`)
+      router.push(`${basePath}?${next.toString()}`)
     },
-    [params, router],
+    [params, router, basePath],
   )
 
   const hasFilters = Boolean(status || from || to || params.get('q'))
@@ -72,6 +84,8 @@ export function OrderFilters({ total, exportHref }: { total: number; exportHref:
             className="pl-8"
           />
         </form>
+
+        {extra}
 
         <Select
           value={status}
@@ -108,7 +122,7 @@ export function OrderFilters({ total, exportHref }: { total: number; exportHref:
         </div>
 
         {hasFilters ? (
-          <Button variant="ghost" size="sm" onClick={() => router.push('/shop/orders')}>
+          <Button variant="ghost" size="sm" onClick={() => router.push(basePath)}>
             <X />
             Clear
           </Button>

@@ -425,7 +425,12 @@ function sanitiseSearch(raw: string): string {
   return raw.trim().replace(/[,()*]/g, ' ').replace(/\s+/g, ' ').slice(0, 80)
 }
 
-function applyFilters<T>(query: T, f: OrderFilters): T {
+/**
+ * Shared by the shop's list and the office's. Exported rather than duplicated:
+ * the date-boundary handling and the `.or()` sanitising are exactly the kind of
+ * detail that drifts when copied.
+ */
+export function applyOrderFilters<T>(query: T, f: OrderFilters): T {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let q = query as any
   if (f.needsDecision) {
@@ -465,7 +470,7 @@ export async function searchShopOrders(filters: OrderFilters): Promise<OrderPage
   const page = Math.max(filters.page ?? 1, 1)
   const offset = (page - 1) * pageSize
 
-  const query = applyFilters(
+  const query = applyOrderFilters(
     supabase
       .from('orders')
       .select(ORDER_LIST_COLUMNS, { count: 'exact' })
@@ -489,7 +494,7 @@ export async function searchShopOrders(filters: OrderFilters): Promise<OrderPage
 /** Every row matching the filters, for the CSV export. Capped, never paged. */
 export async function exportShopOrders(filters: OrderFilters): Promise<ShopOrderRow[]> {
   const supabase = await createClient()
-  const query = applyFilters(
+  const query = applyOrderFilters(
     supabase
       .from('orders')
       .select(ORDER_LIST_COLUMNS)
