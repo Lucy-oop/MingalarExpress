@@ -70,6 +70,23 @@ export function useOfflineQueue() {
             proofPath = path
           }
 
+          // The KBZPay receipt rides along the same way, under its own key so a
+          // retry lands on the same object.
+          let kpayProofPath: string | undefined
+          if (item.kind === 'delivered' && item.kpayProof) {
+            const path = `${item.orderId}/kpay-${item.id}.${
+              item.kpayProofContentType === 'image/jpeg' ? 'jpg' : 'webp'
+            }`
+            const { error: kpayError } = await supabase.storage
+              .from('delivery-proofs')
+              .upload(path, item.kpayProof, {
+                contentType: item.kpayProofContentType ?? 'image/webp',
+                upsert: true,
+              })
+            if (kpayError) throw new Error(kpayError.message)
+            kpayProofPath = path
+          }
+
           const result =
              await advanceOrder({
                   orderId: item.orderId,
@@ -79,6 +96,8 @@ export function useOfflineQueue() {
                   proofPath,
                   receiver: item.receiver,
                   reason: item.reason,
+                  collectedVia: item.collectedVia,
+                  kpayProofPath,
                 })
 
           if (result.ok) {

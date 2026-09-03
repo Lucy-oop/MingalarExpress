@@ -1,0 +1,21 @@
+-- ============================================================================
+--  MINGALAR EXPRESS  ·  0020 — ONE ENUM VALUE, ON ITS OWN
+--
+--  `ALTER TYPE ... ADD VALUE` cannot be USED in the transaction that adds it
+--  ("unsafe use of new value"), so the value lands here and 0021 is the first
+--  migration allowed to write it. Same reason 0012 exists for `returned`.
+--
+--  WHY A NEW cod_status AT ALL. The existing values all describe cash:
+--
+--    pending    cash is expected and nobody has it yet
+--    collected  the RIDER is holding it
+--    remitted   the rider has handed it in
+--    settled    it is closed out
+--
+--  A KPay payment fits none of them. The customer has paid, the rider holds
+--  nothing, and the office has not yet checked the transfer against the bank —
+--  so the money is real but unverified. Calling that `collected` would tell
+--  settlement the rider owes 48,500 in cash they never touched.
+-- ============================================================================
+
+alter type public.cod_status add value if not exists 'kpay_pending';

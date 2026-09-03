@@ -99,6 +99,23 @@ export const DICTIONARY = {
   'proof.returnReceiver': { en: 'Who at the shop took it back?', my: 'ဆိုင်မှ ဘယ်သူ လက်ခံသလဲ' },
   'proof.returnReceiverRequired': { en: 'Write who at the shop took it back.', my: 'ဆိုင်မှ လက်ခံသူ နာမည် ထည့်ပါ။' },
 
+  // ---- payment --------------------------------------------------------------
+  'pay.how': { en: 'How did the customer pay?', my: 'ဝယ်သူ ဘယ်လို ပေးသလဲ' },
+  'pay.cash': { en: 'CASH', my: 'ငွေသား' },
+  'pay.kpay': { en: 'KBZPay', my: 'KBZPay' },
+  'pay.showQr': { en: 'Show this to the customer', my: 'ဝယ်သူကို ဒီကို ပြပါ' },
+  'pay.accountName': { en: 'Account name', my: 'အကောင့်နာမည်' },
+  'pay.accountPhone': { en: 'Phone', my: 'ဖုန်း' },
+  'pay.amountToSend': { en: 'Amount to transfer', my: 'လွှဲရမည့် ပမာဏ' },
+  'pay.receiptTitle': { en: 'Photo of the KBZPay receipt', my: 'KBZPay ပြေစာ ဓာတ်ပုံ' },
+  'pay.receiptHint': {
+    en: 'The office checks this against the bank before it counts.',
+    my: 'ရုံးမှ ဘဏ်နှင့် စစ်ပြီးမှ အတည်ဖြစ်ပါမည်။',
+  },
+  'pay.receiptRequired': { en: 'Photograph the KBZPay receipt first.', my: 'KBZPay ပြေစာ အရင်ရိုက်ပါ။' },
+  'pay.takeReceipt': { en: 'PHOTO OF RECEIPT', my: 'ပြေစာ ရိုက်ပါ' },
+  'pay.chooseFirst': { en: 'Choose how the customer paid.', my: 'ပေးချေမှု ရွေးပါ။' },
+
   // ---- failure --------------------------------------------------------------
   'fail.title': { en: 'What went wrong?', my: 'ဘာဖြစ်သလဲ' },
   'fail.placeholder': { en: 'Customer not home, phone off, wrong address…', my: 'အိမ်မရှိ၊ ဖုန်းပိတ်၊ လိပ်စာမှား…' },

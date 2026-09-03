@@ -23,7 +23,7 @@ for f in supabase/migrations/*.sql; do
   run < "$f"
 done
 echo "--- seed"; run < supabase/seed.sql
-for t in rls_smoke lifecycle_edge storage_policies assign_flow settlement_flow route_flow failed_flow; do
+for t in rls_smoke lifecycle_edge storage_policies assign_flow settlement_flow route_flow failed_flow kpay_flow; do
   echo "--- test $t"
   # each suite assumes a clean DB, so reseed between them
   if [ "$t" != "rls_smoke" ]; then

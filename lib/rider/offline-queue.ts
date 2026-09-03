@@ -36,6 +36,17 @@ export type QueuedAction = {
   /** Proof photo, still un-uploaded. Stored as a Blob, not base64. */
   proof?: Blob
   proofContentType?: string
+  /**
+   * How the customer paid, and the KBZPay receipt (0021).
+   *
+   * Queued WITH the parcel, not re-derived on replay. A KPay delivery that
+   * flushed as cash would book the money back onto the rider — which is the
+   * exact bug the whole KPay branch exists to prevent, arriving by the back
+   * door six hours later when the signal returns.
+   */
+  collectedVia?: 'cash' | 'kpay'
+  kpayProof?: Blob
+  kpayProofContentType?: string
   createdAt: number
   attempts: number
   lastError?: string

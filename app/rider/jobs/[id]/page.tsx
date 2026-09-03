@@ -5,7 +5,7 @@ import { ArrowLeft, Coins, MapPin, Navigation, Package, Phone, Store } from 'luc
 import { requireRider } from '@/lib/auth/guards'
 import { getLocale } from '@/lib/i18n/locale'
 import { translator } from '@/lib/i18n'
-import { getRiderJob } from '@/lib/rider/queries'
+import { getRiderJob, getKpayAccount } from '@/lib/rider/queries'
 import { JobSheet } from '@/components/rider/job-sheet'
 import { StatusBadge } from '@/components/orders/status-badge'
 import { codBreakdown } from '@/lib/pricing'
@@ -20,7 +20,11 @@ export default async function RiderJobPage({ params }: { params: Promise<{ id: s
 
   // RLS returns nothing unless the parcel is theirs, so another rider's job is a
   // 404 — not a permission message that would confirm the order exists.
-  const [result, locale] = await Promise.all([getRiderJob(id, userId), getLocale()])
+  const [result, locale, kpayAccount] = await Promise.all([
+    getRiderJob(id, userId),
+    getLocale(),
+    getKpayAccount(),
+  ])
   if (!result) notFound()
   const t = translator(locale)
 
@@ -156,6 +160,8 @@ export default async function RiderJobPage({ params }: { params: Promise<{ id: s
         customerName={job.customerName}
         pickup={{ lat: raw.pickup_lat, lng: raw.pickup_lng }}
         dropoff={{ lat: raw.dropoff_lat, lng: raw.dropoff_lng }}
+        codAmount={money.total}
+        kpayAccount={kpayAccount}
         t={t}
       />
     </div>

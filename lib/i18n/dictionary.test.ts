@@ -39,7 +39,10 @@ describe('the dictionary', () => {
    * falls silent, and this is the only thing left watching.
    */
   test('nothing was left untranslated by copy-paste', () => {
-    const allowed = new Set<string>([])
+    // Brand names only. KBZPay is written the same way on the app icon a Yangon
+    // customer is holding, so translating it would make it harder to recognise,
+    // not easier.
+    const allowed = new Set<string>(['pay.kpay'])
     for (const key of KEYS) {
       const en: string = DICTIONARY[key].en
       const my: string = DICTIONARY[key].my

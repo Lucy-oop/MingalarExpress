@@ -24,6 +24,8 @@ export function JobSheet({
   customerName,
   pickup,
   dropoff,
+  codAmount,
+  kpayAccount,
   t,
 }: {
   orderId: string
@@ -33,6 +35,8 @@ export function JobSheet({
   customerName: string
   pickup: LatLng
   dropoff: LatLng
+  codAmount: number
+  kpayAccount: { name: string | null; phone: string | null; qrUrl: string }
   t: Translate
 }) {
   const [position, setPosition] = useState<LatLng | null>(null)
@@ -85,6 +89,8 @@ export function JobSheet({
         leg={leg}
         customerName={customerName}
         position={position}
+        codAmount={codAmount}
+        kpayAccount={kpayAccount}
         t={t}
       />
     </div>

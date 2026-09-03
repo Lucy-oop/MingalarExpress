@@ -34,10 +34,13 @@ export function ProofCapture({
   onReady,
   disabled,
   t,
+  label,
 }: {
   onReady: (image: PreparedImage | null) => void
   disabled?: boolean
   t: Translate
+  /** Overrides the button text — the KPay receipt is not a delivery photo. */
+  label?: string
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
   const inputId = useId()
@@ -126,7 +129,7 @@ export function ProofCapture({
           )}
         >
           {busy ? <ImageUp className="animate-pulse" /> : <Camera className="size-6" />}
-          {busy ? t('action.preparing') : t('action.takePhoto')}
+          {busy ? t('action.preparing') : (label ?? t('action.takePhoto'))}
         </label>
       )}
 

@@ -8,6 +8,7 @@ import { Alert } from '@/components/ui/alert'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { ProofCapture } from '@/components/rider/proof-capture'
+import { PaymentChoice } from '@/components/rider/payment-choice'
 import { advanceOrder } from '@/lib/rider/actions'
 import { enqueue } from '@/lib/rider/offline-queue'
 import { explainRiderError } from '@/lib/rider/errors'
@@ -27,6 +28,10 @@ export type JobActionsProps = {
   customerName: string
   /** Current GPS fix, stamped onto the checkpoint. */
   position: { lat: number; lng: number } | null
+  /** What the rider collects at the door. 0 for a prepaid parcel. */
+  codAmount: number
+  /** The office's KBZPay account, from app_settings. */
+  kpayAccount: { name: string | null; phone: string | null; qrUrl: string }
   t: Translate
 }
 
@@ -56,6 +61,8 @@ export function JobActions({
   leg,
   customerName,
   position,
+  codAmount,
+  kpayAccount,
   t,
 }: JobActionsProps) {
   const router = useRouter()
@@ -63,6 +70,15 @@ export function JobActions({
   const [busy, setBusy] = useState<string | null>(null)
   const [feedback, setFeedback] = useState<Feedback>(null)
   const [proof, setProof] = useState<PreparedImage | null>(null)
+  /**
+   * Cash or KBZPay, and the receipt when it is KBZPay.
+   *
+   * `collectedVia` starts NULL rather than 'cash'. A pre-selected default is a
+   * button a tired rider taps past, and getting this wrong books cash against
+   * someone who took none — so the choice has to be made, not accepted.
+   */
+  const [collectedVia, setCollectedVia] = useState<'cash' | 'kpay' | null>(null)
+  const [kpayProof, setKpayProof] = useState<PreparedImage | null>(null)
   const [receiver, setReceiver] = useState('')
   const [failing, setFailing] = useState(false)
   const [failReason, setFailReason] = useState('')
@@ -188,22 +204,42 @@ export function JobActions({
     }
   }
 
+  const needsPayment = codAmount > 0
   const onDelivered = async () => {
     if (!proof) {
       setFeedback({ tone: 'error', message: t('fail.photoFirst') })
       return
     }
+    if (needsPayment && collectedVia === null) {
+      setFeedback({ tone: 'error', message: t('pay.chooseFirst') })
+      return
+    }
+    if (collectedVia === 'kpay' && !kpayProof) {
+      setFeedback({ tone: 'error', message: t('pay.receiptRequired') })
+      return
+    }
     setBusy('delivered')
     setFeedback(null)
 
-    // Photo first: the storage policy only allows writes while the order is
+    // Photos first: the storage policy only allows writes while the order is
     // still assigned/picked_up, so uploading after the transition would fail.
     const path = proofObjectPath(orderId, proof.extension)
+    const kpayPath = kpayProof ? proofObjectPath(orderId, kpayProof.extension) : undefined
     try {
       const { error: uploadError } = await supabase.storage
         .from('delivery-proofs')
         .upload(path, proof.blob, { contentType: proof.contentType, upsert: false })
       if (uploadError) throw new Error(uploadError.message)
+
+      if (kpayProof && kpayPath) {
+        const { error: kpayError } = await supabase.storage
+          .from('delivery-proofs')
+          .upload(kpayPath, kpayProof.blob, {
+            contentType: kpayProof.contentType,
+            upsert: false,
+          })
+        if (kpayError) throw new Error(kpayError.message)
+      }
 
       const result = await advanceOrder({
         orderId,
@@ -212,6 +248,8 @@ export function JobActions({
         lng: position?.lng,
         proofPath: path,
         receiver: receiver.trim() || customerName,
+        collectedVia: collectedVia ?? undefined,
+        kpayProofPath: kpayPath,
       })
       if (result.ok) return done(result.message)
       await handleFailure(`${result.message} ${result.kind}`, queuedDelivery())
@@ -230,6 +268,11 @@ export function JobActions({
         receiver: receiver.trim() || customerName,
         proof: proof!.blob,
         proofContentType: proof!.contentType,
+        // Queued with the parcel: a KPay delivery replayed as cash would put
+        // the money back on the rider.
+        collectedVia: collectedVia ?? undefined,
+        kpayProof: kpayProof?.blob,
+        kpayProofContentType: kpayProof?.contentType,
       }
     }
   }
@@ -338,6 +381,38 @@ export function JobActions({
           <p className="text-base font-semibold">{t('proof.title')}</p>
           <ProofCapture onReady={setProof} disabled={busy !== null || completed} t={t} />
 
+          {/* Only for a parcel with money on it. A prepaid delivery has nothing
+              to choose and the question would be noise. */}
+          {needsPayment ? (
+            <div className="border-t pt-3">
+              <PaymentChoice
+                value={collectedVia}
+                onChange={(via) => {
+                  setCollectedVia(via)
+                  setFeedback(null)
+                  if (via === 'cash') setKpayProof(null)
+                }}
+                amount={codAmount}
+                account={kpayAccount}
+                disabled={busy !== null || completed}
+                t={t}
+              />
+            </div>
+          ) : null}
+
+          {collectedVia === 'kpay' ? (
+            <div className="space-y-2 border-t pt-3">
+              <p className="text-base font-semibold">{t('pay.receiptTitle')}</p>
+              <ProofCapture
+                onReady={setKpayProof}
+                disabled={busy !== null || completed}
+                t={t}
+                label={t('pay.takeReceipt')}
+              />
+              <p className="text-sm text-muted-foreground">{t('pay.receiptHint')}</p>
+            </div>
+          ) : null}
+
           <div className="space-y-1.5">
             <label htmlFor="receiver" className="text-sm font-medium">
               {t('proof.receiver')}{' '}
@@ -359,7 +434,13 @@ export function JobActions({
             size="touch"
             block
             className="bg-emerald-600 text-lg font-bold hover:bg-emerald-700"
-            disabled={busy !== null || !proof || completed}
+            disabled={
+              busy !== null ||
+              !proof ||
+              completed ||
+              (needsPayment && collectedVia === null) ||
+              (collectedVia === 'kpay' && !kpayProof)
+            }
             onClick={() => void onDelivered()}
           >
             <PackageCheck />

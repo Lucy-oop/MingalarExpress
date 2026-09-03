@@ -290,3 +290,30 @@ export async function getRiderJob(orderId: string, riderId: string) {
 
   return { job: toJob(raw), raw }
 }
+
+/**
+ * The office's KBZPay account, for the QR the rider shows a customer.
+ *
+ * `app_settings` is readable by every authenticated role, so no RPC is needed.
+ * Falls back to the static path rather than throwing: a rider who cannot see the
+ * account name can still show the QR, and a delivery must never be blocked by a
+ * settings read.
+ */
+export async function getKpayAccount(): Promise<{
+  name: string | null
+  phone: string | null
+  qrUrl: string
+}> {
+  const supabase = await createClient()
+  const { data } = await supabase
+    .from('app_settings')
+    .select('kpay_account_name, kpay_phone, kpay_qr_url')
+    .eq('id', true)
+    .maybeSingle()
+
+  return {
+    name: data?.kpay_account_name ?? null,
+    phone: data?.kpay_phone ?? null,
+    qrUrl: data?.kpay_qr_url ?? '/kpay-qr.png',
+  }
+}

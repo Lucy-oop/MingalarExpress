@@ -1,5 +1,15 @@
 import Link from 'next/link'
-import { Banknote, Bike, LayoutDashboard, LogOut, Package, Radio, Scale, Store } from 'lucide-react'
+import {
+  Banknote,
+  Bike,
+  LayoutDashboard,
+  LogOut,
+  Package,
+  Radio,
+  Scale,
+  Smartphone,
+  Store,
+} from 'lucide-react'
 import { requireDispatch, isAdmin } from '@/lib/auth/guards'
 import { signOut } from '@/lib/auth/actions'
 import { BrandMark } from '@/components/shared/brand-mark'
@@ -20,6 +30,10 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     // Visible to dispatchers, not just admins: answering "where is this parcel"
     // is the job of whoever picks up the phone.
     { href: '/admin/orders', label: 'Orders', icon: Package, show: true },
+    // Dispatchers too, not admins only: a KPay transfer sits in neither the
+    // rider's hands nor the books until somebody checks it, and leaving that to
+    // one person is how a queue builds up for a week.
+    { href: '/admin/kpay', label: 'KBZPay', icon: Smartphone, show: true },
     { href: '/admin/super', label: 'Overview', icon: LayoutDashboard, show: admin },
     { href: '/admin/super/riders', label: 'Riders', icon: Bike, show: admin },
     { href: '/admin/shops', label: 'Shops', icon: Store, show: admin },

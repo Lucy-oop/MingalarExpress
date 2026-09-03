@@ -73,6 +73,10 @@ export async function advanceOrder(input: {
   proofPath?: string
   receiver?: string
   reason?: string
+  /** How the customer paid. Omitted means cash — see the note in migration 0021. */
+  collectedVia?: 'cash' | 'kpay'
+  /** delivery-proofs path for the KBZPay receipt. Required when collectedVia is kpay. */
+  kpayProofPath?: string
 }): Promise<RiderActionResult> {
   try {
     const { supabase } = await riderClient()
@@ -84,6 +88,8 @@ export async function advanceOrder(input: {
       p_proof: input.proofPath,
       p_receiver: input.receiver,
       p_reason: input.reason,
+      p_collected_via: input.collectedVia,
+      p_kpay_proof: input.kpayProofPath,
     })
     if (error) {
       const e = explainRiderError(error.message)

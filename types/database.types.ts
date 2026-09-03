@@ -1,4 +1,4 @@
-// Generated from migrations 0001-0018 via postgres-meta (the same generator
+// Generated from migrations 0001-0021 via postgres-meta (the same generator
 // the Supabase CLI uses). DO NOT EDIT BY HAND.
 // Regenerate:  npm run db:types      (supabase gen types typescript --local)
 export type Json =
@@ -25,6 +25,9 @@ export type Database = {
           geocoder_base_url: string
           geocoder_provider: string
           id: boolean
+          kpay_account_name: string | null
+          kpay_phone: string | null
+          kpay_qr_url: string
           map_center_lat: number
           map_center_lng: number
           map_default_zoom: number
@@ -58,6 +61,9 @@ export type Database = {
           geocoder_base_url?: string
           geocoder_provider?: string
           id?: boolean
+          kpay_account_name?: string | null
+          kpay_phone?: string | null
+          kpay_qr_url?: string
           map_center_lat?: number
           map_center_lng?: number
           map_default_zoom?: number
@@ -91,6 +97,9 @@ export type Database = {
           geocoder_base_url?: string
           geocoder_provider?: string
           id?: boolean
+          kpay_account_name?: string | null
+          kpay_phone?: string | null
+          kpay_qr_url?: string
           map_center_lat?: number
           map_center_lng?: number
           map_default_zoom?: number
@@ -417,6 +426,7 @@ export type Database = {
           cod_amount: number
           cod_status: Database["public"]["Enums"]["cod_status"]
           code: string
+          collected_via: string | null
           created_at: string
           created_by: string
           customer_name: string
@@ -434,6 +444,11 @@ export type Database = {
           fee_payer: string
           id: string
           is_fragile: boolean
+          kpay_confirmed_at: string | null
+          kpay_confirmed_by: string | null
+          kpay_proof_path: string | null
+          kpay_reject_reason: string | null
+          kpay_rejected_at: string | null
           parcel_desc: string
           parcel_value: number | null
           parcel_weight_g: number | null
@@ -472,6 +487,7 @@ export type Database = {
           cod_amount?: number
           cod_status?: Database["public"]["Enums"]["cod_status"]
           code?: string
+          collected_via?: string | null
           created_at?: string
           created_by: string
           customer_name: string
@@ -489,6 +505,11 @@ export type Database = {
           fee_payer?: string
           id?: string
           is_fragile?: boolean
+          kpay_confirmed_at?: string | null
+          kpay_confirmed_by?: string | null
+          kpay_proof_path?: string | null
+          kpay_reject_reason?: string | null
+          kpay_rejected_at?: string | null
           parcel_desc: string
           parcel_value?: number | null
           parcel_weight_g?: number | null
@@ -527,6 +548,7 @@ export type Database = {
           cod_amount?: number
           cod_status?: Database["public"]["Enums"]["cod_status"]
           code?: string
+          collected_via?: string | null
           created_at?: string
           created_by?: string
           customer_name?: string
@@ -544,6 +566,11 @@ export type Database = {
           fee_payer?: string
           id?: string
           is_fragile?: boolean
+          kpay_confirmed_at?: string | null
+          kpay_confirmed_by?: string | null
+          kpay_proof_path?: string | null
+          kpay_reject_reason?: string | null
+          kpay_rejected_at?: string | null
           parcel_desc?: string
           parcel_value?: number | null
           parcel_weight_g?: number | null
@@ -593,6 +620,13 @@ export type Database = {
             columns: ["dropoff_area_id"]
             isOneToOne: false
             referencedRelation: "service_areas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orders_kpay_confirmed_by_fkey"
+            columns: ["kpay_confirmed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
           {
@@ -1160,6 +1194,8 @@ export type Database = {
       admin_overview: { Args: never; Returns: Json }
       advance_order: {
         Args: {
+          p_collected_via?: string
+          p_kpay_proof?: string
           p_lat?: number
           p_lng?: number
           p_order_id: string
@@ -1177,6 +1213,7 @@ export type Database = {
           cod_amount: number
           cod_status: Database["public"]["Enums"]["cod_status"]
           code: string
+          collected_via: string | null
           created_at: string
           created_by: string
           customer_name: string
@@ -1194,6 +1231,11 @@ export type Database = {
           fee_payer: string
           id: string
           is_fragile: boolean
+          kpay_confirmed_at: string | null
+          kpay_confirmed_by: string | null
+          kpay_proof_path: string | null
+          kpay_reject_reason: string | null
+          kpay_rejected_at: string | null
           parcel_desc: string
           parcel_value: number | null
           parcel_weight_g: number | null
@@ -1268,6 +1310,7 @@ export type Database = {
           cod_amount: number
           cod_status: Database["public"]["Enums"]["cod_status"]
           code: string
+          collected_via: string | null
           created_at: string
           created_by: string
           customer_name: string
@@ -1285,6 +1328,11 @@ export type Database = {
           fee_payer: string
           id: string
           is_fragile: boolean
+          kpay_confirmed_at: string | null
+          kpay_confirmed_by: string | null
+          kpay_proof_path: string | null
+          kpay_reject_reason: string | null
+          kpay_rejected_at: string | null
           parcel_desc: string
           parcel_value: number | null
           parcel_weight_g: number | null
@@ -1517,6 +1565,76 @@ export type Database = {
           trip_pay: number
         }[]
       }
+      confirm_kpay_payment: {
+        Args: { p_order_id: string }
+        Returns: {
+          assign_distance_km: number | null
+          assigned_at: string | null
+          assigned_by: string | null
+          cancel_reason: string | null
+          closed_at: string | null
+          cod_amount: number
+          cod_status: Database["public"]["Enums"]["cod_status"]
+          code: string
+          collected_via: string | null
+          created_at: string
+          created_by: string
+          customer_name: string
+          customer_phone: string
+          customer_phone_alt: string | null
+          delivered_at: string | null
+          delivery_fee: number
+          dropoff_address: string
+          dropoff_area_id: string | null
+          dropoff_geog: unknown
+          dropoff_lat: number
+          dropoff_lng: number
+          dropoff_note: string | null
+          fail_reason: string | null
+          fee_payer: string
+          id: string
+          is_fragile: boolean
+          kpay_confirmed_at: string | null
+          kpay_confirmed_by: string | null
+          kpay_proof_path: string | null
+          kpay_reject_reason: string | null
+          kpay_rejected_at: string | null
+          parcel_desc: string
+          parcel_value: number | null
+          parcel_weight_g: number | null
+          payment_method: Database["public"]["Enums"]["payment_method"]
+          picked_up_at: string | null
+          pickup_address: string
+          pickup_contact: string | null
+          pickup_geog: unknown
+          pickup_lat: number
+          pickup_lng: number
+          pickup_note: string | null
+          platform_fee_amount: number | null
+          proof_photo_path: string | null
+          proof_receiver: string | null
+          resolution: string | null
+          resolution_note: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+          rider_commission_amount: number | null
+          rider_commission_pct: number | null
+          rider_id: string | null
+          route_distance_km: number | null
+          route_id: string | null
+          shop_id: string
+          status: Database["public"]["Enums"]["order_status"]
+          trip_id: string | null
+          trip_leg: string | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "orders"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       depart_trip: {
         Args: { p_override_reason?: string; p_trip_id: string }
         Returns: {
@@ -1670,6 +1788,76 @@ export type Database = {
         Args: { p_parcels: number; p_pickups?: number; p_route_id?: string }
         Returns: Json
       }
+      reject_kpay_payment: {
+        Args: { p_order_id: string; p_reason: string }
+        Returns: {
+          assign_distance_km: number | null
+          assigned_at: string | null
+          assigned_by: string | null
+          cancel_reason: string | null
+          closed_at: string | null
+          cod_amount: number
+          cod_status: Database["public"]["Enums"]["cod_status"]
+          code: string
+          collected_via: string | null
+          created_at: string
+          created_by: string
+          customer_name: string
+          customer_phone: string
+          customer_phone_alt: string | null
+          delivered_at: string | null
+          delivery_fee: number
+          dropoff_address: string
+          dropoff_area_id: string | null
+          dropoff_geog: unknown
+          dropoff_lat: number
+          dropoff_lng: number
+          dropoff_note: string | null
+          fail_reason: string | null
+          fee_payer: string
+          id: string
+          is_fragile: boolean
+          kpay_confirmed_at: string | null
+          kpay_confirmed_by: string | null
+          kpay_proof_path: string | null
+          kpay_reject_reason: string | null
+          kpay_rejected_at: string | null
+          parcel_desc: string
+          parcel_value: number | null
+          parcel_weight_g: number | null
+          payment_method: Database["public"]["Enums"]["payment_method"]
+          picked_up_at: string | null
+          pickup_address: string
+          pickup_contact: string | null
+          pickup_geog: unknown
+          pickup_lat: number
+          pickup_lng: number
+          pickup_note: string | null
+          platform_fee_amount: number | null
+          proof_photo_path: string | null
+          proof_receiver: string | null
+          resolution: string | null
+          resolution_note: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+          rider_commission_amount: number | null
+          rider_commission_pct: number | null
+          rider_id: string | null
+          route_distance_km: number | null
+          route_id: string | null
+          shop_id: string
+          status: Database["public"]["Enums"]["order_status"]
+          trip_id: string | null
+          trip_leg: string | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "orders"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       remit_cod: {
         Args: { p_amount: number; p_memo?: string; p_rider_id: string }
         Returns: number
@@ -1712,6 +1900,7 @@ export type Database = {
           cod_amount: number
           cod_status: Database["public"]["Enums"]["cod_status"]
           code: string
+          collected_via: string | null
           created_at: string
           created_by: string
           customer_name: string
@@ -1729,6 +1918,11 @@ export type Database = {
           fee_payer: string
           id: string
           is_fragile: boolean
+          kpay_confirmed_at: string | null
+          kpay_confirmed_by: string | null
+          kpay_proof_path: string | null
+          kpay_reject_reason: string | null
+          kpay_rejected_at: string | null
           parcel_desc: string
           parcel_value: number | null
           parcel_weight_g: number | null
@@ -1852,7 +2046,13 @@ export type Database = {
       }
     }
     Enums: {
-      cod_status: "none" | "pending" | "collected" | "remitted" | "settled"
+      cod_status:
+        | "none"
+        | "pending"
+        | "collected"
+        | "remitted"
+        | "settled"
+        | "kpay_pending"
       ledger_kind:
         | "cod_collected"
         | "cod_remitted"
@@ -2007,7 +2207,14 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      cod_status: ["none", "pending", "collected", "remitted", "settled"],
+      cod_status: [
+        "none",
+        "pending",
+        "collected",
+        "remitted",
+        "settled",
+        "kpay_pending",
+      ],
       ledger_kind: [
         "cod_collected",
         "cod_remitted",
