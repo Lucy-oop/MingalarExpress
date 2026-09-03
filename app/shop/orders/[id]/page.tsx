@@ -265,6 +265,7 @@ export default async function ShopOrderDetailPage({
                 current={order.status}
                 events={events}
                 reason={order.fail_reason ?? order.cancel_reason ?? null}
+                maxAttempts={maxAttempts}
               />
             </CardContent>
           </Card>

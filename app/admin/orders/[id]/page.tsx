@@ -239,6 +239,7 @@ export default async function AdminOrderDetailPage({
                 current={order.status}
                 events={events}
                 reason={order.fail_reason ?? order.cancel_reason ?? null}
+                maxAttempts={maxAttempts}
               />
               <p className="mt-3 text-xs text-muted-foreground">
                 {attempts > 0

@@ -85,7 +85,14 @@ export default async function TrackPage({ params }: { params: Promise<{ code: st
           <CardTitle className="text-base">Progress</CardTitle>
         </CardHeader>
         <CardContent>
-          <StatusTimeline current={order.status} events={order.timeline ?? []} />
+          {/* `audience="customer"` matters: the shop-facing copy talks about
+              "your shop" and counts attempts, neither of which belongs on a
+              page a customer opens from a tracking link. */}
+          <StatusTimeline
+            current={order.status}
+            events={order.timeline ?? []}
+            audience="customer"
+          />
         </CardContent>
       </Card>
 
