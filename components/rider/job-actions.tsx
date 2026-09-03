@@ -15,7 +15,7 @@ import { explainRiderError } from '@/lib/rider/errors'
 import { proofObjectPath, type PreparedImage } from '@/lib/rider/image'
 import { createClient } from '@/lib/supabase/client'
 import type { OrderStatus } from '@/types/domain'
-import type { Translate } from '@/lib/i18n'
+import { useT } from '@/components/shared/i18n-provider'
 
 type Feedback = { tone: 'success' | 'error' | 'info'; message: string } | null
 
@@ -32,7 +32,6 @@ export type JobActionsProps = {
   codAmount: number
   /** The office's KBZPay account, from app_settings. */
   kpayAccount: { name: string | null; phone: string | null; qrUrl: string }
-  t: Translate
 }
 
 /**
@@ -63,8 +62,8 @@ export function JobActions({
   position,
   codAmount,
   kpayAccount,
-  t,
 }: JobActionsProps) {
+  const t = useT()
   const router = useRouter()
   const supabase = createClient()
   const [busy, setBusy] = useState<string | null>(null)
@@ -379,7 +378,7 @@ export function JobActions({
       {leg !== 'return' && status === 'picked_up' ? (
         <div className="space-y-3 rounded-lg border bg-card p-3">
           <p className="text-base font-semibold">{t('proof.title')}</p>
-          <ProofCapture onReady={setProof} disabled={busy !== null || completed} t={t} />
+          <ProofCapture onReady={setProof} disabled={busy !== null || completed} />
 
           {/* Only for a parcel with money on it. A prepaid delivery has nothing
               to choose and the question would be noise. */}
@@ -395,7 +394,6 @@ export function JobActions({
                 amount={codAmount}
                 account={kpayAccount}
                 disabled={busy !== null || completed}
-                t={t}
               />
             </div>
           ) : null}
@@ -406,7 +404,6 @@ export function JobActions({
               <ProofCapture
                 onReady={setKpayProof}
                 disabled={busy !== null || completed}
-                t={t}
                 label={t('pay.takeReceipt')}
               />
               <p className="text-sm text-muted-foreground">{t('pay.receiptHint')}</p>

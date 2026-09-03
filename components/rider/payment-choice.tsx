@@ -4,7 +4,7 @@ import * as React from 'react'
 import { Banknote, ImageOff, Smartphone } from 'lucide-react'
 import { formatMmk, formatMyanmarPhone } from '@/lib/utils'
 import { cn } from '@/lib/utils'
-import type { Translate } from '@/lib/i18n'
+import { useT } from '@/components/shared/i18n-provider'
 
 /**
  * Cash or KBZPay, then the QR if it is KBZPay.
@@ -27,15 +27,14 @@ export function PaymentChoice({
   amount,
   account,
   disabled,
-  t,
 }: {
   value: 'cash' | 'kpay' | null
   onChange: (via: 'cash' | 'kpay') => void
   amount: number
   account: { name: string | null; phone: string | null; qrUrl: string }
   disabled?: boolean
-  t: Translate
 }) {
+  const t = useT()
   const [qrBroken, setQrBroken] = React.useState(false)
 
   return (

@@ -19,15 +19,13 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { codCollectable } from '@/lib/pricing'
 import { formatMmk, cn } from '@/lib/utils'
 import { isInServiceArea } from '@/lib/geo/thingangyun'
-import type { Locale, Translate } from '@/lib/i18n'
+import { useLocale, useT } from '@/components/shared/i18n-provider'
 import type { LatLng } from '@/types/domain'
 
 export type OrderFormProps = {
   shop: { id: string; pickup_address: string; pickup_lat: number; pickup_lng: number }
   /** Deliverable areas WITH the route that prices each one. */
   areas: AreaRoute[]
-  locale: Locale
-  t: Translate
 }
 
 /**
@@ -62,7 +60,8 @@ export type OrderFormProps = {
  * zero size and renders grey until something resizes it.
  */
 
-function SubmitButton({ disabled, t }: { disabled: boolean; t: Translate }) {
+function SubmitButton({ disabled }: { disabled: boolean }) {
+  const t = useT()
   const { pending } = useFormStatus()
   return (
     <Button
@@ -106,7 +105,9 @@ const RENDERED_ERROR_KEYS = new Set([
   'codAmount',
 ])
 
-export function OrderForm({ shop, areas, locale, t }: OrderFormProps) {
+export function OrderForm({ shop, areas }: OrderFormProps) {
+  const locale = useLocale()
+  const t = useT()
   const [state, action] = useActionState<OrderFormState, FormData>(createOrder, {})
   const err = (k: string) => state.fieldErrors?.[k]?.[0]
 
@@ -370,8 +371,6 @@ export function OrderForm({ shop, areas, locale, t }: OrderFormProps) {
               feePayer={feePayer}
               goods={goods}
               codTotal={codTotal}
-              locale={locale}
-              t={t}
             />
           </CardContent>
         </Card>
@@ -470,7 +469,7 @@ export function OrderForm({ shop, areas, locale, t }: OrderFormProps) {
           </div>
         </details>
 
-        <SubmitButton disabled={!canSubmit} t={t} />
+        <SubmitButton disabled={!canSubmit} />
         {!canSubmit && !pickupOutside ? (
           <p className="text-center text-sm text-muted-foreground">{t('book.needPin')}</p>
         ) : null}
@@ -480,8 +479,6 @@ export function OrderForm({ shop, areas, locale, t }: OrderFormProps) {
         <OrderCreatedDialog
           order={created}
           areas={areas}
-          locale={locale}
-          t={t}
           onCreateAnother={() => resetForNextOrder(created)}
         />
       ) : null}
@@ -501,16 +498,14 @@ export function OrderForm({ shop, areas, locale, t }: OrderFormProps) {
 function OrderCreatedDialog({
   order,
   areas,
-  locale,
-  t,
   onCreateAnother,
 }: {
   order: CreatedOrder
   areas: OrderFormProps['areas']
-  locale: Locale
-  t: Translate
   onCreateAnother: () => void
 }) {
+  const locale = useLocale()
+  const t = useT()
   const router = useRouter()
   const area = areas.find((a) => a.areaId === order.dropoffAreaId) ?? null
   const areaName = area ? (locale === 'my' && area.areaNameMm ? area.areaNameMm : area.areaName) : null
@@ -611,17 +606,15 @@ function QuoteSummary({
   feePayer,
   goods,
   codTotal,
-  locale,
-  t,
 }: {
   area: AreaRoute | null
   paymentMethod: 'cod' | 'prepaid'
   feePayer: 'customer' | 'shop'
   goods: number
   codTotal: number
-  locale: Locale
-  t: Translate
 }) {
+  const locale = useLocale()
+  const t = useT()
   if (!area) {
     return (
       <p className="rounded-lg border border-dashed p-3 text-sm text-muted-foreground">

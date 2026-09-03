@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { Power, Satellite, TriangleAlert } from 'lucide-react'
 import { useRiderBeacon } from '@/lib/rider/use-rider-beacon'
 import { cn } from '@/lib/utils'
-import type { Translate } from '@/lib/i18n'
+import { useT } from '@/components/shared/i18n-provider'
 
 /**
  * The single most important control in the rider app: while it is off, dispatch
@@ -17,13 +17,12 @@ export function OnlineToggle({
   riderId,
   initialOnline,
   onOnlineChange,
-  t,
 }: {
   riderId: string
   initialOnline: boolean
   onOnlineChange?: (online: boolean) => void
-  t: Translate
 }) {
+  const t = useT()
   const { online, position, geoError, pending, toggle } = useRiderBeacon(riderId, initialOnline)
   const [error, setError] = useState<string | null>(null)
 

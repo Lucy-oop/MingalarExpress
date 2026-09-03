@@ -162,7 +162,6 @@ export default async function RiderJobPage({ params }: { params: Promise<{ id: s
         dropoff={{ lat: raw.dropoff_lat, lng: raw.dropoff_lng }}
         codAmount={money.total}
         kpayAccount={kpayAccount}
-        t={t}
       />
     </div>
   )

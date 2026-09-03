@@ -9,7 +9,8 @@ import { JobCard } from '@/components/rider/job-card'
 import { NewWorkAlert } from '@/components/rider/new-work-alert'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { createClient } from '@/lib/supabase/client'
-import { localeNumber, type Locale, type Translate } from '@/lib/i18n'
+import { localeNumber } from '@/lib/i18n'
+import { useLocale, useT } from '@/components/shared/i18n-provider'
 import { formatMmk } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 import type { RiderFeed } from '@/lib/rider/queries'
@@ -38,14 +39,12 @@ import type { RiderFeed } from '@/lib/rider/queries'
 export function RiderDashboard({
   riderId,
   feed,
-  locale,
-  t,
 }: {
   riderId: string
   feed: RiderFeed
-  locale: Locale
-  t: Translate
 }) {
+  const locale = useLocale()
+  const t = useT()
   const router = useRouter()
   const [refreshing, setRefreshing] = useState(false)
 
@@ -78,13 +77,12 @@ export function RiderDashboard({
 
   return (
     <div className="space-y-3">
-      <NewWorkAlert count={feed.active.length} locale={locale} t={t} />
+      <NewWorkAlert count={feed.active.length} />
 
       <OnlineToggle
         riderId={riderId}
         initialOnline={feed.profile?.isOnline ?? false}
         onOnlineChange={() => router.refresh()}
-        t={t}
       />
 
       {/* Today's output. Four figures, big enough to read at a glance, and the
@@ -215,7 +213,7 @@ export function RiderDashboard({
             </Button>
           </div>
           {rest.map((job) => (
-            <JobCard key={job.id} job={job} locale={locale} t={t} />
+            <JobCard key={job.id} job={job} />
           ))}
         </section>
       ) : null}

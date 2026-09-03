@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { PackagePlus, X } from 'lucide-react'
 import { alertNewWork, arm } from '@/lib/rider/chime'
-import { localeNumber, type Locale, type Translate } from '@/lib/i18n'
+import { localeNumber } from '@/lib/i18n'
+import { useLocale, useT } from '@/components/shared/i18n-provider'
 import { Button } from '@/components/ui/button'
 
 /**
@@ -25,13 +26,11 @@ import { Button } from '@/components/ui/button'
  */
 export function NewWorkAlert({
   count,
-  locale,
-  t,
 }: {
   count: number
-  locale: Locale
-  t: Translate
 }) {
+  const locale = useLocale()
+  const t = useT()
   const previous = useRef<number | null>(null)
   const [added, setAdded] = useState<number | null>(null)
 

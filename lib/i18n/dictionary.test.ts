@@ -1,5 +1,7 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
+import { readdirSync, readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { DICTIONARY, LOCALES, isLocale, localeNumber, t, translator } from './index'
 
 const KEYS = Object.keys(DICTIONARY) as Array<keyof typeof DICTIONARY>
@@ -106,5 +108,67 @@ describe('localeNumber', () => {
     assert.equal(localeNumber('my', 0), '၀')
     assert.equal(localeNumber('my', 12), '၁၂')
     assert.equal(localeNumber('en', 12), '12')
+  })
+})
+
+/**
+ * THE RSC BOUNDARY.
+ *
+ * The first cut of this passed `t` — a function — from server pages into client
+ * components as a prop, and every rider and shop page threw at runtime:
+ *
+ *     Functions cannot be passed directly to Client Components
+ *
+ * Only serialisable values cross that line. The fix routes the locale (a STRING)
+ * through `I18nProvider` and has client components call `useT()`, so there is no
+ * `t` prop for anyone to hand across. This pins that: it is a source-level check
+ * because the failure is a runtime error in a framework this repo has no
+ * component-test harness for.
+ */
+describe('no translator function crosses the server/client boundary', () => {
+  const ROOT = new URL('../../', import.meta.url)
+
+  const files = (() => {
+    const out: string[] = []
+    const walk = (dir: URL) => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        if (entry.name === 'node_modules' || entry.name.startsWith('.')) continue
+        const next = new URL(`${entry.name}${entry.isDirectory() ? '/' : ''}`, dir)
+        if (entry.isDirectory()) walk(next)
+        else if (/\.tsx$/.test(entry.name)) out.push(fileURLToPath(next))
+      }
+    }
+    walk(new URL('app/', ROOT))
+    walk(new URL('components/', ROOT))
+    return out
+  })()
+
+  test('no component declares a `t` prop at all', () => {
+    // Not anchored to a line: `{ t }: { t: Translate }` on one line is the same
+    // bug, and an anchored pattern missed it when this was first checked.
+    for (const file of files) {
+      const src = readFileSync(file, 'utf8')
+      assert.ok(
+        !/\bt: Translate\b/.test(src),
+        `${file} declares a \`t\` prop — client components must call useT() instead`,
+      )
+    }
+  })
+
+  test('and no JSX hands one over', () => {
+    for (const file of files) {
+      const src = readFileSync(file, 'utf8')
+      assert.ok(!/\bt=\{t\}/.test(src), `${file} passes t={t} as a prop`)
+    }
+  })
+
+  /** The locale itself is a string and MUST keep crossing — that is the fix. */
+  test('the locale still reaches the provider', () => {
+    const layouts = files.filter((f) => /(rider|shop)\/layout\.tsx$/.test(f))
+    assert.equal(layouts.length, 2, 'expected the rider and shop shells')
+    for (const file of layouts) {
+      const src = readFileSync(file, 'utf8')
+      assert.match(src, /<I18nProvider locale=\{locale\}>/, `${file} does not mount I18nProvider`)
+    }
   })
 })

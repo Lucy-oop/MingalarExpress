@@ -60,7 +60,7 @@ export default async function NewOrderPage() {
         <h1 className="text-xl font-semibold">{t('book.title')}</h1>
         <p className="text-sm text-muted-foreground">{t('book.subtitle')}</p>
       </div>
-      <OrderForm shop={shop} areas={areas} locale={locale} t={t} />
+      <OrderForm shop={shop} areas={areas} />
     </div>
   )
 }

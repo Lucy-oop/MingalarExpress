@@ -7,6 +7,7 @@ import { QueueBanner } from '@/components/rider/queue-banner'
 import { LanguageToggle } from '@/components/shared/language-toggle'
 import { getLocale } from '@/lib/i18n/locale'
 import { translator } from '@/lib/i18n'
+import { I18nProvider } from '@/components/shared/i18n-provider'
 import { ServiceWorkerRegistrar } from '@/components/shared/service-worker'
 
 /**
@@ -19,6 +20,9 @@ export default async function RiderLayout({ children }: { children: React.ReactN
   const t = translator(locale)
 
   return (
+    // The locale crosses the boundary as a STRING; every client component below
+    // reads it through useT(). See components/shared/i18n-provider.
+    <I18nProvider locale={locale}>
     <div className="flex min-h-dvh flex-col bg-muted/30">
       <ServiceWorkerRegistrar />
       <header className="sticky top-0 z-20 border-b bg-background/95 backdrop-blur">
@@ -53,6 +57,7 @@ export default async function RiderLayout({ children }: { children: React.ReactN
         </div>
       </nav>
     </div>
+    </I18nProvider>
   )
 }
 

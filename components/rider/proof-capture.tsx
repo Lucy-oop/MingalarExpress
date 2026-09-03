@@ -5,7 +5,7 @@ import { Camera, ImageUp, RotateCcw } from 'lucide-react'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { prepareProofImage, type PreparedImage } from '@/lib/rider/image'
 import { cn } from '@/lib/utils'
-import type { Translate } from '@/lib/i18n'
+import { useT } from '@/components/shared/i18n-provider'
 
 /**
  * Delivery-proof camera.
@@ -33,15 +33,14 @@ import type { Translate } from '@/lib/i18n'
 export function ProofCapture({
   onReady,
   disabled,
-  t,
   label,
 }: {
   onReady: (image: PreparedImage | null) => void
   disabled?: boolean
-  t: Translate
   /** Overrides the button text — the KPay receipt is not a delivery photo. */
   label?: string
 }) {
+  const t = useT()
   const inputRef = useRef<HTMLInputElement>(null)
   const inputId = useId()
   const [preview, setPreview] = useState<string | null>(null)

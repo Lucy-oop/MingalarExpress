@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { LanguageToggle } from '@/components/shared/language-toggle'
 import { getLocale } from '@/lib/i18n/locale'
 import { translator } from '@/lib/i18n'
+import { I18nProvider } from '@/components/shared/i18n-provider'
 import type { MessageKey } from '@/lib/i18n'
 
 const NAV: Array<{ href: string; key: MessageKey; icon: typeof LayoutDashboard }> = [
@@ -26,6 +27,9 @@ export default async function ShopLayout({ children }: { children: React.ReactNo
   const t = translator(locale)
 
   return (
+    // The locale crosses the boundary as a STRING; every client component below
+    // reads it through useT(). See components/shared/i18n-provider.
+    <I18nProvider locale={locale}>
     <div className="min-h-dvh bg-muted/30">
       <header className="border-b bg-background">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3">
@@ -67,5 +71,6 @@ export default async function ShopLayout({ children }: { children: React.ReactNo
       </header>
       <main className="mx-auto max-w-6xl px-4 py-6">{children}</main>
     </div>
+    </I18nProvider>
   )
 }

@@ -1,7 +1,8 @@
 import Link from 'next/link'
 import { ChevronRight, Coins, MapPin } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
-import { localeNumber, type Locale, type Translate } from '@/lib/i18n'
+import { localeNumber } from '@/lib/i18n'
+import { useLocale, useT } from '@/components/shared/i18n-provider'
 import { formatMmk } from '@/lib/utils'
 import type { OrderStatus } from '@/types/domain'
 
@@ -49,13 +50,11 @@ export type RiderJob = {
  */
 export function JobCard({
   job,
-  locale,
-  t,
 }: {
   job: RiderJob
-  locale: Locale
-  t: Translate
 }) {
+  const locale = useLocale()
+  const t = useT()
   const collect = job.paymentMethod === 'cod' ? formatMmk(job.codAmount) : t('money.prepaid')
 
   return (

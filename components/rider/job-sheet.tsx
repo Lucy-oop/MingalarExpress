@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { MapCanvas } from '@/components/map'
 import { JobActions } from '@/components/rider/job-actions'
 import type { LatLng, OrderStatus } from '@/types/domain'
-import type { Translate } from '@/lib/i18n'
+import { useT } from '@/components/shared/i18n-provider'
 
 /**
  * Client half of the job page: the map and the state buttons.
@@ -26,7 +26,6 @@ export function JobSheet({
   dropoff,
   codAmount,
   kpayAccount,
-  t,
 }: {
   orderId: string
   orderCode: string
@@ -37,8 +36,8 @@ export function JobSheet({
   dropoff: LatLng
   codAmount: number
   kpayAccount: { name: string | null; phone: string | null; qrUrl: string }
-  t: Translate
 }) {
+  const t = useT()
   const [position, setPosition] = useState<LatLng | null>(null)
 
   // One-shot fix rather than a watch: the beacon on the dashboard already keeps
@@ -91,7 +90,6 @@ export function JobSheet({
         position={position}
         codAmount={codAmount}
         kpayAccount={kpayAccount}
-        t={t}
       />
     </div>
   )
