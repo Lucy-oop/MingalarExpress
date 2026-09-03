@@ -141,3 +141,73 @@ describe('orderCreateSchema — a real shop submission', () => {
     assert.equal(r.error!.flatten().fieldErrors.shopId?.[0], 'Select a shop')
   })
 })
+
+/** The seeded shop, and a stand-in area id: both only need to be valid guids. */
+const SEEDED_SHOP = 'aaaaaaaa-0000-0000-0000-000000000001'
+
+describe('orderCreateSchema — the four-field booking form', () => {
+  /** Everything the streamlined form actually submits, and nothing else. */
+  const minimal = {
+    shopId: SEEDED_SHOP,
+    pickupAddress: 'No. 24, Thitsar Road, Thingangyun',
+    pickupPoint: { lat: 16.8478, lng: 96.1693 },
+    customerName: 'Daw Myint',
+    customerPhone: '09791234567',
+    dropoffAddress: 'Sule Pagoda Road, Kyauktada',
+    dropoffAreaId: SEEDED_SHOP,
+    dropoffPoint: { lat: 16.776, lng: 96.158 },
+    paymentMethod: 'cod' as const,
+    codAmount: 45000,
+    deliveryFee: 3500,
+  }
+
+  test('a booking with no parcel description is accepted', () => {
+    const r = orderCreateSchema.safeParse(minimal)
+    assert.ok(r.success, JSON.stringify(r.error?.flatten().fieldErrors))
+  })
+
+  /**
+   * `parcel_desc` is NOT NULL with a 1..500 CHECK, so a blank must not reach
+   * Postgres — it would come back as a 23514 with nothing the shop can do.
+   */
+  test('and it arrives as something the database will accept', () => {
+    for (const parcelDesc of [undefined, '', '   ']) {
+      const r = orderCreateSchema.safeParse({ ...minimal, parcelDesc })
+      assert.ok(r.success, `rejected ${JSON.stringify(parcelDesc)}`)
+      assert.ok(r.data.parcelDesc.length >= 1)
+      assert.equal(r.data.parcelDesc, 'Parcel')
+    }
+  })
+
+  test('a description that IS given survives untouched', () => {
+    const r = orderCreateSchema.safeParse({ ...minimal, parcelDesc: '  2x coffee cartons  ' })
+    assert.ok(r.success)
+    assert.equal(r.data.parcelDesc, '2x coffee cartons')
+  })
+
+  test('over 500 characters is still refused', () => {
+    const r = orderCreateSchema.safeParse({ ...minimal, parcelDesc: 'x'.repeat(501) })
+    assert.equal(r.success, false)
+  })
+
+  /**
+   * The form no longer has a payment-method select: it derives the method from
+   * the amount, so these two refinements can never disagree with what the shop
+   * typed. Pinned because the pair is what the SQL constraint mirrors.
+   */
+  test('zero to collect is prepaid, any amount is COD', () => {
+    assert.ok(orderCreateSchema.safeParse({ ...minimal, paymentMethod: 'prepaid', codAmount: 0 }).success)
+    assert.ok(orderCreateSchema.safeParse({ ...minimal, paymentMethod: 'cod', codAmount: 1 }).success)
+  })
+
+  test('the impossible pairs are still refused', () => {
+    assert.equal(
+      orderCreateSchema.safeParse({ ...minimal, paymentMethod: 'cod', codAmount: 0 }).success,
+      false,
+    )
+    assert.equal(
+      orderCreateSchema.safeParse({ ...minimal, paymentMethod: 'prepaid', codAmount: 500 }).success,
+      false,
+    )
+  })
+})

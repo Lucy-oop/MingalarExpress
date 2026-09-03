@@ -1,5 +1,7 @@
 import type { Metadata } from 'next'
 import { requireShop } from '@/lib/auth/guards'
+import { getLocale } from '@/lib/i18n/locale'
+import { translator } from '@/lib/i18n'
 import { getShopMoney, searchShopOrders } from '@/lib/orders/queries'
 import { isoDaysAgo, yangonToday } from '@/lib/admin/day'
 import { MoneyRange } from '@/components/orders/money-range'
@@ -20,6 +22,8 @@ export default async function ShopMoneyPage({
   searchParams: Promise<{ from?: string; to?: string }>
 }) {
   await requireShop()
+  const locale = await getLocale()
+  const t = translator(locale)
   const sp = await searchParams
 
   const today = yangonToday()
@@ -35,7 +39,7 @@ export default async function ShopMoneyPage({
     ])
   } catch (error) {
     return (
-      <Alert tone="error" title="Money summary unavailable">
+      <Alert tone="error" title={t('sm.unavailable')}>
         {error instanceof Error ? error.message : 'Unknown error'}
       </Alert>
     )
@@ -44,29 +48,29 @@ export default async function ShopMoneyPage({
   return (
     <div className="space-y-4">
       <PageHeader
-        title="Money"
-        description="Cash collected on your behalf and what it nets out to, over a date range."
+        title={t('sm.title')}
+        description={t('sm.subtitle')}
       />
 
       <MoneyRange from={from} to={to} today={today} />
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        <Kpi label="Delivered" value={money.delivered} hint={`${from} to ${to}`} />
-        <Kpi label="Still in transit" value={money.inTransit} hint="Not yet collected" />
-        <Kpi label="COD collected" value={formatMmk(money.codCollected)} />
-        <Kpi label="Delivery fees" value={formatMmk(money.platformFees)} hint="Mingalar's share" />
+        <Kpi label={t('sd.delivered')} value={money.delivered} hint={`${from} to ${to}`} />
+        <Kpi label={t('sm.inTransit')} value={money.inTransit} hint={t('sm.inTransitHint')} />
+        <Kpi label={t('sm.collected')} value={formatMmk(money.codCollected)} />
+        <Kpi label={t('sm.fees')} value={formatMmk(money.platformFees)} hint={t('sm.feesHint')} />
         <Kpi
-          label="Owed to you"
+          label={t('sm.owed')}
           value={formatMmk(money.owedToShop)}
           tone={money.owedToShop > 0 ? 'good' : 'default'}
-          hint="Goods value, fees deducted"
+          hint={t('sm.owedHint')}
         />
       </div>
 
       {/* Only when there is a shortfall. A row of zeroes on every shop's page
           would teach everyone to ignore the one time it matters. */}
       {money.codUnreceived > 0 ? (
-        <Alert tone="warning" title={`${formatMmk(money.codUnreceived)} not received`}>
+        <Alert tone="warning" title={t('sm.notReceived', { amount: formatMmk(money.codUnreceived) })}>
           These parcels were delivered, but the payment has not reached us — either a
           KBZPay transfer we are still checking against the bank, or one that did not
           match. Until it arrives it is not counted in{' '}
@@ -78,7 +82,7 @@ export default async function ShopMoneyPage({
 
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-sm">How this is worked out</CardTitle>
+          <CardTitle className="text-sm">{t('sm.howWorked')}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2 text-sm text-muted-foreground">
           <p>

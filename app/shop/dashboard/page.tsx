@@ -2,6 +2,8 @@ import Link from 'next/link'
 import type { Metadata } from 'next'
 import { PackagePlus } from 'lucide-react'
 import { requireShop } from '@/lib/auth/guards'
+import { getLocale } from '@/lib/i18n/locale'
+import { translator } from '@/lib/i18n'
 import { getShopDashboard } from '@/lib/orders/queries'
 import { OrderTable } from '@/components/orders/order-table'
 import { ShopLiveRefresh } from '@/components/orders/shop-live-refresh'
@@ -20,6 +22,8 @@ export const dynamic = 'force-dynamic'
 
 export default async function ShopDashboardPage() {
   await requireShop()
+  const locale = await getLocale()
+  const t = translator(locale)
   const { shop, counts, codInTransit, recent } = await getShopDashboard()
 
   return (
@@ -40,7 +44,7 @@ export default async function ShopDashboardPage() {
       </div>
 
       {!shop ? (
-        <Alert tone="error" title="Shop not set up">
+        <Alert tone="error" title={t('sd.notSetUp')}>
           Your account has no shop yet. Ask the Mingalar Express office to add your pickup point.
         </Alert>
       ) : null}
@@ -53,31 +57,31 @@ export default async function ShopDashboardPage() {
       */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         <Kpi
-          label="Waiting for a rider"
+          label={t('sd.waiting')}
           value={counts.pending}
           href="/shop/orders?status=pending"
           tone={counts.pending > 0 ? 'warn' : 'default'}
         />
         <Kpi
-          label="On the way"
+          label={t('sd.onTheWay')}
           value={counts.inFlight}
           href="/shop/orders?status=assigned"
-          hint="Assigned or picked up"
+          hint={t('sd.onTheWayHint')}
         />
         <Kpi
-          label="COD in transit"
+          label={t('sd.codInTransit')}
           value={formatMmk(codInTransit)}
-          hint="Cash riders are holding"
+          hint={t('sd.codInTransitHint')}
           tone={codInTransit > 0 ? 'warn' : 'default'}
         />
-        <Kpi label="Delivered" value={counts.delivered} href="/shop/orders?status=delivered" />
+        <Kpi label={t('sd.delivered')} value={counts.delivered} href="/shop/orders?status=delivered" />
         {/*
           Points at the parcels waiting on the SHOP, not at every failure. A
           parcel that failed while its run is still out is dispatch's problem
           and there is nothing for the shop to do about it yet.
         */}
         <Kpi
-          label="Needs your decision"
+          label={t('sd.needsYou')}
           value={counts.needsDecision}
           href="/shop/orders?needs=1"
           hint={counts.failed > counts.needsDecision ? `${counts.failed} failed in total` : 'Retry, return or cancel'}
@@ -87,7 +91,7 @@ export default async function ShopDashboardPage() {
 
       <section className="space-y-3">
         <div className="flex items-center justify-between">
-          <h2 className="font-semibold">Recent orders</h2>
+          <h2 className="font-semibold">{t('sd.recent')}</h2>
           <Link href="/shop/orders" className="text-sm text-primary hover:underline">
             View all {counts.total > 0 ? `(${counts.total})` : null}
           </Link>

@@ -3,7 +3,8 @@
 import { useActionState, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useFormStatus } from 'react-dom'
-import { CheckCircle2, PackagePlus } from 'lucide-react'
+import { CheckCircle2, ChevronDown, MapPin, PackagePlus, Store } from 'lucide-react'
+import Link from 'next/link'
 import { createOrder, type CreatedOrder, type OrderFormState } from '@/lib/orders/actions'
 import type { AreaRoute } from '@/lib/orders/queries'
 import { LocationPicker } from '@/components/map/location-picker'
@@ -15,24 +16,64 @@ import { Field } from '@/components/ui/field'
 import { Alert } from '@/components/ui/alert'
 import { Overlay } from '@/components/ui/overlay'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { haversineKm } from '@/lib/geo/haversine'
 import { codCollectable } from '@/lib/pricing'
-import { formatMmk, formatDistanceKm, cn } from '@/lib/utils'
+import { formatMmk, cn } from '@/lib/utils'
 import { isInServiceArea } from '@/lib/geo/thingangyun'
+import type { Locale, Translate } from '@/lib/i18n'
 import type { LatLng } from '@/types/domain'
 
 export type OrderFormProps = {
   shop: { id: string; pickup_address: string; pickup_lat: number; pickup_lng: number }
   /** Deliverable areas WITH the route that prices each one. */
   areas: AreaRoute[]
+  locale: Locale
+  t: Translate
 }
 
-function SubmitButton({ disabled }: { disabled: boolean }) {
+/**
+ * Booking a parcel: FOUR FIELDS AND A PIN.
+ *
+ * It was fourteen inputs across three numbered cards, and a shop books parcels
+ * standing at a counter between customers. What survived is what the parcel
+ * cannot exist without:
+ *
+ *   the pin        where it goes, which fills the address by reverse geocode
+ *   the area       which route it joins, and therefore the fee
+ *   name + phone   who to hand it to
+ *   the amount     what to collect — 0 means already paid
+ *
+ * WHAT WENT, AND WHERE.
+ *
+ *   the payment select   deleted. "Amount to collect" answers it: any figure is
+ *                        COD, zero is prepaid. Two inputs that could contradict
+ *                        each other became one that cannot.
+ *   "what is inside"     optional, in More details. Nothing prices or routes on
+ *                        it, and `Fragile` — which does change handling — is its
+ *                        own flag. See parcelDesc in lib/validation/schemas.
+ *   the pickup card      a whole card, with a map, asking a shop where its own
+ *                        shop is. Now one line and hidden fields carrying the
+ *                        saved location.
+ *   the rest             alt phone, note, weight, declared value, fragile, fee
+ *                        payer — behind one disclosure, closed by default.
+ *
+ * CAPABILITY DELIBERATELY REMOVED: the pickup point can no longer be moved per
+ * parcel. It is the shop's saved location and it changes in shop settings. That
+ * also sidesteps a real hazard — a Leaflet map inside a closed <details> has
+ * zero size and renders grey until something resizes it.
+ */
+
+function SubmitButton({ disabled, t }: { disabled: boolean; t: Translate }) {
   const { pending } = useFormStatus()
   return (
-    <Button type="submit" size="lg" block disabled={pending || disabled}>
+    <Button
+      type="submit"
+      size="touch"
+      block
+      disabled={pending || disabled}
+      className="text-base font-bold"
+    >
       <PackagePlus />
-      {pending ? 'Creating order…' : 'Create delivery order'}
+      {pending ? t('book.submitting') : t('book.submit')}
     </Button>
   )
 }
@@ -40,43 +81,47 @@ function SubmitButton({ disabled }: { disabled: boolean }) {
 /**
  * Schema keys this form has somewhere to PUT an error message.
  *
- * orderCreateSchema validates keys that have no text input behind them —
+ * orderCreateSchema validates keys with no text input behind them —
  * pickupPoint, dropoffPoint, paymentMethod, feePayer, shopId, deliveryFee. An
- * error on one of those used to render nowhere: the page came back unchanged and
- * the shop's order looked like it had evaporated. Anything not in this set is
- * now collected into the alert at the top instead of being dropped.
+ * error on one of those used to render nowhere: the page came back unchanged
+ * and the shop's order looked like it had evaporated. Anything not in this set
+ * is collected into the alert at the top instead of being dropped.
  *
  * Add a key here only when the field genuinely renders `err(key)`.
  */
 const RENDERED_ERROR_KEYS = new Set([
-  'pickupAddress',
+  // NOT pickupAddress. It had an input when there was a pickup card; now it is a
+  // hidden field carrying the shop's saved address, so listing it here would
+  // swallow the error — a shop whose saved address is under 5 characters would
+  // submit, be rejected, and see nothing change. That is the exact failure this
+  // set exists to prevent, reintroduced by deleting the card.
   'customerName',
   'customerPhone',
   'customerPhoneAlt',
   'dropoffAddress',
+  'dropoffAreaId',
   'parcelDesc',
   'parcelWeightG',
   'parcelValue',
   'codAmount',
 ])
 
-export function OrderForm({ shop, areas }: OrderFormProps) {
+export function OrderForm({ shop, areas, locale, t }: OrderFormProps) {
   const [state, action] = useActionState<OrderFormState, FormData>(createOrder, {})
   const err = (k: string) => state.fieldErrors?.[k]?.[0]
 
   // Point errors have no input of their own, so they ride on the address field
-  // of the picker they belong to — which is where someone looking at a rejected
-  // pin would expect to find them.
-  const pickupError = err('pickupAddress') ?? err('pickupPoint')
+  // of the picker they belong to — where someone looking at a rejected pin would
+  // expect to find them.
   const dropoffError = err('dropoffAddress') ?? err('dropoffPoint')
 
   const unshown = Object.entries(state.fieldErrors ?? {}).filter(
     ([k]) => !RENDERED_ERROR_KEYS.has(k) && k !== 'pickupPoint' && k !== 'dropoffPoint',
   )
 
-  // The form is three tall cards; the alert sits above all of them, so after a
-  // failed submit it is usually scrolled off screen. Not scrolling to it is most
-  // of why a rejected submission reads as "nothing happened".
+  // The alert sits above the cards, so after a failed submit it is usually
+  // scrolled off screen. Not scrolling to it is most of why a rejected
+  // submission reads as "nothing happened".
   const alertRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     if (state.error || state.fieldErrors) {
@@ -84,40 +129,33 @@ export function OrderForm({ shop, areas }: OrderFormProps) {
     }
   }, [state])
 
-  const [pickup, setPickup] = useState<LatLng>({
-    lat: shop.pickup_lat,
-    lng: shop.pickup_lng,
-  })
-  const [pickupAddress, setPickupAddress] = useState(shop.pickup_address)
   const [dropoff, setDropoff] = useState<LatLng | null>(null)
   const [dropoffAddress, setDropoffAddress] = useState('')
-
   const [areaId, setAreaId] = useState('')
-  const [paymentMethod, setPaymentMethod] = useState<'cod' | 'prepaid'>('cod')
   const [feePayer, setFeePayer] = useState<'customer' | 'shop'>('customer')
-  const [goodsValue, setGoodsValue] = useState('')
+  const [collect, setCollect] = useState('')
 
   const formRef = useRef<HTMLFormElement>(null)
+  const pickup: LatLng = { lat: shop.pickup_lat, lng: shop.pickup_lng }
 
   /**
    * Which confirmation the shop has already dismissed.
    *
-   * `useActionState` has no reset, so "Create another order" cannot clear the
-   * returned state — it records the code instead. A later submit returns a
-   * different code and the modal opens again on its own.
+   * `useActionState` has no reset, so "Book another" cannot clear the returned
+   * state — it records the code instead. A later submit returns a different code
+   * and the modal opens again on its own.
    */
   const [dismissedCode, setDismissedCode] = useState<string | null>(null)
   const created = state.created && state.created.code !== dismissedCode ? state.created : null
 
-  const resetForForNextOrder = (order: CreatedOrder) => {
+  const resetForNextOrder = (order: CreatedOrder) => {
     setDismissedCode(order.code)
     formRef.current?.reset()
-    // Controlled values are not touched by form.reset(), so they are cleared by
-    // hand. Pickup stays: the next parcel leaves from the same shop.
+    // Controlled values survive form.reset(), so they are cleared by hand.
     setDropoff(null)
     setDropoffAddress('')
-    setGoodsValue('')
-    setPaymentMethod('cod')
+    setAreaId('')
+    setCollect('')
     setFeePayer('customer')
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
@@ -125,132 +163,106 @@ export function OrderForm({ shop, areas }: OrderFormProps) {
   /**
    * The price is the route's flat fee, chosen by the destination area.
    *
-   * Not distance any more. Distance quoting survived the route migration and was
-   * charging a Mingaladon parcel 8,100 Ks against the official 4,000 — the fee
-   * the shop pays and the cost the platform carries were computed off two
-   * unrelated models. The server recomputes this from the same table on submit;
-   * what is shown here is a preview, never the stored number.
+   * Not distance. Distance quoting survived the route migration and charged a
+   * Mingaladon parcel 8,100 Ks against the official 4,000. The server recomputes
+   * this from the same table on submit; what is shown here is a preview, never
+   * the stored number.
    */
   const area = useMemo(() => areas.find((a) => a.areaId === areaId) ?? null, [areas, areaId])
   const fee = area?.fee ?? 0
 
-  /** Informational only: a shop still likes to know how far the parcel goes. */
-  const crowKm = useMemo(
-    () => (dropoff ? haversineKm(pickup, dropoff) : null),
-    [pickup, dropoff],
-  )
-
-  const goods = Number(goodsValue) || 0
+  // ONE field decides both. Any amount is COD; zero is prepaid. The old form had
+  // a select as well, so the two could disagree and the shop got a refinement
+  // error about a field they had not touched.
+  const goods = Math.max(0, Math.trunc(Number(collect) || 0))
+  const paymentMethod: 'cod' | 'prepaid' = goods > 0 ? 'cod' : 'prepaid'
   const codTotal = area && paymentMethod === 'cod' ? codCollectable(goods, fee, feePayer) : 0
 
-  // Mirrors what the server will accept. Pickup is included because a shop whose
-  // saved pickup point predates the geofence change would otherwise submit an
-  // order the database rejects, with the failure landing on a field that has no
-  // input of its own.
+  // Mirrors what the server accepts. Pickup is checked because a shop whose
+  // saved point predates the geofence widening would otherwise submit an order
+  // the database rejects, with the failure landing on a field that has no input.
+  const pickupOutside = !isInServiceArea(pickup)
   const canSubmit =
-    !!dropoff &&
-    !!area &&
-    isInServiceArea(dropoff) &&
-    isInServiceArea(pickup) &&
+    !!dropoff && !!area && isInServiceArea(dropoff) && !pickupOutside &&
     dropoffAddress.trim().length >= 5
+
+  const byRoute = useMemo(
+    () =>
+      Object.entries(
+        areas.reduce<Record<string, AreaRoute[]>>((acc, a) => {
+          ;(acc[a.routeName] ??= []).push(a)
+          return acc
+        }, {}),
+      ),
+    [areas],
+  )
 
   return (
     <>
-      <form ref={formRef} action={action} className="space-y-6" noValidate>
-      <div ref={alertRef}>
-        {state.error || unshown.length > 0 ? (
-          <Alert tone="error" title={state.error ?? 'Could not create this order'}>
-            {unshown.length > 0 ? (
-              <ul className="list-disc space-y-0.5 pl-4">
-                {unshown.map(([key, messages]) => (
-                  <li key={key}>{messages[0]}</li>
-                ))}
-              </ul>
-            ) : null}
-          </Alert>
-        ) : null}
-      </div>
+      <form ref={formRef} action={action} className="space-y-4" noValidate>
+        <div ref={alertRef}>
+          {state.error || unshown.length > 0 ? (
+            <Alert tone="error" title={state.error ?? t('book.failed')}>
+              {unshown.length > 0 ? (
+                <ul className="list-disc space-y-0.5 pl-4">
+                  {unshown.map(([key, messages]) => (
+                    <li key={key}>{messages[0]}</li>
+                  ))}
+                </ul>
+              ) : null}
+            </Alert>
+          ) : null}
+        </div>
 
-      <input type="hidden" name="paymentMethod" value={paymentMethod} />
-      <input type="hidden" name="feePayer" value={feePayer} />
+        {/* Derived, never asked. See the note on `paymentMethod` above. */}
+        <input type="hidden" name="paymentMethod" value={paymentMethod} />
+        <input type="hidden" name="feePayer" value={feePayer} />
+        {/* The shop's own saved location. Changed in shop settings, not here. */}
+        <input type="hidden" name="pickupAddress" value={shop.pickup_address} />
+        <input type="hidden" name="pickupLat" value={shop.pickup_lat} />
+        <input type="hidden" name="pickupLng" value={shop.pickup_lng} />
 
-      {/* ---------------------------------------------------------------- */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">1 · Pickup</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <LocationPicker
-            kind="pickup"
-            label="Pickup point"
-            point={pickup}
-            address={pickupAddress}
-            onPointChange={setPickup}
-            onAddressChange={setPickupAddress}
-            fieldPrefix="pickup"
-            addressError={pickupError}
-            addressPlaceholder="Shop address"
-          />
+        {pickupOutside ? (
+          <Alert tone="warning">{t('book.pickupOutside')}</Alert>
+        ) : (
+          <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Store className="size-3.5 shrink-0" aria-hidden="true" />
+            {t('book.pickupFrom')}: {shop.pickup_address}
+            <Link href="/shop/settings" className="text-primary hover:underline">
+              {t('shop.nav.settings')}
+            </Link>
+          </p>
+        )}
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Pickup contact" htmlFor="pickupContact" hint="Defaults to your shop phone">
-              <Input id="pickupContact" name="pickupContact" placeholder="Ask for Ma Su" />
-            </Field>
-            <Field label="Pickup note" htmlFor="pickupNote">
-              <Input id="pickupNote" name="pickupNote" placeholder="Green shutter, side lane" />
-            </Field>
-          </div>
-        </CardContent>
-      </Card>
+        {/* ---- 1. where ------------------------------------------------- */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <MapPin className="size-4 shrink-0 text-brand-gold" aria-hidden="true" />
+              {t('book.where')}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <LocationPicker
+              kind="dropoff"
+              label={t('book.address')}
+              point={dropoff}
+              address={dropoffAddress}
+              onPointChange={setDropoff}
+              onAddressChange={setDropoffAddress}
+              fieldPrefix="dropoff"
+              addressError={dropoffError}
+              addressPlaceholder="No. 7, Baho Street"
+            />
 
-      {/* ---------------------------------------------------------------- */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">2 · Customer &amp; delivery address</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Customer name" htmlFor="customerName" required error={err('customerName')}>
-              <Input
-                id="customerName"
-                name="customerName"
-                required
-                aria-invalid={!!err('customerName')}
-              />
-            </Field>
+            {/* Required: it selects the route, and the route sets the fee. Each
+                option carries its own price, because the number is the point of
+                the field rather than a detail of it. */}
             <Field
-              label="Customer phone"
-              htmlFor="customerPhone"
-              required
-              hint="09 791 234 567"
-              error={err('customerPhone')}
-            >
-              <Input
-                id="customerPhone"
-                name="customerPhone"
-                type="tel"
-                inputMode="tel"
-                placeholder="09 791 234 567"
-                required
-                aria-invalid={!!err('customerPhone')}
-              />
-            </Field>
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Alternate phone" htmlFor="customerPhoneAlt" error={err('customerPhoneAlt')}>
-              <Input id="customerPhoneAlt" name="customerPhoneAlt" type="tel" inputMode="tel" />
-            </Field>
-            {/*
-              Required, because it sets the price. Grouped by route so a shop can
-              see which run their parcel joins, and each option carries its fee —
-              the number is the point of the field, not a detail of it.
-            */}
-            <Field
-              label="Destination area"
+              label={t('book.area')}
               htmlFor="dropoffAreaId"
               required
-              hint="Sets the route and the delivery fee"
+              hint={t('book.areaHint')}
               error={err('dropoffAreaId')}
             >
               <Select
@@ -260,117 +272,78 @@ export function OrderForm({ shop, areas }: OrderFormProps) {
                 onChange={(e) => setAreaId(e.target.value)}
                 required
                 aria-invalid={!!err('dropoffAreaId')}
+                className="h-12 text-base"
               >
-                <option value="">Choose an area…</option>
-                {Object.entries(
-                  areas.reduce<Record<string, AreaRoute[]>>((acc, a) => {
-                    ;(acc[a.routeName] ??= []).push(a)
-                    return acc
-                  }, {}),
-                ).map(([routeName, group]) => (
+                <option value="">{t('book.areaChoose')}</option>
+                {byRoute.map(([routeName, group]) => (
                   <optgroup key={routeName} label={routeName}>
                     {group.map((a) => (
                       <option key={a.areaId} value={a.areaId}>
-                        {a.areaName}
-                        {a.areaNameMm ? ` · ${a.areaNameMm}` : ''} — {formatMmk(a.fee)}
+                        {locale === 'my' && a.areaNameMm ? a.areaNameMm : a.areaName} —{' '}
+                        {formatMmk(a.fee)}
                       </option>
                     ))}
                   </optgroup>
                 ))}
               </Select>
             </Field>
-          </div>
+          </CardContent>
+        </Card>
 
-          <LocationPicker
-            kind="dropoff"
-            label="Delivery point"
-            point={dropoff}
-            address={dropoffAddress}
-            onPointChange={setDropoff}
-            onAddressChange={setDropoffAddress}
-            fieldPrefix="dropoff"
-            addressError={dropoffError}
-            addressPlaceholder="No. 7, Baho Street, Lhay Htaung Kan"
-          />
-
-          <Field label="Delivery note" htmlFor="dropoffNote" hint="Gate colour, floor, landmark">
-            <Textarea
-              id="dropoffNote"
-              name="dropoffNote"
-              rows={2}
-              placeholder="Blue gate, 2nd floor, ring twice"
-            />
-          </Field>
-        </CardContent>
-      </Card>
-
-      {/* ---------------------------------------------------------------- */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">3 · Parcel &amp; payment</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <Field label="What is in the parcel?" htmlFor="parcelDesc" required error={err('parcelDesc')}>
-            <Input
-              id="parcelDesc"
-              name="parcelDesc"
-              required
-              placeholder="2x instant coffee cartons"
-              aria-invalid={!!err('parcelDesc')}
-            />
-          </Field>
-
-          <div className="grid gap-4 sm:grid-cols-3">
-            <Field label="Weight (g)" htmlFor="parcelWeightG" error={err('parcelWeightG')}>
-              <Input
-                id="parcelWeightG"
-                name="parcelWeightG"
-                type="number"
-                inputMode="numeric"
-                min={0}
-                max={50000}
-              />
-            </Field>
-            <Field label="Declared value (Ks)" htmlFor="parcelValue" error={err('parcelValue')}>
-              <Input id="parcelValue" name="parcelValue" type="number" inputMode="numeric" min={0} />
-            </Field>
-            <div className="flex items-end pb-2">
-              <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" name="isFragile" className="size-4 accent-[var(--brand-red)]" />
-                Fragile
-              </label>
+        {/* ---- 2. who --------------------------------------------------- */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">{t('book.who')}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field
+                label={t('book.name')}
+                htmlFor="customerName"
+                required
+                error={err('customerName')}
+              >
+                <Input
+                  id="customerName"
+                  name="customerName"
+                  required
+                  autoComplete="off"
+                  aria-invalid={!!err('customerName')}
+                  className="h-12 text-base"
+                />
+              </Field>
+              <Field
+                label={t('book.phone')}
+                htmlFor="customerPhone"
+                required
+                hint="09 791 234 567"
+                error={err('customerPhone')}
+              >
+                <Input
+                  id="customerPhone"
+                  name="customerPhone"
+                  type="tel"
+                  inputMode="tel"
+                  placeholder="09 791 234 567"
+                  required
+                  aria-invalid={!!err('customerPhone')}
+                  className="h-12 text-base"
+                />
+              </Field>
             </div>
-          </div>
+          </CardContent>
+        </Card>
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Payment" htmlFor="paymentMethodSelect" required>
-              <Select
-                id="paymentMethodSelect"
-                value={paymentMethod}
-                onChange={(e) => setPaymentMethod(e.target.value as 'cod' | 'prepaid')}
-              >
-                <option value="cod">Cash on delivery</option>
-                <option value="prepaid">Already paid (prepaid)</option>
-              </Select>
-            </Field>
-            <Field label="Who pays the delivery fee?" htmlFor="feePayerSelect">
-              <Select
-                id="feePayerSelect"
-                value={feePayer}
-                onChange={(e) => setFeePayer(e.target.value as 'customer' | 'shop')}
-              >
-                <option value="customer">Customer pays on delivery</option>
-                <option value="shop">Shop pays (deducted from me)</option>
-              </Select>
-            </Field>
-          </div>
-
-          {paymentMethod === 'cod' ? (
+        {/* ---- 3. money ------------------------------------------------- */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">{t('book.money')}</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
             <Field
-              label="Goods value to collect (Ks)"
+              label={t('book.collect')}
               htmlFor="goodsValue"
-              required
-              hint="Price of the goods only — the delivery fee is added automatically below"
+              hint={t('book.collectHint')}
               error={err('codAmount')}
             >
               <Input
@@ -378,45 +351,138 @@ export function OrderForm({ shop, areas }: OrderFormProps) {
                 name="goodsValue"
                 type="number"
                 inputMode="numeric"
-                min={1}
-                value={goodsValue}
-                onChange={(e) => setGoodsValue(e.target.value)}
-                required
+                min={0}
+                placeholder="0"
+                value={collect}
+                onChange={(e) => setCollect(e.target.value)}
                 aria-invalid={!!err('codAmount')}
+                className="h-14 text-xl font-semibold tabular-nums"
               />
             </Field>
-          ) : (
-            <input type="hidden" name="goodsValue" value="0" />
-          )}
-        </CardContent>
-      </Card>
 
-      {/* ---------------------------------------------------------------- */}
-      <QuoteSummary
-        area={area}
-        crowKm={crowKm}
-        paymentMethod={paymentMethod}
-        feePayer={feePayer}
-        goods={goods}
-        codTotal={codTotal}
-        hasDropoff={!!dropoff}
-      />
+            {paymentMethod === 'prepaid' ? (
+              <p className="text-sm text-muted-foreground">{t('book.prepaidNote')}</p>
+            ) : null}
 
-      <SubmitButton disabled={!canSubmit} />
-      {!canSubmit ? (
-        <p className="text-center text-xs text-muted-foreground">
-          {!isInServiceArea(pickup)
-            ? 'Your pickup point is outside the delivery area. Fix it in shop settings.'
-            : 'Drop the delivery pin and enter the address to continue.'}
-        </p>
-      ) : null}
-    </form>
+            <QuoteSummary
+              area={area}
+              paymentMethod={paymentMethod}
+              feePayer={feePayer}
+              goods={goods}
+              codTotal={codTotal}
+              locale={locale}
+              t={t}
+            />
+          </CardContent>
+        </Card>
+
+        {/* ---- everything else, closed ---------------------------------- */}
+        <details className="group rounded-lg border bg-card">
+          <summary className="flex cursor-pointer items-center justify-between gap-2 px-4 py-3 text-sm font-medium">
+            <span>
+              {t('book.more')}{' '}
+              <span className="font-normal text-muted-foreground">({t('book.moreHint')})</span>
+            </span>
+            <ChevronDown
+              className="size-4 shrink-0 transition-transform group-open:rotate-180"
+              aria-hidden="true"
+            />
+          </summary>
+
+          <div className="space-y-3 border-t p-4">
+            <Field label={t('book.contents')} htmlFor="parcelDesc" error={err('parcelDesc')}>
+              <Input id="parcelDesc" name="parcelDesc" placeholder="2x instant coffee cartons" />
+            </Field>
+
+            <Field
+              label={t('book.deliveryNote')}
+              htmlFor="dropoffNote"
+              hint={t('book.deliveryNoteHint')}
+            >
+              <Textarea
+                id="dropoffNote"
+                name="dropoffNote"
+                rows={2}
+                placeholder="Blue gate, 2nd floor, ring twice"
+              />
+            </Field>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field
+                label={t('book.altPhone')}
+                htmlFor="customerPhoneAlt"
+                error={err('customerPhoneAlt')}
+              >
+                <Input id="customerPhoneAlt" name="customerPhoneAlt" type="tel" inputMode="tel" />
+              </Field>
+              <Field label={t('book.feePayer')} htmlFor="feePayerSelect">
+                <Select
+                  id="feePayerSelect"
+                  value={feePayer}
+                  onChange={(e) => setFeePayer(e.target.value as 'customer' | 'shop')}
+                >
+                  <option value="customer">{t('book.feeCustomer')}</option>
+                  <option value="shop">{t('book.feeShop')}</option>
+                </Select>
+              </Field>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-3">
+              <Field label={t('book.weight')} htmlFor="parcelWeightG" error={err('parcelWeightG')}>
+                <Input
+                  id="parcelWeightG"
+                  name="parcelWeightG"
+                  type="number"
+                  inputMode="numeric"
+                  min={0}
+                  max={50000}
+                />
+              </Field>
+              <Field label={t('book.declared')} htmlFor="parcelValue" error={err('parcelValue')}>
+                <Input
+                  id="parcelValue"
+                  name="parcelValue"
+                  type="number"
+                  inputMode="numeric"
+                  min={0}
+                />
+              </Field>
+              <div className="flex items-end pb-2">
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    name="isFragile"
+                    className="size-4 accent-[var(--brand-red)]"
+                  />
+                  {t('book.fragile')}
+                </label>
+              </div>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label={t('book.pickupContact')} htmlFor="pickupContact">
+                <Input id="pickupContact" name="pickupContact" placeholder="Ask for Ma Su" />
+              </Field>
+              <Field label={t('book.pickupNote')} htmlFor="pickupNote">
+                <Input id="pickupNote" name="pickupNote" placeholder="Green shutter, side lane" />
+              </Field>
+            </div>
+          </div>
+        </details>
+
+        <SubmitButton disabled={!canSubmit} t={t} />
+        {!canSubmit && !pickupOutside ? (
+          <p className="text-center text-sm text-muted-foreground">{t('book.needPin')}</p>
+        ) : null}
+      </form>
 
       {created ? (
         <OrderCreatedDialog
           order={created}
           areas={areas}
-          onCreateAnother={() => resetForForNextOrder(created)}
+          locale={locale}
+          t={t}
+          onCreateAnother={() => resetForNextOrder(created)}
         />
       ) : null}
     </>
@@ -435,30 +501,36 @@ export function OrderForm({ shop, areas }: OrderFormProps) {
 function OrderCreatedDialog({
   order,
   areas,
+  locale,
+  t,
   onCreateAnother,
 }: {
   order: CreatedOrder
   areas: OrderFormProps['areas']
+  locale: Locale
+  t: Translate
   onCreateAnother: () => void
 }) {
   const router = useRouter()
   const area = areas.find((a) => a.areaId === order.dropoffAreaId) ?? null
-  const areaName = area?.areaName ?? null
+  const areaName = area ? (locale === 'my' && area.areaNameMm ? area.areaNameMm : area.areaName) : null
   const isCod = order.paymentMethod === 'cod'
 
   return (
     <Overlay
       open
       side="center"
-      title="Order created"
+      title={t('created.title')}
       onClose={onCreateAnother}
       footer={
         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-          <Button variant="outline" onClick={onCreateAnother}>
+          <Button variant="outline" size="touch" onClick={onCreateAnother}>
             <PackagePlus />
-            Create another order
+            {t('created.another')}
           </Button>
-          <Button onClick={() => router.push('/shop/orders')}>View orders</Button>
+          <Button size="touch" onClick={() => router.push('/shop/orders')}>
+            {t('created.viewOrders')}
+          </Button>
         </div>
       }
     >
@@ -466,22 +538,22 @@ function OrderCreatedDialog({
         <div className="flex items-center gap-3 rounded-lg border border-emerald-300 bg-emerald-50 p-3">
           <CheckCircle2 className="size-5 shrink-0 text-emerald-700" aria-hidden="true" />
           <div className="min-w-0">
-            <p className="text-xs text-emerald-800">Order code — write this on the parcel</p>
-            <p className="font-mono text-lg font-semibold tracking-tight text-emerald-900">
+            <p className="text-xs text-emerald-800">{t('created.writeCode')}</p>
+            <p className="font-mono text-xl font-bold tracking-tight text-emerald-900">
               {order.code}
             </p>
           </div>
         </div>
 
         <dl className="space-y-2 text-sm">
-          <DetailRow label="Recipient">{order.customerName}</DetailRow>
-          <DetailRow label="Destination">
+          <DetailRow label={t('book.who')}>{order.customerName}</DetailRow>
+          <DetailRow label={t('book.where')}>
             {areaName ? <span className="font-medium">{areaName}</span> : null}
             {areaName ? ' · ' : null}
             <span className="text-muted-foreground">{order.dropoffAddress}</span>
           </DetailRow>
           {area ? (
-            <DetailRow label="Route">
+            <DetailRow label={t('quote.route')}>
               <span className="inline-flex items-center gap-1.5">
                 <span
                   className="size-2.5 rounded-full"
@@ -492,7 +564,7 @@ function OrderCreatedDialog({
               </span>
             </DetailRow>
           ) : null}
-          <DetailRow label="Delivery fee">
+          <DetailRow label={t('quote.fee')}>
             {formatMmk(order.deliveryFee)}
             <span className="text-muted-foreground">
               {' '}
@@ -525,85 +597,91 @@ function DetailRow({ label, children }: { label: string; children: React.ReactNo
   )
 }
 
+/**
+ * The fee, and what the rider will collect. Inline in the money card now, not a
+ * fourth full-width card of its own.
+ *
+ * The distance line went with it: the fee is flat per route, so a straight-line
+ * kilometre figure was a number that looked like it explained the price and did
+ * not.
+ */
 function QuoteSummary({
   area,
-  crowKm,
   paymentMethod,
   feePayer,
   goods,
   codTotal,
-  hasDropoff,
+  locale,
+  t,
 }: {
   area: AreaRoute | null
-  crowKm: number | null
   paymentMethod: 'cod' | 'prepaid'
   feePayer: 'customer' | 'shop'
   goods: number
   codTotal: number
-  hasDropoff: boolean
+  locale: Locale
+  t: Translate
 }) {
-  return (
-    <Card className={cn('border-brand-gold/60 bg-brand-gold/5')}>
-      <CardHeader>
-        <CardTitle className="text-base">Delivery fee</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-2 text-sm">
-        {!area ? (
-          <p className="text-muted-foreground">
-            Choose the destination area to see the fee.
-            {hasDropoff ? null : ' Then drop the delivery pin.'}
-          </p>
-        ) : (
-          <>
-            <div className="flex items-center gap-2">
-              <span
-                className="size-2.5 shrink-0 rounded-full"
-                style={{ backgroundColor: area.colour }}
-                aria-hidden="true"
-              />
-              <span className="font-medium">{area.routeName}</span>
-            </div>
-            <Row label="Destination" value={area.areaName} />
-            {crowKm !== null ? (
-              <Row label="Distance (straight line)" value={formatDistanceKm(crowKm)} />
-            ) : null}
-            <hr className="my-2" />
-            {/*
-              One line, because there is one number. The fee is flat per route —
-              there is no base plus distance to break down any more.
-            */}
-            <Row label="Delivery fee" value={formatMmk(area.fee)} strong />
+  if (!area) {
+    return (
+      <p className="rounded-lg border border-dashed p-3 text-sm text-muted-foreground">
+        {t('quote.pickArea')}
+      </p>
+    )
+  }
 
-            {paymentMethod === 'cod' ? (
-              <>
-                <hr className="my-2" />
-                <Row label="Goods value" value={formatMmk(goods)} />
-                <Row
-                  label={
-                    feePayer === 'customer'
-                      ? 'Rider collects from customer'
-                      : 'Rider collects (fee billed to you)'
-                  }
-                  value={formatMmk(codTotal)}
-                  strong
-                />
-              </>
-            ) : null}
-            <p className="pt-1 text-xs text-muted-foreground">
-              Confirmed by the server when the order is created.
-            </p>
-          </>
-        )}
-      </CardContent>
-    </Card>
+  return (
+    <div className="space-y-1.5 rounded-lg border border-brand-gold/60 bg-brand-gold/5 p-3 text-sm">
+      <div className="flex items-center gap-2">
+        <span
+          className="size-2.5 shrink-0 rounded-full"
+          style={{ backgroundColor: area.colour }}
+          aria-hidden="true"
+        />
+        <span className="font-medium">
+          {locale === 'my' && area.areaNameMm ? area.areaNameMm : area.areaName}
+        </span>
+        <span className="truncate text-xs text-muted-foreground">{area.routeName}</span>
+      </div>
+
+      {paymentMethod === 'cod' ? <Row label={t('quote.goods')} value={formatMmk(goods)} /> : null}
+      <Row
+        label={t('quote.fee')}
+        value={formatMmk(area.fee)}
+        hint={feePayer === 'shop' ? t('quote.feeOnYou') : undefined}
+      />
+
+      {paymentMethod === 'cod' ? (
+        <>
+          <hr className="my-1.5 border-brand-gold/40" />
+          {/* The number the rider will actually ask for. Largest thing here,
+              because it is the one a shop double-checks. */}
+          <div className="flex items-baseline justify-between gap-3">
+            <span className="font-medium">{t('quote.total')}</span>
+            <span className="text-xl font-bold tabular-nums">{formatMmk(codTotal)}</span>
+          </div>
+        </>
+      ) : null}
+    </div>
   )
 }
 
-function Row({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
+function Row({
+  label,
+  value,
+  hint,
+  strong,
+}: {
+  label: string
+  value: string
+  hint?: string
+  strong?: boolean
+}) {
   return (
     <div className="flex items-baseline justify-between gap-4">
       <span className={cn('text-muted-foreground', strong && 'font-medium text-foreground')}>
         {label}
+        {hint ? <span className="ml-1 text-xs">({hint})</span> : null}
       </span>
       <span className={cn('tabular-nums', strong && 'font-semibold')}>{value}</span>
     </div>

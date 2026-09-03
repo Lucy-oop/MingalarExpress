@@ -138,6 +138,128 @@ export const DICTIONARY = {
   'online.gpsLocked': { en: 'GPS on', my: 'GPS ရပါသည်' },
   'online.gpsWaiting': { en: 'Waiting for GPS…', my: 'GPS စောင့်နေသည်…' },
 
+  // ==========================================================================
+  //  SHOP PANEL
+  //
+  //  A shop owner in Yangon reads Burmese as comfortably as a rider does, and
+  //  books parcels on a phone between customers. Same rules as above: short
+  //  enough to fit, and the words a shopkeeper actually uses rather than the
+  //  words a logistics company uses.
+  // ==========================================================================
+
+  'shop.title': { en: 'Mingalar Express shop', my: 'Mingalar Express ဆိုင်' },
+  'shop.nav.dashboard': { en: 'Home', my: 'ပင်မ' },
+  'shop.nav.orders': { en: 'Parcels', my: 'ပါဆယ်များ' },
+  'shop.nav.new': { en: 'Book a parcel', my: 'ပါဆယ် တင်ရန်' },
+  'shop.nav.money': { en: 'Money', my: 'ငွေစာရင်း' },
+  'shop.nav.settings': { en: 'Shop settings', my: 'ဆိုင် အပြင်အဆင်' },
+
+  // ---- booking form ---------------------------------------------------------
+  'book.title': { en: 'Book a parcel', my: 'ပါဆယ် တင်ရန်' },
+  'book.subtitle': {
+    en: 'Four things and a pin on the map.',
+    my: 'လေးချက်နှင့် မြေပုံတွင် အမှတ်တစ်ခု။',
+  },
+  'book.where': { en: 'Where is it going?', my: 'ဘယ်ကို ပို့မလဲ' },
+  'book.who': { en: 'Who is receiving it?', my: 'ဘယ်သူ လက်ခံမလဲ' },
+  'book.money': { en: 'Money', my: 'ငွေ' },
+  'book.address': { en: 'Delivery address', my: 'ပို့ရမည့် လိပ်စာ' },
+  'book.addressHint': { en: 'Filled in from the pin — correct it if you need to', my: 'အမှတ်မှ အလိုအလျောက် ထည့်ပါမည် — လိုလျှင် ပြင်ပါ' },
+  'book.area': { en: 'Area', my: 'မြို့နယ်' },
+  'book.areaHint': { en: 'Sets the delivery fee', my: 'ပို့ဆောင်ခ သတ်မှတ်ပါမည်' },
+  'book.areaChoose': { en: 'Choose an area…', my: 'မြို့နယ် ရွေးပါ…' },
+  'book.name': { en: 'Name', my: 'နာမည်' },
+  'book.phone': { en: 'Phone', my: 'ဖုန်း' },
+  'book.collect': { en: 'Amount to collect', my: 'ကောက်ခံရမည့် ပမာဏ' },
+  'book.collectHint': {
+    en: 'Price of the goods. Leave 0 if the customer has already paid.',
+    my: 'ကုန်ဖိုး။ ဝယ်သူ ငွေရှင်းပြီးလျှင် 0 ထားပါ။',
+  },
+  'book.prepaidNote': { en: 'Already paid — the rider collects nothing.', my: 'ငွေရှင်းပြီး — ရိုက်ဒါ ငွေမကောက်ပါ။' },
+  'book.more': { en: 'More details', my: 'အခြား အချက်အလက်' },
+  'book.moreHint': { en: 'optional', my: 'မထည့်လည်းရ' },
+  'book.submit': { en: 'BOOK THIS PARCEL', my: 'ပါဆယ် တင်မည်' },
+  'book.submitting': { en: 'Booking…', my: 'တင်နေသည်…' },
+  'book.needPin': { en: 'Drop the pin on the map and choose the area.', my: 'မြေပုံတွင် အမှတ်ထည့်ပြီး မြို့နယ် ရွေးပါ။' },
+  'book.pickupOutside': {
+    en: 'Your shop location is outside the delivery area. Fix it in shop settings.',
+    my: 'ဆိုင်တည်နေရာ ပို့ဆောင်နယ်ပယ် အပြင် ရှိပါသည်။ ဆိုင်အပြင်အဆင်တွင် ပြင်ပါ။',
+  },
+  'book.failed': { en: 'Could not book this parcel', my: 'ပါဆယ် တင်မရပါ' },
+
+  // ---- optional details -----------------------------------------------------
+  'book.altPhone': { en: 'Second phone', my: 'အခြားဖုန်း' },
+  'book.contents': { en: 'What is inside', my: 'ဘာပါသလဲ' },
+  'book.deliveryNote': { en: 'Note for the rider', my: 'ရိုက်ဒါအတွက် မှတ်ချက်' },
+  'book.deliveryNoteHint': { en: 'Gate colour, floor, landmark', my: 'တံခါးအရောင်၊ အထပ်၊ အမှတ်အသား' },
+  'book.weight': { en: 'Weight (g)', my: 'အလေးချိန် (g)' },
+  'book.declared': { en: 'Declared value (Ks)', my: 'ကြေညာဖိုး (ကျပ်)' },
+  'book.fragile': { en: 'Fragile', my: 'ကွဲလွယ်' },
+  'book.feePayer': { en: 'Who pays the delivery fee?', my: 'ပို့ဆောင်ခ ဘယ်သူပေးမလဲ' },
+  'book.feeCustomer': { en: 'Customer, on delivery', my: 'ဝယ်သူ ပေးမည်' },
+  'book.feeShop': { en: 'Me — deduct it from my money', my: 'ကျွန်ုပ် ပေးမည်' },
+  'book.pickupFrom': { en: 'Collect from', my: 'ယူရမည့်နေရာ' },
+  'book.pickupContact': { en: 'Who to ask for', my: 'ဘယ်သူကို ရှာမလဲ' },
+  'book.pickupNote': { en: 'Note for collection', my: 'ယူရန် မှတ်ချက်' },
+
+  // ---- the quote ------------------------------------------------------------
+  'quote.goods': { en: 'Goods', my: 'ကုန်ဖိုး' },
+  'quote.fee': { en: 'Delivery fee', my: 'ပို့ဆောင်ခ' },
+  'quote.total': { en: 'Rider collects', my: 'ရိုက်ဒါ ကောက်ခံမည်' },
+  'quote.route': { en: 'Route', my: 'လမ်းကြောင်း' },
+  'quote.feeOnYou': { en: 'Deducted from your money', my: 'သင့်ငွေမှ ဖြတ်ပါမည်' },
+  'quote.pickArea': { en: 'Choose an area to see the fee.', my: 'ပို့ဆောင်ခ ကြည့်ရန် မြို့နယ် ရွေးပါ။' },
+
+  // ---- created --------------------------------------------------------------
+  'created.title': { en: 'Parcel booked', my: 'ပါဆယ် တင်ပြီးပါပြီ' },
+  'created.writeCode': { en: 'Write this code on the parcel', my: 'ဒီကုဒ်ကို ပါဆယ်ပေါ် ရေးပါ' },
+  'created.another': { en: 'Book another', my: 'ထပ်တင်မည်' },
+  'created.viewOrders': { en: 'See my parcels', my: 'ပါဆယ်များ ကြည့်မည်' },
+
+  // ---- shop dashboard -------------------------------------------------------
+  'sd.waiting': { en: 'Waiting for a rider', my: 'ရိုက်ဒါ စောင့်နေ' },
+  'sd.onTheWay': { en: 'On the way', my: 'လမ်းပေါ်' },
+  'sd.onTheWayHint': { en: 'Assigned or picked up', my: 'ရိုက်ဒါ ကိုင်ထား' },
+  'sd.codInTransit': { en: 'COD in transit', my: 'လမ်းပေါ်ရှိ ငွေ' },
+  'sd.codInTransitHint': { en: 'Cash riders are holding', my: 'ရိုက်ဒါ ကိုင်ထားသော ငွေ' },
+  'sd.delivered': { en: 'Delivered', my: 'ပို့ပြီး' },
+  'sd.needsYou': { en: 'Needs your decision', my: 'သင် ဆုံးဖြတ်ရန်' },
+  'sd.recent': { en: 'Recent parcels', my: 'လတ်တလော ပါဆယ်များ' },
+  'sd.notSetUp': { en: 'Shop not set up', my: 'ဆိုင် မပြင်ဆင်ရသေး' },
+
+  // ---- shop orders list -----------------------------------------------------
+  'so.title': { en: 'My parcels', my: 'ကျွန်ုပ်၏ ပါဆယ်များ' },
+  'so.unavailable': { en: 'Parcels unavailable', my: 'ပါဆယ်များ မပြနိုင်ပါ' },
+  'so.needsDecision': { en: 'Waiting on your decision', my: 'သင် ဆုံးဖြတ်ရန် ရှိပါသည်' },
+  'so.pagination': { en: 'Pagination', my: 'စာမျက်နှာများ' },
+
+  // ---- shop money -----------------------------------------------------------
+  'sm.title': { en: 'Money', my: 'ငွေစာရင်း' },
+  'sm.subtitle': {
+    en: 'Cash collected for you, and what it nets out to.',
+    my: 'သင့်အတွက် ကောက်ခံရသော ငွေနှင့် အသားတင် ပမာဏ။',
+  },
+  'sm.unavailable': { en: 'Money summary unavailable', my: 'ငွေစာရင်း မပြနိုင်ပါ' },
+  'sm.inTransit': { en: 'Still in transit', my: 'လမ်းပေါ်' },
+  'sm.inTransitHint': { en: 'Not collected yet', my: 'မကောက်ခံရသေး' },
+  'sm.collected': { en: 'COD collected', my: 'ကောက်ခံရပြီး' },
+  'sm.fees': { en: 'Delivery fees', my: 'ပို့ဆောင်ခ' },
+  'sm.feesHint': { en: 'Mingalar’s share', my: 'Mingalar အတွက်' },
+  'sm.owed': { en: 'Owed to you', my: 'သင် ရရန်ရှိ' },
+  'sm.owedHint': { en: 'Goods value, fees deducted', my: 'ကုန်ဖိုးမှ ပို့ဆောင်ခ ဖြတ်ပြီး' },
+  'sm.howWorked': { en: 'How this is worked out', my: 'ဘယ်လို တွက်သလဲ' },
+  'sm.notReceived': { en: '{amount} not received', my: '{amount} မရရှိသေးပါ' },
+
+  // ---- shop settings --------------------------------------------------------
+  'ss.title': { en: 'Shop settings', my: 'ဆိုင် အပြင်အဆင်' },
+  'ss.account': { en: 'Account', my: 'အကောင့်' },
+  'ss.owner': { en: 'Owner', my: 'ပိုင်ရှင်' },
+  'ss.phone': { en: 'Phone', my: 'ဖုန်း' },
+  'ss.language': { en: 'Language', my: 'ဘာသာစကား' },
+  'ss.ward': { en: 'Ward', my: 'ရပ်ကွက်' },
+  'ss.suspended': { en: 'This shop is suspended', my: 'ဆိုင် ရပ်ဆိုင်းထားပါသည်' },
+  'ss.noShop': { en: 'No shop registered', my: 'ဆိုင် မမှတ်ပုံတင်ရသေး' },
+
   // ---- offline --------------------------------------------------------------
   'offline.saved': {
     en: 'No signal — saved on your phone. It will send when you reconnect.',

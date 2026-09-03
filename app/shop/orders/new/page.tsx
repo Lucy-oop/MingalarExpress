@@ -1,6 +1,8 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { requireShop } from '@/lib/auth/guards'
+import { getLocale } from '@/lib/i18n/locale'
+import { translator } from '@/lib/i18n'
 import { createClient } from '@/lib/supabase/server'
 import { getAreaRoutes } from '@/lib/orders/queries'
 import { OrderForm } from '@/components/orders/order-form'
@@ -10,7 +12,8 @@ export const metadata: Metadata = { title: 'New order' }
 
 export default async function NewOrderPage() {
   await requireShop()
-  const supabase = await createClient()
+  const [supabase, locale] = await Promise.all([createClient(), getLocale()])
+  const t = translator(locale)
 
   const [{ data: shop }, areas] = await Promise.all([
     supabase
@@ -54,13 +57,10 @@ export default async function NewOrderPage() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-xl font-semibold">New delivery order</h1>
-        <p className="text-sm text-muted-foreground">
-          Sending from <span className="font-medium">{shop.name}</span>. Delivery is available
-          across Greater Yangon on the daily routes, and the destination area sets the fee.
-        </p>
+        <h1 className="text-xl font-semibold">{t('book.title')}</h1>
+        <p className="text-sm text-muted-foreground">{t('book.subtitle')}</p>
       </div>
-      <OrderForm shop={shop} areas={areas} />
+      <OrderForm shop={shop} areas={areas} locale={locale} t={t} />
     </div>
   )
 }

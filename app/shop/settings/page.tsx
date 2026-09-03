@@ -1,5 +1,7 @@
 import type { Metadata } from 'next'
 import { requireShop } from '@/lib/auth/guards'
+import { getLocale } from '@/lib/i18n/locale'
+import { translator } from '@/lib/i18n'
 import { createClient } from '@/lib/supabase/server'
 import { ShopSettingsForm } from '@/components/orders/shop-settings-form'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -11,6 +13,8 @@ export const dynamic = 'force-dynamic'
 
 export default async function ShopSettingsPage() {
   const { profile } = await requireShop()
+  const locale = await getLocale()
+  const t = translator(locale)
   const supabase = await createClient()
 
   const { data: shop } = await supabase
@@ -23,29 +27,29 @@ export default async function ShopSettingsPage() {
 
   return (
     <div className="space-y-5">
-      <h1 className="text-xl font-semibold">Shop settings</h1>
+      <h1 className="text-xl font-semibold">{t('ss.title')}</h1>
 
       {/* A suspended shop cannot create orders, and until now the only way it
           learned that was by trying. */}
       {shop && !shop.is_active ? (
-        <Alert tone="error" title="This shop is suspended">
+        <Alert tone="error" title={t('ss.suspended')}>
           New orders are blocked. Contact the Mingalar Express office to reactivate it.
         </Alert>
       ) : null}
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Account</CardTitle>
+          <CardTitle className="text-base">{t('ss.account')}</CardTitle>
           <CardDescription>
             Your login and role. Contact the office to change these.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-2 text-sm">
-          <Row label="Owner" value={profile.full_name} />
-          <Row label="Phone" value={formatMyanmarPhone(profile.phone)} />
-          <Row label="Language" value={profile.preferred_lang === 'my' ? 'Burmese' : 'English'} />
+          <Row label={t('ss.owner')} value={profile.full_name} />
+          <Row label={t('ss.phone')} value={formatMyanmarPhone(profile.phone)} />
+          <Row label={t('ss.language')} value={profile.preferred_lang === 'my' ? 'Burmese' : 'English'} />
           <Row
-            label="Ward"
+            label={t('ss.ward')}
             value={(shop?.service_areas as { name: string } | null)?.name ?? '—'}
           />
         </CardContent>
@@ -54,7 +58,7 @@ export default async function ShopSettingsPage() {
       {shop ? (
         <ShopSettingsForm shop={shop} />
       ) : (
-        <Alert tone="error" title="No shop registered">
+        <Alert tone="error" title={t('ss.noShop')}>
           Ask the Mingalar Express office to register your shop and pickup point.
         </Alert>
       )}

@@ -2,6 +2,8 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { requireShop } from '@/lib/auth/guards'
+import { getLocale } from '@/lib/i18n/locale'
+import { translator } from '@/lib/i18n'
 import { searchShopOrders } from '@/lib/orders/queries'
 import { OrderTable } from '@/components/orders/order-table'
 import { OrderFilters } from '@/components/orders/order-filters'
@@ -34,6 +36,8 @@ export default async function ShopOrdersPage({
   searchParams: Promise<Search>
 }) {
   await requireShop()
+  const locale = await getLocale()
+  const t = translator(locale)
   const sp = await searchParams
 
   // Every parameter is validated before it reaches a query. A bad `?page=abc`
@@ -53,7 +57,7 @@ export default async function ShopOrdersPage({
     result = await searchShopOrders(filters)
   } catch (error) {
     return (
-      <Alert tone="error" title="Orders unavailable">
+      <Alert tone="error" title={t('so.unavailable')}>
         {error instanceof Error ? error.message : 'Unknown error'}
       </Alert>
     )
@@ -72,13 +76,13 @@ export default async function ShopOrdersPage({
     <div className="space-y-4">
       <ShopLiveRefresh />
 
-      <h1 className="text-xl font-semibold">Orders</h1>
+      <h1 className="text-xl font-semibold">{t('so.title')}</h1>
 
       {/* OrderFilters holds status/search/dates; `needs` is a distinct view, so
           it gets its own banner and its own way out rather than a select option
           that would read as just another status. */}
       {filters.needsDecision ? (
-        <Alert tone="error" title="Waiting on your decision">
+        <Alert tone="error" title={t('so.needsDecision')}>
           These parcels failed delivery and we have stopped trying. Open one to retry it, ask for
           it back, or cancel it.{' '}
           <Link href="/shop/orders" className="underline">
@@ -92,7 +96,7 @@ export default async function ShopOrdersPage({
       <OrderTable orders={rows} />
 
       {pageCount > 1 ? (
-        <nav className="flex items-center justify-between gap-3" aria-label="Pagination">
+        <nav className="flex items-center justify-between gap-3" aria-label={t('so.pagination')}>
           <PageLink href={pageHref(page - 1)} disabled={page <= 1}>
             <ChevronLeft />
             Newer

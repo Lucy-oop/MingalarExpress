@@ -118,7 +118,25 @@ export const orderCreateSchema = z
     dropoffPoint: servicePoint,
     dropoffNote: z.string().trim().max(300).optional().or(z.literal('')),
 
-    parcelDesc: z.string().trim().min(2, 'Describe what is in the parcel').max(500),
+    /**
+     * OPTIONAL, with a default — it used to be required.
+     *
+     * The booking form was fourteen inputs and a shop books parcels between
+     * customers; "what is inside" was the one required field that carried no
+     * consequence. Nothing prices on it, nothing routes on it and no constraint
+     * depends on it: the rider sees it under Contents, and `Fragile` — which
+     * does change handling — is its own flag.
+     *
+     * The DB still demands 1..500 characters (`parcel_desc` is NOT NULL), so a
+     * blank becomes 'Parcel' here rather than reaching Postgres as a 23514 the
+     * shop cannot act on.
+     */
+    parcelDesc: z
+      .string()
+      .trim()
+      .max(500)
+      .optional()
+      .transform((v) => (v && v.length > 0 ? v : 'Parcel')),
     parcelWeightG: z.coerce.number().int().min(0).max(50_000).nullable().optional(),
     parcelValue: mmk.nullable().optional(),
     isFragile: z.coerce.boolean().default(false),

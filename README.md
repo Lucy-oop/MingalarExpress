@@ -23,11 +23,12 @@ Architecture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · Database: [supabas
 | 10 | Contact log: the office records what was said, and shares `/o/<code>` | **Done** — migration 0017, append-only and dispatch-only |
 | 11 | Rider app: Burmese, hub-centred drive order, day counts, one-touch screens | **Done** — migrations 0018–0019 |
 | 12 | KBZPay: rider captures the receipt, the office verifies it against the bank | **Done** — migrations 0020–0022. QR cropped and decode-verified |
+| 13 | Shop panel in Burmese; booking down to four fields and a pin | **Done** — no migration |
 
 Every route in the table above now ships. `/admin/super/*` is gated three times over:
 middleware (longest-prefix), `requireAdmin` in its layout, and RLS `is_admin()` on every write.
 
-**22 migrations · 191 SQL assertions across eight suites · 363 unit tests.**
+**22 migrations · 191 SQL assertions across eight suites · 369 unit tests.**
 `docs/ARCHITECTURE.md` describes the Phase 1–5 design and is partly superseded by
 phases 6–9 — it carries a banner saying exactly where. `docs/RUNBOOK.md` is
 current.
