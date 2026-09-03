@@ -24,8 +24,8 @@ import type { OrderStatus } from '@/types/domain'
 
 const ADMIN_ORDER_COLUMNS = `
   id, code, status, customer_name, customer_phone, dropoff_address,
-  cod_amount, delivery_fee, payment_method, created_at, closed_at,
-  resolution, trip_id, rider_id,
+  cod_amount, delivery_fee, payment_method, created_at, closed_at, delivered_at,
+  resolution, trip_id, rider_id, cod_status, collected_via, kpay_reject_reason,
   shops:shop_id (name),
   dropoff_area:dropoff_area_id (name),
   routes:route_id (code, colour)
@@ -45,6 +45,10 @@ export type AdminOrderRow = {
   /** Stamped by the status machine on entering `failed`; cleared on the way back
    *  to `pending`. For a parcel sitting at `failed` this is when it last failed. */
   closed_at: string | null
+  delivered_at: string | null
+  cod_status: string
+  collected_via: string | null
+  kpay_reject_reason: string | null
   resolution: string | null
   trip_id: string | null
   rider_id: string | null
@@ -71,6 +75,16 @@ export type AdminOrderFilters = OrderFilters & {
   awaitingShop?: boolean
   /** Parcels a shop asked back that have not got there yet. */
   returning?: boolean
+  /**
+   * Delivered, and the money never arrived (0022).
+   *
+   * Today that means a KBZPay receipt the office rejected. It had no screen at
+   * all: /admin/kpay drops a parcel the moment it is decided, /admin/audit is
+   * rider-scoped and a rejected transfer is on no rider, and the shop's own page
+   * correctly stops counting it. The one thing somebody has to chase was
+   * invisible the instant they flagged it.
+   */
+  moneyOutstanding?: boolean
 }
 
 function applyAdminFilters<T>(query: T, f: AdminOrderFilters): T {
@@ -82,6 +96,16 @@ function applyAdminFilters<T>(query: T, f: AdminOrderFilters): T {
   }
   if (f.returning) {
     q = q.eq('resolution', 'return').not('status', 'in', '(cancelled,delivered,returned)')
+  }
+  if (f.moneyOutstanding) {
+    // `pending` only, not `kpay_pending`: a transfer still awaiting verification
+    // belongs on /admin/kpay, where the action is "check the bank". This list is
+    // for money that has already been ruled out and now has to be chased.
+    q = q
+      .eq('status', 'delivered')
+      .eq('payment_method', 'cod')
+      .eq('cod_status', 'pending')
+      .gt('cod_amount', 0)
   }
   return q as T
 }
@@ -104,7 +128,14 @@ export async function searchAllOrders(filters: AdminOrderFilters): Promise<Admin
         .from('orders')
         .select(ADMIN_ORDER_COLUMNS, { count: 'exact' })
         .order('closed_at', { ascending: true, nullsFirst: false })
-    : supabase
+    : filters.moneyOutstanding
+      ? // Also a worklist, so also oldest-first: the longer a shortfall sits the
+        // colder the trail to whoever owes it.
+        supabase
+          .from('orders')
+          .select(ADMIN_ORDER_COLUMNS, { count: 'exact' })
+          .order('delivered_at', { ascending: true, nullsFirst: false })
+      : supabase
         .from('orders')
         .select(ADMIN_ORDER_COLUMNS, { count: 'exact' })
         .order('created_at', { ascending: false })

@@ -63,6 +63,19 @@ export default async function ShopMoneyPage({
         />
       </div>
 
+      {/* Only when there is a shortfall. A row of zeroes on every shop's page
+          would teach everyone to ignore the one time it matters. */}
+      {money.codUnreceived > 0 ? (
+        <Alert tone="warning" title={`${formatMmk(money.codUnreceived)} not received`}>
+          These parcels were delivered, but the payment has not reached us — either a
+          KBZPay transfer we are still checking against the bank, or one that did not
+          match. Until it arrives it is not counted in{' '}
+          <strong>COD collected</strong> or in <strong>owed to you</strong>, and the
+          delivery fee on those parcels is still due. The office will be in touch about
+          any that do not clear.
+        </Alert>
+      ) : null}
+
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-sm">How this is worked out</CardTitle>
@@ -75,6 +88,15 @@ export default async function ShopMoneyPage({
             <strong>{formatMmk(money.platformFees)}</strong> is Mingalar Express&rsquo;s delivery
             fee, leaving <strong>{formatMmk(money.owedToShop)}</strong> owed to you.
           </p>
+          {money.codUnreceived > 0 ? (
+            <p>
+              A delivered parcel whose payment never arrived counts as neither: the fee is
+              still earned because the parcel was carried, so it is deducted, and nothing
+              is added. That is why{' '}
+              <strong>{formatMmk(money.codUnreceived)}</strong> appears above the figures
+              rather than inside them.
+            </p>
+          ) : null}
           {/*
             Said plainly, because it is the difference between a report and a
             statement. These figures are recomputed from your orders every time

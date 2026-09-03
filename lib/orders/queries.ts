@@ -121,6 +121,15 @@ export type ShopMoney = {
   goodsValue: number
   platformFees: number
   owedToShop: number
+  /**
+   * Delivered COD whose money never arrived — a KBZPay receipt the office
+   * rejected, or one it has not verified yet (0022).
+   *
+   * Reported rather than silently subtracted. A shop that just saw a smaller
+   * "owed to you" would ring the office; a shop that sees the shortfall named
+   * knows what the call is about.
+   */
+  codUnreceived: number
 }
 
 /**
@@ -163,6 +172,7 @@ export async function getShopMoney(from?: string, to?: string): Promise<ShopMone
     goodsValue: sum('goods_value'),
     platformFees: sum('platform_fees'),
     owedToShop: sum('owed_to_shop'),
+    codUnreceived: sum('cod_unreceived'),
   }
 }
 

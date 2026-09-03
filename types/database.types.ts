@@ -1,4 +1,4 @@
-// Generated from migrations 0001-0021 via postgres-meta (the same generator
+// Generated from migrations 0001-0022 via postgres-meta (the same generator
 // the Supabase CLI uses). DO NOT EDIT BY HAND.
 // Regenerate:  npm run db:types      (supabase gen types typescript --local)
 export type Json =
@@ -1534,6 +1534,7 @@ export type Database = {
         Args: { p_from?: string; p_to?: string }
         Returns: {
           cod_collected: number
+          cod_unreceived: number
           delivered: number
           goods_value: number
           in_transit: number
@@ -1564,6 +1565,15 @@ export type Database = {
           settled_total: number
           trip_pay: number
         }[]
+      }
+      cod_unreceived: {
+        Args: {
+          p_cod: number
+          p_cod_status: Database["public"]["Enums"]["cod_status"]
+          p_payment: Database["public"]["Enums"]["payment_method"]
+          p_status: Database["public"]["Enums"]["order_status"]
+        }
+        Returns: boolean
       }
       confirm_kpay_payment: {
         Args: { p_order_id: string }

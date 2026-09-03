@@ -349,5 +349,181 @@ begin
   end if;
 end $$;
 
+-- ============================================================================
+--  K5. THE SHOP'S MONEY  (migration 0022)
+--
+--  The bug 0021 introduced and 0022 fixes: `cod_by_shop` derived what the
+--  platform owes a shop from `status = 'delivered'` alone. Before 0021 that was
+--  safe, because a delivered COD parcel was always `collected`. A rejected
+--  KBZPay receipt broke the implication and the shop was told it was owed money
+--  the platform never received.
+--
+--  Measured as DELTAS against a single parcel, so the assertions are exact
+--  regardless of what the rest of the suite has already booked.
+-- ============================================================================
+
+\echo '=== K5. an unverified transfer is not money owed ==='
+do $$
+declare
+  oid uuid;
+  v_fee bigint;
+  v_cod bigint;
+  b record;  -- before
+  a record;  -- after
+begin
+  select cod_collected, goods_value, platform_fees, owed_to_shop, cod_unreceived into b
+    from public.cod_by_shop('2020-01-01'::date, '2099-01-01'::date)
+   where shop_id = 'aaaaaaaa-0000-0000-0000-000000000001';
+
+  oid := pg_temp.mk_cod('Money Gap', 48500);
+  select delivery_fee, cod_amount into v_fee, v_cod from public.orders where id = oid;
+  perform pg_temp.deliver(oid, 'kpay');
+
+  select cod_collected, goods_value, platform_fees, owed_to_shop, cod_unreceived into a
+    from public.cod_by_shop('2020-01-01'::date, '2099-01-01'::date)
+   where shop_id = 'aaaaaaaa-0000-0000-0000-000000000001';
+
+  -- Nothing has arrived: the office has not checked the bank yet.
+  if a.cod_collected <> b.cod_collected then
+    raise exception 'FAIL: an unverified transfer counted as collected (+%)',
+      a.cod_collected - b.cod_collected;
+  end if;
+  if a.cod_unreceived - b.cod_unreceived <> v_cod then
+    raise exception 'FAIL: cod_unreceived moved by %, expected %',
+      a.cod_unreceived - b.cod_unreceived, v_cod;
+  end if;
+
+  -- The parcel WAS delivered, so the fee is earned...
+  if a.platform_fees - b.platform_fees <> v_fee then
+    raise exception 'FAIL: platform_fees moved by %, expected %',
+      a.platform_fees - b.platform_fees, v_fee;
+  end if;
+  -- ...and the shop therefore owes it, exactly as on a prepaid parcel.
+  if a.owed_to_shop - b.owed_to_shop <> -v_fee then
+    raise exception 'FAIL: owed_to_shop moved by %, expected % (minus the fee)',
+      a.owed_to_shop - b.owed_to_shop, -v_fee;
+  end if;
+  raise notice 'PASS: unverified — collected +0, unreceived +%, owed %', v_cod, -v_fee;
+end $$;
+
+\echo '=== K5b. rejecting leaves it that way; confirming turns it into money ==='
+do $$
+declare
+  oid uuid; v_fee bigint; v_cod bigint; b record; a record;
+begin
+  -- REJECTED: still nothing received. This is the exact state that used to tell
+  -- the shop it was owed 45,000 Ks of money nobody had.
+  select owed_to_shop, cod_collected, cod_unreceived into b
+    from public.cod_by_shop('2020-01-01'::date, '2099-01-01'::date)
+   where shop_id = 'aaaaaaaa-0000-0000-0000-000000000001';
+
+  oid := pg_temp.mk_cod('Rejected Money', 48500);
+  select delivery_fee, cod_amount into v_fee, v_cod from public.orders where id = oid;
+  perform pg_temp.deliver(oid, 'kpay');
+  perform public.reject_kpay_payment(oid, 'Screenshot shows 4,850 not 48,500');
+
+  select owed_to_shop, cod_collected, cod_unreceived into a
+    from public.cod_by_shop('2020-01-01'::date, '2099-01-01'::date)
+   where shop_id = 'aaaaaaaa-0000-0000-0000-000000000001';
+
+  if a.cod_collected <> b.cod_collected then
+    raise exception 'FAIL: a REJECTED transfer counted as collected';
+  end if;
+  if a.owed_to_shop - b.owed_to_shop <> -v_fee then
+    raise exception 'FAIL: owed_to_shop moved by % on a rejection, expected %',
+      a.owed_to_shop - b.owed_to_shop, -v_fee;
+  end if;
+  if a.cod_unreceived - b.cod_unreceived <> v_cod then
+    raise exception 'FAIL: the shortfall is not reported';
+  end if;
+  -- And the parcel is still delivered, so the customer keeps the goods.
+  if (select status from public.orders where id = oid) <> 'delivered' then
+    raise exception 'FAIL: rejection rewound the delivery';
+  end if;
+  raise notice 'PASS: rejected — % reported unreceived, shop owes the % fee', v_cod, v_fee;
+
+  -- CONFIRMED: now it is money, and the shortfall clears.
+  select owed_to_shop, cod_collected, cod_unreceived into b
+    from public.cod_by_shop('2020-01-01'::date, '2099-01-01'::date)
+   where shop_id = 'aaaaaaaa-0000-0000-0000-000000000001';
+
+  oid := pg_temp.mk_cod('Confirmed Money', 48500);
+  select delivery_fee, cod_amount into v_fee, v_cod from public.orders where id = oid;
+  perform pg_temp.deliver(oid, 'kpay');
+  perform public.confirm_kpay_payment(oid);
+
+  select owed_to_shop, cod_collected, cod_unreceived into a
+    from public.cod_by_shop('2020-01-01'::date, '2099-01-01'::date)
+   where shop_id = 'aaaaaaaa-0000-0000-0000-000000000001';
+
+  if a.cod_collected - b.cod_collected <> v_cod then
+    raise exception 'FAIL: a confirmed transfer added % to collected, expected %',
+      a.cod_collected - b.cod_collected, v_cod;
+  end if;
+  if a.cod_unreceived <> b.cod_unreceived then
+    raise exception 'FAIL: confirming did not clear the shortfall';
+  end if;
+  if a.owed_to_shop - b.owed_to_shop <> v_cod - v_fee then
+    raise exception 'FAIL: owed_to_shop moved by %, expected %',
+      a.owed_to_shop - b.owed_to_shop, v_cod - v_fee;
+  end if;
+  raise notice 'PASS: confirmed — collected +%, shop owed +%', v_cod, v_cod - v_fee;
+end $$;
+
+\echo '=== K5c. a CASH delivery is unaffected by any of this ==='
+do $$
+declare oid uuid; v_fee bigint; v_cod bigint; b record; a record;
+begin
+  select owed_to_shop, cod_collected, cod_unreceived into b
+    from public.cod_by_shop('2020-01-01'::date, '2099-01-01'::date)
+   where shop_id = 'aaaaaaaa-0000-0000-0000-000000000001';
+
+  oid := pg_temp.mk_cod('Cash Unaffected', 48500);
+  select delivery_fee, cod_amount into v_fee, v_cod from public.orders where id = oid;
+  perform pg_temp.deliver(oid, 'cash');
+
+  select owed_to_shop, cod_collected, cod_unreceived into a
+    from public.cod_by_shop('2020-01-01'::date, '2099-01-01'::date)
+   where shop_id = 'aaaaaaaa-0000-0000-0000-000000000001';
+
+  if a.cod_collected - b.cod_collected <> v_cod then
+    raise exception 'FAIL: cash collection regressed (+%)', a.cod_collected - b.cod_collected;
+  end if;
+  if a.owed_to_shop - b.owed_to_shop <> v_cod - v_fee then
+    raise exception 'FAIL: cash owed moved by %, expected %',
+      a.owed_to_shop - b.owed_to_shop, v_cod - v_fee;
+  end if;
+  if a.cod_unreceived <> b.cod_unreceived then
+    raise exception 'FAIL: cash was counted as unreceived';
+  end if;
+  raise notice 'PASS: cash unchanged — collected +%, owed +%', v_cod, v_cod - v_fee;
+end $$;
+
+\echo '=== K5d. cod_unreceived is the one place the condition lives ==='
+do $$
+begin
+  if not public.cod_unreceived('delivered', 'cod', 48500, 'pending') then
+    raise exception 'FAIL: a rejected KPay is not flagged unreceived';
+  end if;
+  if not public.cod_unreceived('delivered', 'cod', 48500, 'kpay_pending') then
+    raise exception 'FAIL: an unverified KPay is not flagged unreceived';
+  end if;
+  if public.cod_unreceived('delivered', 'cod', 48500, 'collected') then
+    raise exception 'FAIL: cash in the rider''s hands flagged as unreceived';
+  end if;
+  if public.cod_unreceived('delivered', 'cod', 48500, 'settled') then
+    raise exception 'FAIL: settled money flagged as unreceived';
+  end if;
+  -- A parcel still out is not a shortfall; it is simply not finished.
+  if public.cod_unreceived('picked_up', 'cod', 48500, 'pending') then
+    raise exception 'FAIL: an undelivered parcel counted as a shortfall';
+  end if;
+  if public.cod_unreceived('delivered', 'prepaid', 0, 'none') then
+    raise exception 'FAIL: a prepaid parcel counted as a shortfall';
+  end if;
+  raise notice 'PASS: cod_unreceived holds on all six cases';
+end $$;
+
+
 \echo ''
 \echo '####  ALL KPAY CHECKS PASSED  ####'

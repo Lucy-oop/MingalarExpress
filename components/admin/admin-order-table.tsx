@@ -24,9 +24,13 @@ import type { AdminOrderRow } from '@/lib/admin/order-queries'
 export function AdminOrderTable({
   orders,
   worklist = false,
+  unpaid = false,
 }: {
   orders: AdminOrderRow[]
   worklist?: boolean
+  /** The "Money outstanding" view: swap Created for when it was delivered, and
+   *  show WHY the payment was refused, because that is what the chase needs. */
+  unpaid?: boolean
 }) {
   if (orders.length === 0) {
     return (
@@ -35,7 +39,9 @@ export function AdminOrderTable({
         <p className="mt-1 text-xs text-muted-foreground">
           {worklist
             ? 'Nothing is waiting on a shop right now.'
-            : 'Try a wider date range, or clear the filters.'}
+            : unpaid
+              ? 'Every delivered parcel has been paid for.'
+              : 'Try a wider date range, or clear the filters.'}
         </p>
       </div>
     )
@@ -57,6 +63,11 @@ export function AdminOrderTable({
               <>
                 <th className="px-3 py-2 font-medium">Waiting</th>
                 <th className="px-3 py-2 font-medium">Last contact</th>
+              </>
+            ) : unpaid ? (
+              <>
+                <th className="px-3 py-2 font-medium">Delivered</th>
+                <th className="px-3 py-2 font-medium">Why it was refused</th>
               </>
             ) : (
               <th className="px-3 py-2 font-medium">Created</th>
@@ -83,7 +94,13 @@ export function AdminOrderTable({
               <tr
                 key={o.id}
                 className={
-                  stale ? 'bg-amber-100/70' : awaitingShop ? 'bg-amber-50/50' : undefined
+                  stale
+                    ? 'bg-amber-100/70'
+                    : awaitingShop
+                      ? 'bg-amber-50/50'
+                      : unpaid
+                        ? 'bg-amber-50/50'
+                        : undefined
                 }
               >
                 <td className="px-3 py-2">
@@ -119,6 +136,15 @@ export function AdminOrderTable({
                     <StatusBadge status={o.status} />
                     {awaitingShop ? <Badge tone="red">Waiting on shop</Badge> : null}
                     {returning ? <Badge tone="blue">Returning</Badge> : null}
+                    {/* Delivered and unpaid. Shown on every list, not just the
+                        saved view: a support call about this parcel needs to see
+                        it without knowing to go looking. */}
+                    {o.status === 'delivered' && o.cod_status === 'pending' && o.cod_amount > 0 ? (
+                      <Badge tone="amber">Not paid</Badge>
+                    ) : null}
+                    {o.cod_status === 'kpay_pending' ? (
+                      <Badge tone="blue">KBZPay to verify</Badge>
+                    ) : null}
                   </span>
                 </td>
                 <td className="px-3 py-2 text-right tabular-nums">
@@ -160,6 +186,21 @@ export function AdminOrderTable({
                         /* The important state. An untouched row is the one to
                            pick up, so it is the one that reads loudest. */
                         <Badge tone="red">Not chased</Badge>
+                      )}
+                    </td>
+                  </>
+                ) : unpaid ? (
+                  <>
+                    <td className="whitespace-nowrap px-3 py-2 text-xs">
+                      <span className="text-muted-foreground">
+                        {formatAge(o.delivered_at)} ago
+                      </span>
+                    </td>
+                    <td className="max-w-[18rem] px-3 py-2 text-xs">
+                      {o.kpay_reject_reason ? (
+                        <span className="text-amber-900">{o.kpay_reject_reason}</span>
+                      ) : (
+                        <span className="text-muted-foreground">Not recorded</span>
                       )}
                     </td>
                   </>

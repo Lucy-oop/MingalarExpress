@@ -43,6 +43,7 @@ export default async function AdminOrdersPage({
     // so neither can be a value in the status dropdown.
     awaitingShop: sp.view === 'awaiting',
     returning: sp.view === 'returning',
+    moneyOutstanding: sp.view === 'unpaid',
     shopId: sp.shop || null,
     status: isStatus(sp.status) ? sp.status : null,
     q: sp.q?.trim() || null,
@@ -94,6 +95,7 @@ export default async function AdminOrdersPage({
           { key: null, label: 'All' },
           { key: 'awaiting', label: 'Waiting on a shop' },
           { key: 'returning', label: 'Returning to a shop' },
+          { key: 'unpaid', label: 'Money outstanding' },
         ].map((v) => {
           const active = (sp.view ?? null) === v.key
           return (
@@ -118,6 +120,15 @@ export default async function AdminOrdersPage({
         </p>
       ) : null}
 
+      {filters.moneyOutstanding ? (
+        <p className="text-xs text-muted-foreground">
+          Delivered parcels whose payment never reached us — a KBZPay receipt that did not
+          check out. The customer has the goods and the shop is not being credited, so
+          somebody has to chase it. Oldest first. Transfers still awaiting verification are
+          on <strong>KBZPay</strong> instead.
+        </p>
+      ) : null}
+
       <OrderFilters
         total={total}
         basePath="/admin/orders"
@@ -127,7 +138,11 @@ export default async function AdminOrdersPage({
 
       {/* The awaiting view is a worklist: ordered by neglect, and carrying the
           age and the contact count instead of the booking date. */}
-      <AdminOrderTable orders={rows} worklist={filters.awaitingShop} />
+      <AdminOrderTable
+        orders={rows}
+        worklist={filters.awaitingShop}
+        unpaid={filters.moneyOutstanding}
+      />
 
       {pageCount > 1 ? (
         <nav className="flex items-center justify-between gap-3" aria-label="Pagination">
