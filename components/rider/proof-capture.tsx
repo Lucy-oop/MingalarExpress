@@ -1,8 +1,8 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useId, useRef, useState } from 'react'
 import { Camera, ImageUp, RotateCcw } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
 import { prepareProofImage, type PreparedImage } from '@/lib/rider/image'
 import { cn } from '@/lib/utils'
 
@@ -13,6 +13,21 @@ import { cn } from '@/lib/utils'
  * rather than a file browser. The photo is downscaled and re-encoded on-device
  * before it is ever queued or uploaded — a raw 5 MB camera JPEG will not survive
  * a stairwell connection.
+ *
+ * THE TRIGGER IS A <label>, NOT A BUTTON CALLING .click().
+ *
+ * It used to be a button doing `inputRef.current?.click()` on an input styled
+ * `display: none`. That combination is unreliable on exactly the hardware this
+ * app targets: several Android WebViews and older Samsung Internet builds refuse
+ * to open the camera for an input that is not rendered, so the button did
+ * nothing at all and the rider had no way to finish the job. A label activates
+ * the input through the platform's own path, which needs no JavaScript and
+ * cannot be blocked, and the input is now visually hidden rather than removed
+ * from the layout.
+ *
+ * `inputRef` survives for `reset()`, which has to clear `input.value` — without
+ * that, re-selecting the same file fires no change event and Retake appears to
+ * hang.
  */
 export function ProofCapture({
   onReady,
@@ -22,6 +37,7 @@ export function ProofCapture({
   disabled?: boolean
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
+  const inputId = useId()
   const [preview, setPreview] = useState<string | null>(null)
   const [image, setImage] = useState<PreparedImage | null>(null)
   const [busy, setBusy] = useState(false)
@@ -56,13 +72,17 @@ export function ProofCapture({
   }
 
   return (
-    <div className="space-y-2">
+    <div className="relative space-y-2">
       <input
         ref={inputRef}
+        id={inputId}
         type="file"
         accept="image/*"
         capture="environment"
-        className="hidden"
+        disabled={disabled || busy}
+        /* Visually hidden, but still laid out and still clickable — `hidden`
+           (display: none) is what broke the camera on some Android WebViews. */
+        className="absolute size-px overflow-hidden opacity-0"
         onChange={(e) => void handleFile(e.target.files?.[0])}
       />
 
@@ -92,18 +112,19 @@ export function ProofCapture({
           </div>
         </div>
       ) : (
-        <Button
-          type="button"
-          variant="outline"
-          size="touch"
-          block
-          disabled={disabled || busy}
-          onClick={() => inputRef.current?.click()}
-          className={cn('border-dashed', error && 'border-destructive')}
+        <label
+          htmlFor={inputId}
+          className={cn(
+            buttonVariants({ variant: 'outline', size: 'touch', block: true }),
+            'cursor-pointer border-dashed',
+            error && 'border-destructive',
+            // A label has no disabled state, so it is spelled out.
+            (disabled || busy) && 'pointer-events-none opacity-50',
+          )}
         >
           {busy ? <ImageUp className="animate-pulse" /> : <Camera />}
           {busy ? 'Preparing photo…' : 'Take delivery photo'}
-        </Button>
+        </label>
       )}
 
       {error ? <p className="text-xs font-medium text-destructive">{error}</p> : null}

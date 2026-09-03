@@ -112,6 +112,12 @@ export default async function AdminOrdersPage({
         })}
       </nav>
 
+      {filters.awaitingShop ? (
+        <p className="text-xs text-muted-foreground">
+          Longest wait first. A row turns amber after two days with nobody acting on it.
+        </p>
+      ) : null}
+
       <OrderFilters
         total={total}
         basePath="/admin/orders"
@@ -119,7 +125,9 @@ export default async function AdminOrdersPage({
         extra={<ShopPicker shops={shops} value={sp.shop ?? ''} basePath="/admin/orders" />}
       />
 
-      <AdminOrderTable orders={rows} />
+      {/* The awaiting view is a worklist: ordered by neglect, and carrying the
+          age and the contact count instead of the booking date. */}
+      <AdminOrderTable orders={rows} worklist={filters.awaitingShop} />
 
       {pageCount > 1 ? (
         <nav className="flex items-center justify-between gap-3" aria-label="Pagination">

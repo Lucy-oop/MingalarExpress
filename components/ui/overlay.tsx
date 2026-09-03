@@ -40,16 +40,50 @@ export function Overlay({
   const restoreRef = React.useRef<HTMLElement | null>(null)
   const titleId = React.useId()
 
+  /**
+   * `onClose` behind a ref, and this is the whole reason the bug below is fixed.
+   *
+   * THE BUG. This effect used to list `onClose` as a dependency. Every caller
+   * passes an inline arrow — `onClose={() => setChoice(null)}` — which is a new
+   * function on every render, so the effect tore down and set up again after
+   * EVERY KEYSTROKE in any field inside a dialog: the cleanup restored focus to
+   * the trigger, then the setup moved it to the panel. One character per click.
+   *
+   * It made the override reason on depart-dialog impossible to satisfy, since
+   * that one demands ten characters.
+   *
+   * A ref keeps the latest handler reachable without making it reactive, so the
+   * effect can depend on `open` alone and run once per open. Do not "fix" the
+   * dependency array by adding onClose back.
+   */
+  const onCloseRef = React.useRef(onClose)
+  React.useEffect(() => {
+    onCloseRef.current = onClose
+  })
+
   React.useEffect(() => {
     if (!open) return
 
-    restoreRef.current = document.activeElement as HTMLElement | null
-    panelRef.current?.focus()
+    // Only claim focus if nothing inside the panel already has it. A child with
+    // autoFocus is focused during commit, before this runs, and stealing it back
+    // would defeat the point of asking for it.
+    //
+    // The restore target is captured in the same breath: when focus is already
+    // inside the panel there is no outside element to remember, so such a dialog
+    // does not return focus to its trigger on close. Worth the trade — a dialog
+    // that cannot be typed into is a worse problem than one that ends with focus
+    // on <body>.
+    const panel = panelRef.current
+    const active = document.activeElement as HTMLElement | null
+    if (!panel?.contains(active)) {
+      restoreRef.current = active
+      panel?.focus()
+    }
 
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.stopPropagation()
-        onClose()
+        onCloseRef.current()
       }
     }
     document.addEventListener('keydown', onKeyDown)
@@ -64,8 +98,9 @@ export function Overlay({
       document.removeEventListener('keydown', onKeyDown)
       document.body.style.overflow = previous
       restoreRef.current?.focus?.()
+      restoreRef.current = null
     }
-  }, [open, onClose])
+  }, [open])
 
   if (!open) return null
 

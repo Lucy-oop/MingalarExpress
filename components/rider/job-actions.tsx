@@ -65,10 +65,27 @@ export function JobActions({
   const [failReason, setFailReason] = useState('')
   const [, startTransition] = useTransition()
 
+  /**
+   * Latched once an action has landed — on the server OR in the offline queue.
+   *
+   * `busy` alone is not enough. It clears the moment the call returns, but the
+   * screen only changes shape when `router.refresh()` brings the new status
+   * back, and on Yangon mobile data that can be seconds. In that window the
+   * button was live again on a job that was already done: a second tap either
+   * uploaded a second photo and failed with `illegal_transition` — an alarming
+   * error on a delivery that actually succeeded — or, with no signal, wrote a
+   * SECOND copy of the same action into IndexedDB.
+   *
+   * It is never reset. Every path that sets it either changes the parcel's
+   * status (so this block unmounts) or has banked the action for replay.
+   */
+  const [completed, setCompleted] = useState(false)
+
   const done = useCallback(
     (message: string, tone: 'success' | 'info' = 'success') => {
       setFeedback({ tone, message })
       setBusy(null)
+      setCompleted(true)
       startTransition(() => router.refresh())
     },
     [router],
@@ -83,11 +100,15 @@ export function JobActions({
       const explained = explainRiderError(rawMessage)
       if (explained.kind === 'network' && queueAs) {
         await enqueue(queueAs)
+        // Banked for replay, so it must not be tappable again — see `completed`.
+        setCompleted(true)
         setFeedback({
           tone: 'info',
           message: 'No signal — saved on your phone. It will send when you reconnect.',
         })
       } else {
+        // A logical failure is genuinely retryable after the rider fixes
+        // something, so `completed` stays false here on purpose.
         setFeedback({ tone: 'error', message: explained.message })
       }
       setBusy(null)
@@ -275,24 +296,34 @@ export function JobActions({
             placeholder="Who took it back?"
             aria-label="Who at the shop took the parcel back"
           />
-          <Button size="touch" block disabled={busy !== null} onClick={() => void onReturned()}>
+          <Button
+            size="touch"
+            block
+            disabled={busy !== null || completed}
+            onClick={() => void onReturned()}
+          >
             <PackageCheck />
-            {busy === 'returned' ? 'Saving…' : 'Returned to shop'}
+            {busy === 'returned' ? 'Saving…' : completed ? 'Saved' : 'Returned to shop'}
           </Button>
         </div>
       ) : null}
 
       {leg !== 'return' && status === 'assigned' ? (
-        <Button size="touch" block disabled={busy !== null} onClick={() => void onPickedUp()}>
+        <Button
+          size="touch"
+          block
+          disabled={busy !== null || completed}
+          onClick={() => void onPickedUp()}
+        >
           <Truck />
-          {busy === 'picked_up' ? 'Saving…' : 'Mark picked up'}
+          {busy === 'picked_up' ? 'Saving…' : completed ? 'Saved' : 'Mark picked up'}
         </Button>
       ) : null}
 
       {leg !== 'return' && status === 'picked_up' ? (
         <div className="space-y-3 rounded-lg border bg-card p-3">
           <p className="text-sm font-medium">Proof of delivery</p>
-          <ProofCapture onReady={setProof} disabled={busy !== null} />
+          <ProofCapture onReady={setProof} disabled={busy !== null || completed} />
 
           <div className="space-y-1.5">
             <label htmlFor="receiver" className="text-xs font-medium text-muted-foreground">
@@ -310,13 +341,13 @@ export function JobActions({
           <Button
             size="touch"
             block
-            disabled={busy !== null || !proof}
+            disabled={busy !== null || !proof || completed}
             onClick={() => void onDelivered()}
           >
             <PackageCheck />
-            {busy === 'delivered' ? 'Saving…' : 'Mark delivered'}
+            {busy === 'delivered' ? 'Saving…' : completed ? 'Saved' : 'Mark delivered'}
           </Button>
-          {!proof ? (
+          {!proof && !completed ? (
             <p className="text-center text-xs text-muted-foreground">
               A photo is required before this can be marked delivered.
             </p>
@@ -338,10 +369,10 @@ export function JobActions({
               <Button
                 size="sm"
                 variant="destructive"
-                disabled={busy !== null}
+                disabled={busy !== null || completed}
                 onClick={() => void onFailed()}
               >
-                {busy === 'failed' ? 'Saving…' : 'Confirm failed'}
+                {busy === 'failed' ? 'Saving…' : completed ? 'Saved' : 'Confirm failed'}
               </Button>
               <Button size="sm" variant="ghost" onClick={() => setFailing(false)}>
                 Cancel
