@@ -4,6 +4,7 @@ import * as React from 'react'
 import {
   ChevronDown,
   Coins,
+  CornerUpLeft,
   Inbox,
   PackagePlus,
   Send,
@@ -72,7 +73,7 @@ export function TripCard({
   selectedCount: number
   busy: boolean
   onAssignRider: (riderId: string) => void
-  onLoadSelected: (leg: 'delivery' | 'pickup') => void
+  onLoadSelected: (leg: 'delivery' | 'pickup' | 'return') => void
   onUnload: (orderIds: string[]) => void
   onDepart: () => void
   onReturn: () => void
@@ -191,6 +192,18 @@ export function TripCard({
                 <Inbox />
                 As pickups
               </Button>
+              {/* Parcels the shop asked back. load_trip refuses to mix them with
+                  deliveries in either direction, so this is a separate button
+                  rather than a mode on the others. */}
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={busy || selectedCount === 0}
+                onClick={() => onLoadSelected('return')}
+              >
+                <CornerUpLeft />
+                As returns
+              </Button>
               <span className="text-xs text-muted-foreground">
                 room for {parcelHeadroom} more · {formatMmk(codHeadroom)} COD headroom
               </span>
@@ -213,6 +226,7 @@ export function TripCard({
                     <span className="flex items-center gap-1.5">
                       <span className="font-mono font-semibold">{p.code}</span>
                       {p.leg === 'pickup' ? <Badge tone="neutral">Pickup</Badge> : null}
+                      {p.leg === 'return' ? <Badge tone="blue">Return</Badge> : null}
                       <StatusBadge status={p.status as OrderStatus} />
                     </span>
                     <span className="block truncate text-muted-foreground">

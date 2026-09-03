@@ -238,8 +238,9 @@ export function RouteBoard({ board }: { board: PlanningBoard }) {
         >
           <ParcelLine parcels={board.returns} />
           <span className="mt-1 block text-xs">
-            The shop asked for these back. They are out of the delivery pool; the return leg is
-            not automated yet, so arrange to carry them home.
+            The shop asked for these back. Tick them in the parcel list and load them onto a run
+            with <strong>As returns</strong> — they travel to the shop&rsquo;s own address and end
+            at <em>Returned</em>, never at delivered, so no fee is charged.
           </span>
         </Alert>
       ) : null}

@@ -73,6 +73,8 @@ export function FailedOrderPanel({
   maxAttempts,
   awaitingDecision,
   resolution,
+  status,
+  receivedBy,
 }: {
   orderId: string
   orderCode: string
@@ -81,6 +83,9 @@ export function FailedOrderPanel({
   maxAttempts: number
   awaitingDecision: boolean
   resolution: string | null
+  status: string
+  /** Who at the shop signed for it, once a return has actually arrived. */
+  receivedBy: string | null
 }) {
   const router = useRouter()
   const [choice, setChoice] = React.useState<(typeof CHOICES)[number] | null>(null)
@@ -101,6 +106,18 @@ export function FailedOrderPanel({
     }
     setChoice(null)
     router.refresh()
+  }
+
+  // Once the parcel is physically back, the decision is history — say what
+  // happened rather than what was asked for.
+  if (status === 'returned') {
+    return (
+      <Alert tone="success" title="Back with you">
+        {receivedBy
+          ? `Returned to your shop and signed for by ${receivedBy}.`
+          : 'This parcel has been returned to your shop.'}
+      </Alert>
+    )
   }
 
   // A decision already made needs reporting, not re-asking.

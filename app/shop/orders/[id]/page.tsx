@@ -63,6 +63,8 @@ export default async function ShopOrderDetailPage({
           maxAttempts={maxAttempts}
           awaitingDecision={awaitingDecision}
           resolution={order.resolution}
+          status={order.status}
+          receivedBy={order.proof_receiver}
         />
       ) : null}
 

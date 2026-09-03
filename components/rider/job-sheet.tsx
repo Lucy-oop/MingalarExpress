@@ -19,6 +19,7 @@ export function JobSheet({
   orderId,
   orderCode,
   status,
+  leg,
   customerName,
   pickup,
   dropoff,
@@ -26,6 +27,7 @@ export function JobSheet({
   orderId: string
   orderCode: string
   status: OrderStatus
+  leg?: 'delivery' | 'pickup' | 'return' | null
   customerName: string
   pickup: LatLng
   dropoff: LatLng
@@ -43,7 +45,9 @@ export function JobSheet({
     )
   }, [])
 
-  const focus = status === 'picked_up' ? dropoff : pickup
+  // On a return the rider is heading to the shop, so the pickup point is the
+  // destination and the customer's address is irrelevant.
+  const focus = leg === 'return' ? pickup : status === 'picked_up' ? dropoff : pickup
 
   return (
     <div className="space-y-3">
@@ -64,6 +68,7 @@ export function JobSheet({
         orderId={orderId}
         orderCode={orderCode}
         status={status}
+        leg={leg}
         customerName={customerName}
         position={position}
       />

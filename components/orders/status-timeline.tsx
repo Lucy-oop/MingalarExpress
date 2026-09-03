@@ -1,4 +1,4 @@
-import { Check, CircleDashed, TriangleAlert, X } from 'lucide-react'
+import { Check, CircleDashed, CornerUpLeft, TriangleAlert, X } from 'lucide-react'
 import { ORDER_CHECKPOINTS, ORDER_STATUS_LABEL, type OrderStatus } from '@/types/domain'
 import { formatDateTimeYangon } from '@/lib/utils'
 import { cn } from '@/lib/utils'
@@ -22,7 +22,10 @@ reason,
 }) {
   const stampFor = (s: OrderStatus) => events.find((e) => e.status === s)?.at ?? null
   const reachedIndex = ORDER_CHECKPOINTS.indexOf(current)
-  const isBroken = current === 'failed' || current === 'cancelled'
+  // Three ways a parcel can end other than delivered. `returned` is not a
+  // failure — the shop asked for it — so it is drawn in its own colour rather
+  // than the alarm ones.
+  const isBroken = current === 'failed' || current === 'cancelled' || current === 'returned'
 
   return (
     <ol className="space-y-0">
@@ -66,11 +69,17 @@ reason,
           <span
             className={cn(
               'flex size-6 shrink-0 items-center justify-center rounded-full text-white',
-              current === 'failed' ? 'bg-amber-500' : 'bg-destructive',
+              current === 'failed'
+                ? 'bg-amber-500'
+                : current === 'returned'
+                  ? 'bg-blue-600'
+                  : 'bg-destructive',
             )}
           >
             {current === 'failed' ? (
               <TriangleAlert className="size-3.5" />
+            ) : current === 'returned' ? (
+              <CornerUpLeft className="size-3.5" />
             ) : (
               <X className="size-3.5" />
             )}

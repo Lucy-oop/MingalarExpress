@@ -74,6 +74,7 @@ export const ORDER_STATUS_LABEL: Record<OrderStatus, string> = {
   delivered: 'Delivered',
   failed: 'Failed',
   cancelled: 'Cancelled',
+  returned: 'Returned to shop',
 }
 
 export const ORDER_STATUS_LABEL_MM: Record<OrderStatus, string> = {
@@ -83,6 +84,7 @@ export const ORDER_STATUS_LABEL_MM: Record<OrderStatus, string> = {
   delivered: 'ပို့ဆောင်ပြီး',
   failed: 'မအောင်မြင်',
   cancelled: 'ပယ်ဖျက်ပြီး',
+  returned: 'ဆိုင်သို့ ပြန်ပို့ပြီး',
 }
 
 /** The happy-path checkpoint sequence, for timeline rendering. */

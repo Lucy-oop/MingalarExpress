@@ -67,7 +67,7 @@ export async function setRiderOnline(
  */
 export async function advanceOrder(input: {
   orderId: string
-  to: Extract<OrderStatus, 'picked_up' | 'delivered' | 'failed'>
+  to: Extract<OrderStatus, 'picked_up' | 'delivered' | 'failed' | 'returned'>
   lat?: number
   lng?: number
   proofPath?: string

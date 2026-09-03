@@ -9,6 +9,8 @@ const TONE: Record<OrderStatus, 'neutral' | 'gold' | 'blue' | 'green' | 'amber' 
   delivered: 'green',
   failed: 'amber',
   cancelled: 'red',
+  // Not a failure and not a delivery — a different ending, so its own colour.
+  returned: 'blue',
 }
 
 export function StatusBadge({ status }: { status: OrderStatus }) {

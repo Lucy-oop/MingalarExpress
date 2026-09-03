@@ -36,6 +36,7 @@ describe('explainTripError', () => {
     ['trip_empty', 'empty'],
     ['trip_over_cod_cap: 2500000 > 2000000', 'over_cod_cap'],
     ['trip_over_parcel_cap: 61 > 60', 'over_parcel_cap'],
+    ['leg_resolution_mismatch: 2 parcel(s)', 'orders_not_loadable'],
     ['orders_not_loadable: 3 of 5 eligible', 'orders_not_loadable'],
     ['order_on_trip', 'orders_not_loadable'],
     ['trip_not_loadable: departed', 'not_loadable'],

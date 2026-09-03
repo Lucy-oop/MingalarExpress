@@ -19,6 +19,42 @@ select set_config('request.jwt.claims','',false);   -- service context
 \set RIDER2 '55555555-5555-5555-5555-555555555555'
 
 
+
+-- ----------------------------------------------------------------------------
+--  A parcel factory, session-local.
+--
+--  Sections used to hunt for a spare row with `select ... limit 1`, and by the
+--  end of the file every spare row had been consumed — so a section either
+--  SKIPPED silently or died on a missing fixture. Each one now makes its own.
+--
+--  pg_temp so it disappears with the connection and can never reach a real
+--  database.
+-- ----------------------------------------------------------------------------
+create or replace function pg_temp.mk_parcel(
+  p_customer   text,
+  p_resolution text default null,
+  p_cod        bigint default 0
+) returns uuid language plpgsql as $fn$
+declare v_id uuid;
+begin
+  insert into public.orders (
+    shop_id, pickup_address, pickup_lat, pickup_lng, customer_name, customer_phone,
+    dropoff_address, dropoff_area_id, dropoff_lat, dropoff_lng, parcel_desc,
+    payment_method, cod_amount, delivery_fee, created_by, resolution, resolved_at)
+  select 'aaaaaaaa-0000-0000-0000-000000000001',
+    'No. 24, Thitsar Road', 16.8478, 96.1693, p_customer, '+959790007777',
+    'Sule Pagoda Road, Kyauktada', a.id, 16.7760, 96.1580, p_customer || ' parcel',
+    case when p_cod > 0 then 'cod' else 'prepaid' end::public.payment_method,
+    p_cod, r.per_parcel_fee, '33333333-3333-3333-3333-333333333333',
+    p_resolution, case when p_resolution is null then null else now() end
+  from public.service_areas a
+  join public.route_areas ra on ra.area_id = a.id and ra.is_primary
+  join public.routes r on r.id = ra.route_id
+  where a.name = 'Kyauktada / Sule'
+  returning id into v_id;
+  return v_id;
+end $fn$;
+
 -- ============================================================================
 --  F0. STRUCTURE
 -- ============================================================================
@@ -359,6 +395,202 @@ begin
   end if;
   raise notice 'PASS: close records released=% held=%',
     v_after ->> 'released_for_retry', v_after ->> 'held_for_shop';
+end $$;
+
+
+-- ============================================================================
+--  F4. THE RETURN LEG  (0012 + 0013)
+--
+--  A parcel the shop asked back, carried home and closed off — without ever
+--  being counted as revenue.
+-- ============================================================================
+
+\echo '=== F4a. `returned` is refused unless the shop asked for it ==='
+do $$
+declare oid uuid;
+begin
+  -- A perfectly ordinary parcel. Nobody asked for it back.
+  oid := pg_temp.mk_parcel('Unrequested Return');
+
+  begin
+    update public.orders set status = 'returned', proof_receiver = 'Someone' where id = oid;
+    raise exception 'FAIL: an unrequested parcel was closed off as returned';
+  exception when sqlstate '55000' then
+    raise notice 'PASS: returned refused without resolution = return';
+  end;
+end $$;
+
+\echo '=== F4b. a return cannot be closed without a receiver name ==='
+do $$
+declare oid uuid;
+begin
+  oid := pg_temp.mk_parcel('Receiver Guard', 'return');
+
+  begin
+    update public.orders set status = 'returned' where id = oid;
+    raise exception 'FAIL: a return closed with nobody''s name on it';
+  exception when check_violation then
+    raise notice 'PASS: orders_returned_needs_receiver holds';
+  end;
+end $$;
+
+\echo '=== F4c. legs and intent must agree, in both directions ==='
+do $$
+declare v_route uuid; t public.trips; ret uuid; normal uuid;
+begin
+  select id into v_route from public.routes where code = 'ROUTE_A';
+  ret    := pg_temp.mk_parcel('Leg Mismatch Return', 'return');
+  normal := pg_temp.mk_parcel('Leg Mismatch Normal');
+
+  t := public.plan_trip(v_route);
+  t := public.assign_trip_rider(t.id, '44444444-4444-4444-4444-444444444444');
+
+  -- A parcel the shop asked back must not go out for delivery again.
+  begin
+    perform public.load_trip(t.id, array[ret], 'delivery');
+    raise exception 'FAIL: a returning parcel was loaded for delivery';
+  exception when sqlstate '55000' then
+    raise notice 'PASS: a returning parcel cannot ride a delivery leg';
+  end;
+
+  -- ...and an ordinary parcel must not be carried "home" to a shop expecting it.
+  begin
+    perform public.load_trip(t.id, array[normal], 'return');
+    raise exception 'FAIL: an ordinary parcel was loaded as a return';
+  exception when sqlstate '55000' then
+    raise notice 'PASS: an ordinary parcel cannot ride a return leg';
+  end;
+
+  perform public.cancel_trip(t.id, 'leg mismatch fixture');
+end $$;
+
+\echo '=== F4d. a return does not eat the COD ceiling ==='
+--  Its cod_amount is money nobody will ever collect. Counting it would block
+--  deliveries that WOULD have collected real cash.
+do $$
+declare v_route uuid; t public.trips; ret uuid; v_cod bigint; v_after jsonb;
+begin
+  select id into v_route from public.routes where code = 'ROUTE_A';
+  -- A COD value large enough to blow the 2,000,000 ceiling if it were counted.
+  ret := pg_temp.mk_parcel('Big COD Return', 'return', 5000000);
+  select cod_amount into v_cod from public.orders where id = ret;
+
+  t := public.plan_trip(v_route);
+  t := public.assign_trip_rider(t.id, '44444444-4444-4444-4444-444444444444');
+  t := public.load_trip(t.id, array[ret], 'return');
+
+  select after into v_after from public.audit_log
+   where action = 'trip.load' order by created_at desc limit 1;
+  if (v_after ->> 'cod_after')::bigint <> 0 then
+    raise exception 'FAIL: a % Ks return counted % toward the ceiling',
+      v_cod, v_after ->> 'cod_after';
+  end if;
+  if (select cod_status from public.orders where id = ret) <> 'none' then
+    raise exception 'FAIL: a return is showing as pending cash';
+  end if;
+  raise notice 'PASS: a % Ks return counted 0 toward the ceiling, cod_status none', v_cod;
+
+  -- leave the trip loaded for F4e
+end $$;
+
+\echo '=== F4e. the rider closes it, and it is terminal ==='
+do $$
+declare t_id uuid; oid uuid; o public.orders;
+begin
+  select id into t_id from public.trips where status = 'loading' order by created_at desc limit 1;
+  select id into oid from public.orders where trip_id = t_id and trip_leg = 'return' limit 1;
+
+  t_id := (public.depart_trip(t_id, 'Return run, deliberately short volume.')).id;
+
+  -- No receiver -> refused, even through the RPC.
+  begin
+    perform public.advance_order(oid, 'returned');
+    raise exception 'FAIL: advance_order returned a parcel with no receiver';
+  exception when sqlstate '55000' then
+    raise notice 'PASS: advance_order demands who took it back';
+  end;
+
+  o := public.advance_order(oid, 'returned', null, null, null, 'Ma Su at San Pya Mini Mart');
+
+  if o.status <> 'returned' then raise exception 'FAIL: status %', o.status; end if;
+  if o.proof_receiver is null then raise exception 'FAIL: receiver not stored'; end if;
+  if o.closed_at is null then raise exception 'FAIL: closed_at not stamped'; end if;
+  if o.cod_status <> 'none' then
+    raise exception 'FAIL: cod_status % on a returned parcel', o.cod_status;
+  end if;
+
+  -- Terminal: nothing follows it.
+  begin
+    update public.orders set status = 'pending' where id = oid;
+    raise exception 'FAIL: a returned parcel was reopened';
+  exception when sqlstate '55000' then
+    raise notice 'PASS: returned is terminal (received by %)', o.proof_receiver;
+  end;
+end $$;
+
+\echo '=== F4f. the shop is charged nothing, the rider is paid for carrying it ==='
+--  The whole reason `returned` is not `delivered`: cod_by_shop counts delivered
+--  as revenue, so a return that ended in `delivered` would bill the shop a fee
+--  for a parcel that came back.
+do $$
+declare t_id uuid; t public.trips; v_lines int; r record;
+begin
+  select id into t_id from public.trips where status = 'departed' order by created_at desc limit 1;
+  t := public.close_trip(t_id);
+
+  -- Counted as a parcel: the rider rode it home.
+  if t.parcel_count < 1 then
+    raise exception 'FAIL: the return did not count toward pay (parcel_count %)', t.parcel_count;
+  end if;
+  if t.total_pay <= 0 then raise exception 'FAIL: rider paid % for the run', t.total_pay; end if;
+
+  -- No COD line and no commission line were ever booked for it.
+  select count(*) into v_lines from public.cod_ledger l
+    join public.orders o on o.id = l.order_id
+   where o.status = 'returned';
+  if v_lines <> 0 then
+    raise exception 'FAIL: % ledger lines booked against a returned parcel', v_lines;
+  end if;
+
+  -- And the shop's money page does not see it as a delivery.
+  select * into r from public.cod_by_shop('2020-01-01'::date, '2099-01-01'::date) limit 1;
+  if r.delivered > 0 and exists (
+       select 1 from public.orders where status = 'returned' and delivered_at is not null) then
+    raise exception 'FAIL: a returned parcel is counted as delivered';
+  end if;
+
+  raise notice 'PASS: rider paid % for % parcels; shop charged nothing for the return',
+    t.total_pay, t.parcel_count;
+end $$;
+
+\echo '=== F4g. a return that itself fails goes back to the returns pool ==='
+--  Shop shut, nobody there. It must not rejoin the DELIVERY pool — the customer
+--  is not getting it either way.
+do $$
+declare v_route uuid; t public.trips; oid uuid; o public.orders; v_status public.order_status;
+begin
+  select id into v_route from public.routes where code = 'ROUTE_A';
+
+  oid := pg_temp.mk_parcel('Return Retry', 'return');
+
+  t := public.plan_trip(v_route);
+  t := public.assign_trip_rider(t.id, '55555555-5555-5555-5555-555555555555');
+  t := public.load_trip(t.id, array[oid], 'return');
+  t := public.depart_trip(t.id, 'Return run two, deliberately short volume.');
+  o := public.advance_order(oid, 'failed', null, null, null, null, 'Shop was shut');
+  t := public.close_trip(t.id);
+
+  select status into v_status from public.orders where id = oid;
+  if v_status = 'pending' then
+    raise exception 'FAIL: a failed RETURN was put back in the delivery pool';
+  end if;
+  if (select resolution from public.orders where id = oid) <> 'return' then
+    raise exception 'FAIL: the return intent was lost';
+  end if;
+  if (select trip_id from public.orders where id = oid) is not null then
+    raise exception 'FAIL: still attached to the closed run';
+  end if;
+  raise notice 'PASS: a failed return stays a return (status %), ready to try again', v_status;
 end $$;
 
 \echo ''

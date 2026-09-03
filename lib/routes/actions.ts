@@ -84,7 +84,7 @@ export async function assignTripRider(tripId: string, riderId: string): Promise<
 export async function loadTrip(
   tripId: string,
   orderIds: string[],
-  leg: 'delivery' | 'pickup' = 'delivery',
+  leg: 'delivery' | 'pickup' | 'return' = 'delivery',
 ): Promise<TripResult> {
   let supabase
   try {
@@ -105,10 +105,8 @@ export async function loadTrip(
 
   refresh()
   const n = orderIds.length
-  return {
-    ok: true,
-    message: `${n} ${leg === 'pickup' ? 'pickup' : 'parcel'}${n === 1 ? '' : 's'} loaded.`,
-  }
+  const noun = leg === 'pickup' ? 'pickup' : leg === 'return' ? 'return' : 'parcel'
+  return { ok: true, message: `${n} ${noun}${n === 1 ? '' : 's'} loaded.` }
 }
 
 export async function unloadTrip(tripId: string, orderIds: string[]): Promise<TripResult> {

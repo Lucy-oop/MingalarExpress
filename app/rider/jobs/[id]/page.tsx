@@ -107,6 +107,7 @@ export default async function RiderJobPage({ params }: { params: Promise<{ id: s
         orderId={job.id}
         orderCode={job.code}
         status={job.status}
+        leg={job.leg}
         customerName={job.customerName}
         pickup={{ lat: raw.pickup_lat, lng: raw.pickup_lng }}
         dropoff={{ lat: raw.dropoff_lat, lng: raw.dropoff_lng }}

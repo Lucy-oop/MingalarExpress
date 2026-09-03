@@ -40,7 +40,7 @@ export type BoardTripParcel = {
   id: string
   code: string
   status: string
-  leg: 'delivery' | 'pickup'
+  leg: 'delivery' | 'pickup' | 'return'
   customerName: string
   dropoffAddress: string
   areaName: string | null
@@ -123,7 +123,7 @@ export type PlanningBoard = {
 
 const TRIP_ORDER_COLUMNS = `
   id, code, status, trip_id, trip_leg, customer_name, dropoff_address,
-  dropoff_area_id, cod_amount, delivery_fee, payment_method,
+  pickup_address, dropoff_area_id, cod_amount, delivery_fee, payment_method,
   dropoff_area:dropoff_area_id (name)
 ` as const
 
@@ -219,7 +219,10 @@ export async function getPlanningBoard(serviceDate?: string): Promise<PlanningBo
         .from('orders')
         .select(UNROUTED_COLUMNS)
         .eq('resolution', 'return')
-        .not('status', 'in', '(cancelled,delivered)')
+        // `returned` joins the exclusion list in 0013 — without it a parcel that
+        // has already been carried home sits in this pool forever, and dispatch
+        // keeps being told to return something that is back on the shop's shelf.
+        .not('status', 'in', '(cancelled,delivered,returned)')
         .order('resolved_at', { ascending: true })
         .limit(200),
       // Parcels stopped at the attempt cap, waiting on their shop. Dispatch
@@ -298,9 +301,14 @@ export async function getPlanningBoard(serviceDate?: string): Promise<PlanningBo
       id: raw.id as string,
       code: raw.code as string,
       status: raw.status as string,
-      leg: ((raw.trip_leg as string) ?? 'delivery') as 'delivery' | 'pickup',
+      leg: ((raw.trip_leg as string) ?? 'delivery') as BoardTripParcel['leg'],
       customerName: raw.customer_name as string,
-      dropoffAddress: raw.dropoff_address as string,
+      // A return travels to the SHOP, so the address the rider needs is the
+      // pickup point, not the customer's.
+      dropoffAddress:
+        raw.trip_leg === 'return'
+          ? (raw.pickup_address as string)
+          : (raw.dropoff_address as string),
       areaId,
       areaName:
         (raw.dropoff_area as { name: string } | null)?.name ?? null,

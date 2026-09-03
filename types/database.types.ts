@@ -1,4 +1,4 @@
-// Generated from migrations 0001-0011 via postgres-meta (the same generator
+// Generated from migrations 0001-0013 via postgres-meta (the same generator
 // the Supabase CLI uses). DO NOT EDIT BY HAND.
 // Regenerate:  npm run db:types      (supabase gen types typescript --local)
 export type Json =
@@ -1809,6 +1809,7 @@ export type Database = {
         | "delivered"
         | "failed"
         | "cancelled"
+        | "returned"
       payment_method: "cod" | "prepaid"
       rider_availability: "available" | "busy"
       settlement_status: "open" | "submitted" | "approved" | "paid"
@@ -1964,6 +1965,7 @@ export const Constants = {
         "delivered",
         "failed",
         "cancelled",
+        "returned",
       ],
       payment_method: ["cod", "prepaid"],
       rider_availability: ["available", "busy"],

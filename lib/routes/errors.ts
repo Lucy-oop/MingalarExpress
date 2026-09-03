@@ -92,6 +92,15 @@ const MAP: Array<{ match: RegExp; value: ExplainedTripError }> = [
     },
   },
   {
+    match: /leg_resolution_mismatch/i,
+    value: {
+      kind: 'orders_not_loadable',
+      message:
+        'Parcels a shop asked back load with “As returns”, and only those. Load the returns and the deliveries separately.',
+      retry: false,
+    },
+  },
+  {
     match: /orders_not_loadable|order_on_trip/i,
     value: {
       kind: 'orders_not_loadable',

@@ -25,7 +25,7 @@ export type RiderJob = {
   /** Stop sequence along the run, from route_areas.stop_order. */
   stopOrder?: number | null
   /** 'pickup' means collected on the return leg, not dropped off. */
-  leg?: 'delivery' | 'pickup' | null
+  leg?: 'delivery' | 'pickup' | 'return' | null
 }
 
 export function JobCard({ job }: { job: RiderJob }) {
@@ -47,6 +47,7 @@ export function JobCard({ job }: { job: RiderJob }) {
         </span>
         <span className="flex shrink-0 items-center gap-1">
           {job.leg === 'pickup' ? <Badge tone="neutral">Pickup</Badge> : null}
+          {job.leg === 'return' ? <Badge tone="blue">Return</Badge> : null}
           <StatusBadge status={job.status} />
         </span>
       </div>
@@ -62,7 +63,9 @@ export function JobCard({ job }: { job: RiderJob }) {
         <p className="flex items-start gap-1.5">
           <MapPin className="mt-0.5 size-3.5 shrink-0 text-brand-gold" />
           <span className="min-w-0">
-            <span className="block text-xs text-muted-foreground">Deliver to</span>
+            <span className="block text-xs text-muted-foreground">
+              {job.leg === 'return' ? 'Return to' : 'Deliver to'}
+            </span>
             <span className="block truncate">{job.dropoffAddress}</span>
             {job.dropoffArea ? (
               <span className="block text-xs text-muted-foreground">{job.dropoffArea}</span>

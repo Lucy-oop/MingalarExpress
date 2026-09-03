@@ -21,6 +21,8 @@ export type JobActionsProps = {
   orderId: string
   orderCode: string
   status: OrderStatus
+  /** A return leg goes back to the shop and ends at `returned`, not `delivered`. */
+  leg?: 'delivery' | 'pickup' | 'return' | null
   customerName: string
   /** Current GPS fix, stamped onto the checkpoint. */
   position: { lat: number; lng: number } | null
@@ -49,6 +51,7 @@ export function JobActions({
   orderId,
   orderCode,
   status,
+  leg,
   customerName,
   position,
 }: JobActionsProps) {
@@ -92,6 +95,45 @@ export function JobActions({
     },
     [router],
   )
+
+  /**
+   * Hand a returned parcel back to the shop.
+   *
+   * A NAME, not a photo. The dispute a return invites is "you never brought it
+   * back", which a name and a timestamp answer; `advance_order` and the
+   * `orders_returned_needs_receiver` CHECK both refuse without one.
+   */
+  const onReturned = async () => {
+    if (!receiver.trim()) {
+      setFeedback({ tone: 'error', message: 'Write who at the shop took it back.' })
+      return
+    }
+    setBusy('returned')
+    setFeedback(null)
+    try {
+      const result = await advanceOrder({
+        orderId,
+        to: 'returned',
+        lat: position?.lat,
+        lng: position?.lng,
+        receiver: receiver.trim(),
+      })
+      if (result.ok) return done(result.message)
+      await handleFailure(`${result.message} ${result.kind}`, {
+        kind: 'failed',
+        orderId,
+        orderCode,
+        receiver: receiver.trim(),
+      })
+    } catch (error) {
+      await handleFailure(error instanceof Error ? error.message : 'network', {
+        kind: 'failed',
+        orderId,
+        orderCode,
+        receiver: receiver.trim(),
+      })
+    }
+  }
 
   const onPickedUp = async () => {
     setBusy('picked_up')
@@ -221,14 +263,33 @@ export function JobActions({
         </Alert>
       ) : null}
 
-      {status === 'assigned' ? (
+      {/* A return leg never reaches `delivered`: it is handed back to the shop
+          and ends at `returned`. Showing the proof-photo flow here would ask a
+          rider to photograph a shop counter for a parcel nobody paid for. */}
+      {leg === 'return' && (status === 'assigned' || status === 'picked_up') ? (
+        <div className="space-y-3 rounded-lg border bg-card p-3">
+          <p className="text-sm font-medium">Returning to {customerName}</p>
+          <Input
+            value={receiver}
+            onChange={(e) => setReceiver(e.target.value)}
+            placeholder="Who took it back?"
+            aria-label="Who at the shop took the parcel back"
+          />
+          <Button size="touch" block disabled={busy !== null} onClick={() => void onReturned()}>
+            <PackageCheck />
+            {busy === 'returned' ? 'Saving…' : 'Returned to shop'}
+          </Button>
+        </div>
+      ) : null}
+
+      {leg !== 'return' && status === 'assigned' ? (
         <Button size="touch" block disabled={busy !== null} onClick={() => void onPickedUp()}>
           <Truck />
           {busy === 'picked_up' ? 'Saving…' : 'Mark picked up'}
         </Button>
       ) : null}
 
-      {status === 'picked_up' ? (
+      {leg !== 'return' && status === 'picked_up' ? (
         <div className="space-y-3 rounded-lg border bg-card p-3">
           <p className="text-sm font-medium">Proof of delivery</p>
           <ProofCapture onReady={setProof} disabled={busy !== null} />

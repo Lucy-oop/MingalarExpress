@@ -51,7 +51,7 @@ export type RawJob = {
   delivered_at: string | null
   proof_photo_path: string | null
   trip_id: string | null
-  trip_leg: 'delivery' | 'pickup' | null
+  trip_leg: 'delivery' | 'pickup' | 'return' | null
   shops: { name: string; phone: string } | null
   dropoff_area: { name: string } | null
 }
@@ -74,6 +74,18 @@ function toJob(row: RawJob, extra?: Partial<RiderJob>): RiderJob {
     commission: row.rider_commission_amount,
     routeKm: row.route_distance_km,
     leg: row.trip_leg,
+    // A return travels BACK to the shop, so every address the rider is shown
+    // has to flip. The shop's pickup point is already on the order; nothing new
+    // is needed, but showing the customer's address here would send the rider
+    // to the wrong end of the city.
+    ...(row.trip_leg === 'return'
+      ? {
+          dropoffAddress: row.pickup_address,
+          dropoffArea: null,
+          customerName: row.shops?.name ?? 'the shop',
+          customerPhone: row.shops?.phone ?? row.customer_phone,
+        }
+      : null),
     ...extra,
   }
 }
