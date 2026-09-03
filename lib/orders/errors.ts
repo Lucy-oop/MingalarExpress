@@ -13,6 +13,12 @@
 
 const MAP: Array<[RegExp, string]> = [
   [
+    // 0018: a parcel that only ever failed BEFORE pickup is still on the shop's
+    // own shelf, so a return leg would send a rider to fetch nothing.
+    /order_never_collected/i,
+    'This parcel never left your shop, so there is nothing to bring back. Choose “Try again”.',
+  ],
+  [
     /order_in_flight/i,
     'A rider is carrying this parcel again right now. Wait for this attempt to finish, then decide.',
   ],

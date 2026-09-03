@@ -15,7 +15,7 @@ const JOB_COLUMNS = `
   id, code, status, pickup_address, pickup_lat, pickup_lng, pickup_contact, pickup_note,
   customer_name, customer_phone, customer_phone_alt,
   dropoff_address, dropoff_area_id, dropoff_lat, dropoff_lng, dropoff_note,
-  parcel_desc, parcel_weight_g, is_fragile, payment_method, cod_amount, fee_payer,
+  parcel_desc, parcel_weight_g, is_fragile, payment_method, cod_amount, fee_payer, delivery_fee,
   rider_commission_amount, route_distance_km, rider_id, delivered_at, proof_photo_path,
   trip_id, trip_leg,
   shops:shop_id (name, phone),
@@ -45,6 +45,8 @@ export type RawJob = {
   payment_method: 'cod' | 'prepaid'
   cod_amount: number
   fee_payer: string
+  /** Needed to show WHY the total is what it is — cod_amount already includes it. */
+  delivery_fee: number
   rider_commission_amount: number | null
   route_distance_km: number | null
   rider_id: string | null

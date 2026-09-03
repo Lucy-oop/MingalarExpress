@@ -25,7 +25,7 @@ Architecture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · Database: [supabas
 Every route in the table above now ships. `/admin/super/*` is gated three times over:
 middleware (longest-prefix), `requireAdmin` in its layout, and RLS `is_admin()` on every write.
 
-**17 migrations · 163 SQL assertions across seven suites · 299 unit tests.**
+**18 migrations · 170 SQL assertions across seven suites · 341 unit tests.**
 `docs/ARCHITECTURE.md` describes the Phase 1–5 design and is partly superseded by
 phases 6–9 — it carries a banner saying exactly where. `docs/RUNBOOK.md` is
 current.

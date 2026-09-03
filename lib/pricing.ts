@@ -46,6 +46,43 @@ export function codCollectable(
   return feePayer === 'customer' ? goodsValue + deliveryFee : goodsValue
 }
 
+/**
+ * The inverse of `codCollectable`, for showing a rider what they are collecting
+ * and why.
+ *
+ * WHY THIS IS NOT "delivery fee + COD". `orders.cod_amount` ALREADY CONTAINS the
+ * delivery fee when the customer pays it — see the column comment in 0001 and
+ * `codCollectable` above, which exists so settlement never has to branch on
+ * fee_payer. Adding the two on screen would show the rider a total 3,500 Ks
+ * higher than the customer actually owes, and a rider who trusts the screen
+ * would collect it.
+ *
+ * So the fee is SUBTRACTED back out to recover the goods value, and the three
+ * numbers are presented as a breakdown that sums to `cod_amount` exactly.
+ */
+export function codBreakdown(
+  codAmount: Mmk,
+  deliveryFee: Mmk,
+  feePayer: 'customer' | 'shop',
+  paymentMethod: 'cod' | 'prepaid' = 'cod',
+): { goods: Mmk; fee: Mmk; total: Mmk; feeFromCustomer: boolean } {
+  if (paymentMethod !== 'cod') {
+    // Nothing to collect. The fee is still real, it is just billed to the shop
+    // rather than taken at the door.
+    return { goods: 0, fee: deliveryFee, total: 0, feeFromCustomer: false }
+  }
+  const feeFromCustomer = feePayer === 'customer'
+  const fee = feeFromCustomer ? deliveryFee : 0
+  return {
+    // Clamped: a fee edited upward after the order was priced must not render a
+    // negative goods value.
+    goods: Math.max(0, codAmount - fee),
+    fee,
+    total: codAmount,
+    feeFromCustomer,
+  }
+}
+
 const round2 = (n: number) => Math.round(n * 100) / 100
 
 // ---------------------------------------------------------------------------

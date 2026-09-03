@@ -35,7 +35,8 @@ export default async function AdminOrderDetailPage({
   const detail = await getShopOrderDetail(id)
   if (!detail) notFound()
 
-  const { order, areaName, route, events, rider, proofUrl, attempts, maxAttempts, awaitingDecision } =
+  const { order, areaName, route, events, rider, proofUrl, attempts, maxAttempts, uncollected,
+    maxCollectionAttempts, neverCollected, awaitingDecision } =
     detail
 
   const supabase = await createClient()
@@ -68,6 +69,9 @@ export default async function AdminOrderDetailPage({
           failReason={order.fail_reason}
           attempts={attempts}
           maxAttempts={maxAttempts}
+          uncollected={uncollected}
+          maxCollectionAttempts={maxCollectionAttempts}
+          neverCollected={neverCollected}
           awaitingDecision={awaitingDecision}
           resolution={order.resolution}
           status={order.status}
@@ -240,6 +244,7 @@ export default async function AdminOrderDetailPage({
                 events={events}
                 reason={order.fail_reason ?? order.cancel_reason ?? null}
                 maxAttempts={maxAttempts}
+                maxCollectionAttempts={maxCollectionAttempts}
               />
               <p className="mt-3 text-xs text-muted-foreground">
                 {attempts > 0

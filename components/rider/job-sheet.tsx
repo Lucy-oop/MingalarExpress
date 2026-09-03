@@ -57,8 +57,19 @@ export function JobSheet({
           zoom={16}
           clampToServiceArea={false}
           markers={[
-            { id: 'pickup', point: pickup, kind: 'pickup', label: 'Pickup', emphasis: status !== 'picked_up' },
-            { id: 'dropoff', point: dropoff, kind: 'dropoff', label: 'Delivery', emphasis: status === 'picked_up' },
+            // The shop pin goes once the parcel is aboard: the rider is
+            // delivering now, and on a return leg the shop is already the
+            // destination pin below.
+            ...(leg !== 'return' && status === 'assigned'
+              ? [{ id: 'pickup', point: pickup, kind: 'pickup' as const, label: 'Pickup', emphasis: true }]
+              : []),
+            {
+              id: 'dropoff',
+              point: leg === 'return' ? pickup : dropoff,
+              kind: 'dropoff' as const,
+              label: leg === 'return' ? 'Back to shop' : 'Delivery',
+              emphasis: status === 'picked_up' || leg === 'return',
+            },
             ...(position ? [{ id: 'me', point: position, kind: 'rider' as const, label: 'You' }] : []),
           ]}
         />

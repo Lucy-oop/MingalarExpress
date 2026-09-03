@@ -1,4 +1,4 @@
-// Generated from migrations 0001-0017 via postgres-meta (the same generator
+// Generated from migrations 0001-0018 via postgres-meta (the same generator
 // the Supabase CLI uses). DO NOT EDIT BY HAND.
 // Regenerate:  npm run db:types      (supabase gen types typescript --local)
 export type Json =
@@ -29,6 +29,7 @@ export type Database = {
           map_center_lng: number
           map_default_zoom: number
           map_provider: string
+          max_collection_attempts: number
           max_delivery_attempts: number
           min_parcels_per_trip: number
           offer_ttl_seconds: number
@@ -61,6 +62,7 @@ export type Database = {
           map_center_lng?: number
           map_default_zoom?: number
           map_provider?: string
+          max_collection_attempts?: number
           max_delivery_attempts?: number
           min_parcels_per_trip?: number
           offer_ttl_seconds?: number
@@ -93,6 +95,7 @@ export type Database = {
           map_center_lng?: number
           map_default_zoom?: number
           map_provider?: string
+          max_collection_attempts?: number
           max_delivery_attempts?: number
           min_parcels_per_trip?: number
           offer_ttl_seconds?: number
@@ -1619,7 +1622,12 @@ export type Database = {
       mm_day_start: { Args: { p_date: string }; Returns: string }
       mm_today: { Args: never; Returns: string }
       order_attempt_count: { Args: { p_order_id: string }; Returns: number }
+      order_attempts_exhausted: {
+        Args: { p_order_id: string }
+        Returns: boolean
+      }
       order_rider_card: { Args: { p_order_id: string }; Returns: Json }
+      order_uncollected_count: { Args: { p_order_id: string }; Returns: number }
       owns_shop: { Args: { p_shop_id: string }; Returns: boolean }
       plan_trip: {
         Args: {

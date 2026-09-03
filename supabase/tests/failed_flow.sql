@@ -757,5 +757,143 @@ begin
 end $$;
 
 
+-- ============================================================================
+--  F7. COLLECTION vs DELIVERY ATTEMPTS  (migration 0018)
+--
+--  A shop that was closed twice must not arrive at the delivery ceiling having
+--  never handed us anything.
+-- ============================================================================
+
+\echo '=== F7a. the two counters read from_status and do not mix ==='
+do $$
+declare oid uuid; i int;
+begin
+  oid := pg_temp.mk_parcel('Never Collected');
+  for i in 1..2 loop
+    perform public.assign_order(oid, '44444444-4444-4444-4444-444444444444');
+    perform public.advance_order(oid, 'failed', null, null, null, null, 'Shop shut');
+    update public.orders set status = 'pending' where id = oid;   -- as close_trip does
+  end loop;
+
+  if public.order_attempt_count(oid) <> 0 then
+    raise exception 'FAIL: an uncollected parcel burned % delivery attempt(s)',
+      public.order_attempt_count(oid);
+  end if;
+  if public.order_uncollected_count(oid) <> 2 then
+    raise exception 'FAIL: collection count is %, expected 2',
+      public.order_uncollected_count(oid);
+  end if;
+  raise notice 'PASS: two wasted trips to the shop, zero delivery attempts';
+
+  oid := pg_temp.mk_parcel('Collected Then Failed');
+  perform public.assign_order(oid, '44444444-4444-4444-4444-444444444444');
+  perform public.advance_order(oid, 'picked_up');
+  perform public.advance_order(oid, 'failed', null, null, null, null, 'Nobody home');
+
+  if public.order_attempt_count(oid) <> 1 then
+    raise exception 'FAIL: a real delivery failure counted %',
+      public.order_attempt_count(oid);
+  end if;
+  if public.order_uncollected_count(oid) <> 0 then
+    raise exception 'FAIL: a delivery failure counted as uncollected';
+  end if;
+  raise notice 'PASS: a delivery failure counts against deliveries only';
+end $$;
+
+\echo '=== F7b. either ceiling exhausts the parcel ==='
+do $$
+declare oid uuid; i int;
+begin
+  -- Collection ceiling. THE TRAP: with only order_attempt_count narrowed, this
+  -- parcel would sit at zero delivery attempts forever and close_trip would
+  -- send it out again every day with nobody ever asked.
+  oid := pg_temp.mk_parcel('Collection Cap');
+  for i in 1..3 loop
+    perform public.assign_order(oid, '44444444-4444-4444-4444-444444444444');
+    perform public.advance_order(oid, 'failed', null, null, null, null, 'Shop shut again');
+    if i < 3 then update public.orders set status = 'pending' where id = oid; end if;
+  end loop;
+
+  if not public.order_attempts_exhausted(oid) then
+    raise exception 'FAIL: 3 wasted collection trips did not exhaust the parcel';
+  end if;
+  if public.order_attempt_count(oid) <> 0 then
+    raise exception 'FAIL: the delivery counter moved';
+  end if;
+  raise notice 'PASS: the collection ceiling stops it, with 0 delivery attempts';
+
+  -- And a parcel under both ceilings is still live.
+  oid := pg_temp.mk_parcel('Still Live');
+  perform public.assign_order(oid, '44444444-4444-4444-4444-444444444444');
+  perform public.advance_order(oid, 'picked_up');
+  perform public.advance_order(oid, 'failed', null, null, null, null, 'Nobody home');
+  if public.order_attempts_exhausted(oid) then
+    raise exception 'FAIL: one delivery failure exhausted a 3-attempt ceiling';
+  end if;
+  raise notice 'PASS: one failure of three leaves the parcel live';
+end $$;
+
+\echo '=== F7c. close_trip holds an uncollected parcel at the collection cap ==='
+do $$
+declare oid uuid; v_route uuid; t public.trips; i int; v_status public.order_status;
+begin
+  select id into v_route from public.routes where code = 'ROUTE_A';
+  oid := pg_temp.mk_parcel('Cap On A Run');
+
+  -- Two wasted collection trips already on the record.
+  for i in 1..2 loop
+    perform public.assign_order(oid, '44444444-4444-4444-4444-444444444444');
+    perform public.advance_order(oid, 'failed', null, null, null, null, 'Shop shut');
+    update public.orders set status = 'pending' where id = oid;
+  end loop;
+
+  -- The third goes out on a real run and comes back empty again.
+  t := public.plan_trip(v_route);
+  t := public.assign_trip_rider(t.id, '55555555-5555-5555-5555-555555555555');
+  t := public.load_trip(t.id, array[oid], 'delivery');
+  t := public.depart_trip(t.id, 'Single parcel, testing the collection ceiling.');
+  perform public.advance_order(oid, 'failed', null, null, null, null, 'Shop shut a third time');
+  t := public.close_trip(t.id);
+
+  select status into v_status from public.orders where id = oid;
+  if v_status <> 'failed' then
+    raise exception 'FAIL: close_trip auto-retried a parcel past the collection cap (now %)',
+      v_status;
+  end if;
+  if (select trip_id from public.orders where id = oid) is not null then
+    raise exception 'FAIL: still attached to the closed run';
+  end if;
+  raise notice 'PASS: held at the collection cap instead of going out forever';
+end $$;
+
+\echo '=== F7d. a parcel we never collected cannot be "returned" ==='
+do $$
+declare oid uuid;
+begin
+  oid := pg_temp.mk_parcel('Nothing To Return');
+  perform public.assign_order(oid, '44444444-4444-4444-4444-444444444444');
+  perform public.advance_order(oid, 'failed', null, null, null, null, 'Shop shut');
+
+  -- It is already on the shop's own shelf. A return leg would dispatch a rider
+  -- to fetch nothing and end with someone signing for a parcel that never left.
+  begin
+    perform public.resolve_failed_order(oid, 'return');
+    raise exception 'FAIL: a never-collected parcel accepted a return';
+  -- 55000 is object_not_in_prerequisite_state, not raise_exception (P0001) —
+  -- naming the wrong condition here let the error escape the whole suite.
+  exception when object_not_in_prerequisite_state then
+    if sqlerrm not like '%order_never_collected%' then raise; end if;
+    raise notice 'PASS: return refused — there is nothing to bring back';
+  end;
+
+  -- Retry is the meaningful answer, and it must still work.
+  perform public.resolve_failed_order(oid, 'retry', 'Shop says ready tomorrow');
+  if (select resolution from public.orders where id = oid) <> 'retry' then
+    raise exception 'FAIL: retry was refused on an uncollected parcel';
+  end if;
+  raise notice 'PASS: retry accepted, and recorded';
+end $$;
+
+
 \echo ''
 \echo '####  ALL FAILED-PARCEL CHECKS PASSED  ####'

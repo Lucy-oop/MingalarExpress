@@ -284,10 +284,19 @@ export type ShopOrderDetail = {
   rider: { fullName: string; vehiclePlate: string | null } | null
   /** Short-lived link to the delivery photo, or null when there isn't one. */
   proofUrl: string | null
-  /** Failed delivery attempts, counted from the checkpoint trail. */
+  /** Failed DELIVERY attempts: picked_up -> failed. Excludes wasted trips (0018). */
   attempts: number
-  /** How many attempts happen automatically before the shop must decide. */
+  /** How many delivery attempts happen automatically before the shop must decide. */
   maxAttempts: number
+  /** Trips to the shop that came away empty: assigned -> failed. */
+  uncollected: number
+  maxCollectionAttempts: number
+  /**
+   * The parcel has failed, but only ever before pickup — so it is still sitting
+   * on the shop's own shelf. "Return to shop" is meaningless for it, and
+   * `resolve_failed_order` refuses that combination outright.
+   */
+  neverCollected: boolean
   /**
    * True when this parcel is waiting on the shop and nothing will happen to it
    * until they answer: it failed, it is off every run, and no decision is
@@ -324,8 +333,14 @@ export async function getShopOrderDetail(orderId: string): Promise<ShopOrderDeta
 
   if (!order) return null
 
-  const [{ data: events }, { data: riderCard }, proofUrl, { data: attempts }, { data: settings }] =
-    await Promise.all([
+  const [
+    { data: events },
+    { data: riderCard },
+    proofUrl,
+    { data: attempts },
+    { data: uncollected },
+    { data: settings },
+  ] = await Promise.all([
     supabase
       .from('order_status_events')
       .select('to_status, created_at')
@@ -338,9 +353,10 @@ export async function getShopOrderDetail(orderId: string): Promise<ShopOrderDeta
       : Promise.resolve({ data: null }),
     signProof(supabase, order.proof_photo_path),
     supabase.rpc('order_attempt_count', { p_order_id: orderId }),
+    supabase.rpc('order_uncollected_count', { p_order_id: orderId }),
     supabase
       .from('app_settings')
-      .select('max_delivery_attempts')
+      .select('max_delivery_attempts, max_collection_attempts')
       .eq('id', true)
       .maybeSingle(),
   ])
@@ -360,6 +376,12 @@ export async function getShopOrderDetail(orderId: string): Promise<ShopOrderDeta
     proofUrl,
     attempts: attemptCount,
     maxAttempts: Number(settings?.max_delivery_attempts ?? 3),
+    // Trips to the shop that came away empty (0018). A separate axis: a parcel
+    // the shop never handed over must not burn a delivery attempt.
+    uncollected: Number(uncollected ?? 0),
+    maxCollectionAttempts: Number(settings?.max_collection_attempts ?? 3),
+    /** Nothing to bring back — it is still on the shop's own shelf. */
+    neverCollected: attemptCount === 0 && Number(uncollected ?? 0) > 0,
     // `status = 'failed'` alone is not enough: a parcel that failed while its run
     // is still out is dispatch's problem, not the shop's. It becomes the shop's
     // only once close_trip has detached it and declined to auto-retry.

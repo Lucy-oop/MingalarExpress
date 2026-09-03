@@ -1,21 +1,7 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import {
-  breakEvenParcels,
-  checkTripVolume,
-  isTripProfitable,
-  MIN_PARCELS_PER_TRIP,
-  OFFICIAL_ROUTE_FEES,
-  pickPayTier,
-  quoteRouteFee,
-  quoteTripPay,
-  routeMargin,
-  splitCommission,
-  type RouteCode,
-  type RoutePayTier,
-  type TripPayRates,
-} from './pricing'
+import { MIN_PARCELS_PER_TRIP, OFFICIAL_ROUTE_FEES, breakEvenParcels, checkTripVolume, codBreakdown, codCollectable, isTripProfitable, pickPayTier, quoteRouteFee, quoteTripPay, routeMargin, splitCommission, type RouteCode, type RoutePayTier, type TripPayRates } from './pricing'
 
 /**
  * The seeded tiers from migration 0007. Boundaries resolve DOWNWARD: 20 parcels
@@ -516,5 +502,56 @@ describe('checkTripVolume — a tunable minimum', () => {
   test('a nonsense minimum is clamped rather than trusted', () => {
     assert.equal(check(5, -10).minimum, 0)
     assert.equal(check(20, 20.7).minimum, 20)
+  })
+})
+
+describe('codBreakdown — what the rider collects, and why', () => {
+  /**
+   * THE ONE THAT WOULD COST REAL MONEY. `cod_amount` already contains the
+   * delivery fee, so showing "delivery fee + COD" as a sum tells the rider to
+   * collect the fee twice. The breakdown must sum back to cod_amount exactly.
+   */
+  test('customer pays the fee: the parts sum to cod_amount, not more', () => {
+    const b = codBreakdown(48_500, 3_500, 'customer')
+    assert.equal(b.goods, 45_000)
+    assert.equal(b.fee, 3_500)
+    assert.equal(b.total, 48_500)
+    assert.equal(b.goods + b.fee, b.total)
+    assert.equal(b.feeFromCustomer, true)
+  })
+
+  test('and it is the exact inverse of codCollectable', () => {
+    for (const [goods, fee] of [
+      [45_000, 3_500],
+      [0, 2_500],
+      [1_000_000, 6_000],
+    ] as Array<[number, number]>) {
+      const total = codCollectable(goods, fee, 'customer')
+      const b = codBreakdown(total, fee, 'customer')
+      assert.equal(b.goods, goods)
+      assert.equal(b.total, total)
+    }
+  })
+
+  /** The shop pays: the rider takes goods only, and must not ask for the fee. */
+  test('shop pays the fee: the rider collects goods only', () => {
+    const b = codBreakdown(45_000, 3_500, 'shop')
+    assert.equal(b.goods, 45_000)
+    assert.equal(b.fee, 0)
+    assert.equal(b.total, 45_000)
+    assert.equal(b.feeFromCustomer, false)
+  })
+
+  test('prepaid collects nothing at all', () => {
+    const b = codBreakdown(0, 3_500, 'customer', 'prepaid')
+    assert.equal(b.total, 0)
+    assert.equal(b.goods, 0)
+  })
+
+  /** A fee raised after pricing must not render a negative goods value. */
+  test('a fee larger than the total clamps rather than going negative', () => {
+    const b = codBreakdown(2_000, 3_500, 'customer')
+    assert.equal(b.goods, 0)
+    assert.ok(b.goods >= 0)
   })
 })

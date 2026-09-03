@@ -35,7 +35,8 @@ export default async function ShopOrderDetailPage({
   const detail = await getShopOrderDetail(id)
   if (!detail) notFound()
 
-  const { order, areaName, route, events, rider, proofUrl, attempts, maxAttempts, awaitingDecision } =
+  const { order, areaName, route, events, rider, proofUrl, attempts, maxAttempts, uncollected,
+    maxCollectionAttempts, neverCollected, awaitingDecision } =
     detail
 
   return (
@@ -61,6 +62,9 @@ export default async function ShopOrderDetailPage({
           failReason={order.fail_reason}
           attempts={attempts}
           maxAttempts={maxAttempts}
+          uncollected={uncollected}
+          maxCollectionAttempts={maxCollectionAttempts}
+          neverCollected={neverCollected}
           awaitingDecision={awaitingDecision}
           resolution={order.resolution}
           status={order.status}
@@ -266,6 +270,7 @@ export default async function ShopOrderDetailPage({
                 events={events}
                 reason={order.fail_reason ?? order.cancel_reason ?? null}
                 maxAttempts={maxAttempts}
+                maxCollectionAttempts={maxCollectionAttempts}
               />
             </CardContent>
           </Card>

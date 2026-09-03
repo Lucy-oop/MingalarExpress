@@ -31,6 +31,7 @@ export function StatusTimeline({
   events,
   reason,
   maxAttempts,
+  maxCollectionAttempts,
   audience = 'shop',
 }: {
   current: OrderStatus
@@ -39,6 +40,8 @@ export function StatusTimeline({
   reason?: string | null
   /** Enables "attempt 2 of 3" on a failure. Omitted on the public track page. */
   maxAttempts?: number
+  /** The other ceiling (0018). Used when the parcel was never collected. */
+  maxCollectionAttempts?: number
   /** `customer` drops custody detail and the attempt count — see describeTerminal. */
   audience?: TimelineAudience
 }) {
@@ -48,6 +51,10 @@ export function StatusTimeline({
   const failedUncollected =
     audience === 'shop' && terminal?.status === 'failed' && !collected
   const described = terminal ? describeTerminal(terminal.status, collected, audience) : null
+  // Two ceilings since 0018, and the wrong one is worse than none: telling a
+  // shop "delivery attempt 2 of 3" about a parcel nobody collected is the
+  // unfairness that migration set out to fix.
+  const ceiling = collected ? maxAttempts : (maxCollectionAttempts ?? maxAttempts)
 
   return (
     <ol className="space-y-0">
@@ -126,10 +133,10 @@ export function StatusTimeline({
           <div className="min-w-0">
             <p className="text-sm font-medium">
               {described!.title}
-              {audience === 'shop' && terminal.status === 'failed' && maxAttempts ? (
+              {audience === 'shop' && terminal.status === 'failed' && ceiling ? (
                 <span className="font-normal text-muted-foreground">
                   {' '}
-                  · attempt {attempt} of {maxAttempts}
+                  · attempt {attempt} of {ceiling}
                 </span>
               ) : null}
             </p>

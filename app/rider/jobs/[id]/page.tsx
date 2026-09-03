@@ -6,6 +6,7 @@ import { requireRider } from '@/lib/auth/guards'
 import { getRiderJob } from '@/lib/rider/queries'
 import { JobSheet } from '@/components/rider/job-sheet'
 import { StatusBadge } from '@/components/orders/status-badge'
+import { codBreakdown } from '@/lib/pricing'
 import { formatMmk, formatMyanmarPhone } from '@/lib/utils'
 
 export const metadata: Metadata = { title: 'Job' }
@@ -21,6 +22,16 @@ export default async function RiderJobPage({ params }: { params: Promise<{ id: s
   if (!result) notFound()
 
   const { job, raw } = result
+
+  const money = codBreakdown(
+    raw.cod_amount,
+    raw.delivery_fee ?? 0,
+    (raw.fee_payer as 'customer' | 'shop') ?? 'customer',
+    raw.payment_method,
+  )
+
+  // The rider is either going to the shop or coming from it, never both.
+  const showPickup = job.leg !== 'return' && job.status === 'assigned'
 
   return (
     <div className="space-y-3">
@@ -45,40 +56,72 @@ export default async function RiderJobPage({ params }: { params: Promise<{ id: s
         <StatusBadge status={job.status} />
       </div>
 
-      {/* Money first: it is what the rider is accountable for. */}
-      <div className="grid grid-cols-2 gap-2">
-        <div className="rounded-lg border bg-card p-3">
-          <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
-            {job.paymentMethod === 'cod' ? 'Collect from customer' : 'Payment'}
-          </p>
-          <p className="mt-0.5 flex items-center gap-1 text-lg font-semibold tabular-nums">
-            {job.paymentMethod === 'cod' ? (
-              <>
-                <Coins className="size-4 text-brand-gold" />
-                {formatMmk(job.codAmount)}
-              </>
-            ) : (
-              'Prepaid'
-            )}
-          </p>
-        </div>
-        <div className="rounded-lg border bg-card p-3">
-          <p className="text-[10px] uppercase tracking-wide text-muted-foreground">You earn</p>
-          <p className="mt-0.5 text-lg font-semibold tabular-nums text-emerald-700">
+      {/* Money first: it is what the rider is accountable for.
+
+          A BREAKDOWN, NOT A SUM. cod_amount already contains the delivery fee
+          when the customer pays it, so "delivery fee + COD" would tell the rider
+          to collect it twice — see codBreakdown in lib/pricing. */}
+      <div className="rounded-lg border bg-card p-3">
+        {money.total > 0 ? (
+          <>
+            <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+              Collect from customer
+            </p>
+            <dl className="mt-1.5 space-y-1 text-sm">
+              <div className="flex items-baseline justify-between gap-3">
+                <dt className="text-muted-foreground">Goods</dt>
+                <dd className="tabular-nums">{formatMmk(money.goods)}</dd>
+              </div>
+              <div className="flex items-baseline justify-between gap-3">
+                <dt className="text-muted-foreground">
+                  Delivery fee
+                  {!money.feeFromCustomer ? (
+                    <span className="ml-1 text-xs">(billed to the shop)</span>
+                  ) : null}
+                </dt>
+                <dd className="tabular-nums">
+                  {money.feeFromCustomer ? formatMmk(money.fee) : '—'}
+                </dd>
+              </div>
+              <div className="flex items-baseline justify-between gap-3 border-t pt-1.5">
+                <dt className="font-medium">Total at the door</dt>
+                <dd className="flex items-center gap-1 text-lg font-semibold tabular-nums">
+                  <Coins className="size-4 text-brand-gold" aria-hidden="true" />
+                  {formatMmk(money.total)}
+                </dd>
+              </div>
+            </dl>
+          </>
+        ) : (
+          <>
+            <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Payment</p>
+            <p className="mt-0.5 text-lg font-semibold">Prepaid</p>
+            <p className="text-xs text-muted-foreground">Collect nothing at the door.</p>
+          </>
+        )}
+        <div className="mt-3 flex items-baseline justify-between gap-3 border-t pt-2 text-sm">
+          <span className="text-muted-foreground">You earn</span>
+          <span className="font-semibold tabular-nums text-emerald-700">
             {job.commission !== null ? formatMmk(job.commission) : '—'}
-          </p>
+          </span>
         </div>
       </div>
 
-      <Leg
-        tone="pickup"
-        label="Pick up"
-        address={raw.pickup_address}
-        note={raw.pickup_note}
-        phone={raw.pickup_contact ?? raw.shops?.phone ?? null}
-        lat={raw.pickup_lat}
-        lng={raw.pickup_lng}
-      />
+      {/* Only while the rider is still going to COLLECT it.
+          Once the parcel is on the bike the shop's address is noise on a screen
+          used one-handed at a gate — and on a return leg the shop is already the
+          destination below, so showing it twice would be worse than noise. */}
+      {showPickup ? (
+        <Leg
+          tone="pickup"
+          label="Pick up"
+          address={raw.pickup_address}
+          note={raw.pickup_note}
+          phone={raw.pickup_contact ?? raw.shops?.phone ?? null}
+          lat={raw.pickup_lat}
+          lng={raw.pickup_lng}
+        />
+      ) : null}
       <Leg
         tone="dropoff"
         label="Deliver to"
