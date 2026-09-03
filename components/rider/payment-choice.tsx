@@ -93,10 +93,10 @@ export function PaymentChoice({
               <img
                 src={account.qrUrl}
                 alt={t('pay.kpay')}
-                width={220}
-                height={220}
+                width={260}
+                height={260}
                 onError={() => setQrBroken(true)}
-                className="size-[220px] object-contain"
+                className="size-[260px] object-contain"
               />
             </div>
           )}

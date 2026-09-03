@@ -22,7 +22,7 @@ Architecture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · Database: [supabas
 | 9b | Rider/trip integrity: a parcel on a run always names the run's rider | **Done** — migration 0015, found live on staging |
 | 10 | Contact log: the office records what was said, and shares `/o/<code>` | **Done** — migration 0017, append-only and dispatch-only |
 | 11 | Rider app: Burmese, hub-centred drive order, day counts, one-touch screens | **Done** — migrations 0018–0019 |
-| 12 | KBZPay: rider captures the receipt, the office verifies it against the bank | **Done** — migrations 0020–0022. **Needs `public/kpay-qr.png`** |
+| 12 | KBZPay: rider captures the receipt, the office verifies it against the bank | **Done** — migrations 0020–0022. QR cropped and decode-verified |
 
 Every route in the table above now ships. `/admin/super/*` is gated three times over:
 middleware (longest-prefix), `requireAdmin` in its layout, and RLS `is_admin()` on every write.
