@@ -499,6 +499,115 @@ end $$;
 
 
 -- ============================================================================
+--  R4i. THE RUN OWNS THE RIDER  (migration 0015)
+--
+--  Found live: a run reassigned from one rider to another kept every already
+--  loaded parcel on the FIRST rider, because the re-stamp only matched
+--  `pending` and `failed`. The new rider saw an empty dashboard; the old one
+--  could still deliver the parcels and collect the cash, while close_trip paid
+--  the new one for the run. Two settlements wrong in opposite directions.
+-- ============================================================================
+
+\echo '=== R4i. swapping the rider brings the loaded parcels along ==='
+do $$
+declare t_id uuid; n int; v_wrong int;
+begin
+  select id into t_id from public.trips where status = 'loading' order by created_at desc limit 1;
+
+  -- Everything on the run is already `assigned` to rider1 — which is exactly the
+  -- state the old filter skipped.
+  select count(*) into n from public.orders
+   where trip_id = t_id and status = 'assigned'
+     and rider_id = '44444444-4444-4444-4444-444444444444';
+  if n = 0 then raise exception 'FAIL: fixture is not in the state under test'; end if;
+
+  perform public.assign_trip_rider(t_id, '55555555-5555-5555-5555-555555555555');
+
+  select count(*) into v_wrong from public.orders
+   where trip_id = t_id and status <> 'cancelled'
+     and rider_id is distinct from '55555555-5555-5555-5555-555555555555';
+  if v_wrong > 0 then
+    raise exception 'FAIL: % parcel(s) stayed with the old rider', v_wrong;
+  end if;
+  raise notice 'PASS: % parcels moved with the run to the new rider', n;
+
+  -- Put it back; the rest of the file expects rider1 on this run.
+  perform public.assign_trip_rider(t_id, '44444444-4444-4444-4444-444444444444');
+end $$;
+
+\echo '=== R4i2. and the invariant cannot be broken by hand ==='
+--  The trigger is DEFERRABLE INITIALLY DEFERRED, so it fires at COMMIT and not
+--  on the UPDATE. That is deliberate — assign_trip_rider writes `trips` and
+--  `orders` in separate statements and they legitimately disagree in between —
+--  but it means the failure cannot be caught by a PL/pgSQL exception handler.
+--  So this one is tested where it actually happens: at commit.
+do $$
+begin
+  if not exists (
+    select 1 from pg_trigger
+     where tgrelid = 'public.orders'::regclass
+       and tgname  = 'orders_rider_matches_trip'
+       and tgdeferrable and tginitdeferred) then
+    raise exception 'FAIL: orders_rider_matches_trip is missing or not deferred';
+  end if;
+  raise notice 'PASS: the constraint trigger exists and is deferred to commit';
+end $$;
+
+select id as r4i2_order from public.orders
+ where trip_id = (select id from public.trips where status = 'loading'
+                   order by created_at desc limit 1)
+ limit 1 \gset
+
+\echo '--- the ERROR on the next line is the point of this test: the commit must fail ---'
+\set ON_ERROR_STOP off
+begin;
+update public.orders set rider_id = '55555555-5555-5555-5555-555555555555'
+ where id = :'r4i2_order';
+commit;                       -- must fail: the run belongs to rider1
+\set ON_ERROR_STOP on
+
+do $$
+declare v_rider uuid;
+begin
+  select rider_id into v_rider from public.orders
+   where id = (select id from public.orders
+                where trip_id = (select id from public.trips where status = 'loading'
+                                  order by created_at desc limit 1)
+                limit 1);
+  if v_rider <> '44444444-4444-4444-4444-444444444444' then
+    raise exception 'FAIL: the mismatch was committed (rider is now %)', v_rider;
+  end if;
+  raise notice 'PASS: the commit was refused and the parcel still names the run''s rider';
+end $$;
+
+\echo '=== R4i3. a riderless run clears a rider left over from a past attempt ==='
+do $$
+declare t_id uuid; o_id uuid; v_rider uuid;
+begin
+  -- close_trip leaves a parcel held at the attempt cap as `failed` WITH its old
+  -- rider_id. Loading that onto a run that has no rider yet used to keep the
+  -- stale name (`coalesce(v_t.rider_id, o.rider_id)`).
+  select id into o_id from public.orders
+   where trip_id is null and status = 'pending' limit 1;
+  update public.orders set rider_id = '66666666-6666-6666-6666-666666666666'
+   where id = o_id;
+
+  t_id := (public.plan_trip((select route_id from public.trips
+                              where status = 'loading' order by created_at desc limit 1),
+                            public.mm_today() + 1)).id;
+  perform public.load_trip(t_id, array[o_id], 'delivery');
+
+  select rider_id into v_rider from public.orders where id = o_id;
+  if v_rider is not null then
+    raise exception 'FAIL: a riderless run kept the stale rider %', v_rider;
+  end if;
+
+  perform public.cancel_trip(t_id, 'R4i3 fixture');
+  raise notice 'PASS: loading onto a riderless run clears the old rider';
+end $$;
+
+
+-- ============================================================================
 --  R5. depart_trip — THE 20-PARCEL GATE
 -- ============================================================================
 
