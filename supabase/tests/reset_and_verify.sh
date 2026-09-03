@@ -23,15 +23,14 @@ for f in supabase/migrations/*.sql; do
   run < "$f"
 done
 echo "--- seed"; run < supabase/seed.sql
-for t in rls_smoke lifecycle_edge storage_policies assign_flow settlement_flow route_flow failed_flow notify_flow; do
+for t in rls_smoke lifecycle_edge storage_policies assign_flow settlement_flow route_flow failed_flow; do
   echo "--- test $t"
   # each suite assumes a clean DB, so reseed between them
   if [ "$t" != "rls_smoke" ]; then
     docker exec "$C" psql -U postgres -d postgres -q -c "
       truncate public.orders, public.cod_ledger, public.settlements,
                public.order_assignments, public.order_status_events,
-               public.trips, public.audit_log, public.notification_outbox
-               restart identity cascade;
+               public.trips, public.audit_log restart identity cascade;
       delete from storage.objects;
       update public.rider_profiles set active_order_count=0, availability='available',
              is_online=true, last_ping_at=now(), max_active_orders=3, coverage_km=5;
@@ -40,8 +39,7 @@ for t in rls_smoke lifecycle_edge storage_policies assign_flow settlement_flow r
       delete from public.profiles where id='77777777-7777-7777-7777-777777777777';
       delete from auth.users where id='77777777-7777-7777-7777-777777777777';
       update public.app_settings set rider_commission_pct=80, min_parcels_per_trip=20,
-             max_delivery_attempts=3, notifications_enabled=true,
-             notify_quiet_from=21, notify_quiet_until=7, notify_max_attempts=5 where id;
+             max_delivery_attempts=3 where id;
       -- route_flow flips these while proving the ceilings bite; put them back so
       -- a re-run starts from the shipped configuration.
       update public.routes set is_active=true, max_parcels_per_trip=60,

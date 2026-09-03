@@ -14,7 +14,7 @@ Three facts about **this machine** that change the commands below.
 |---|---|
 | **The Supabase CLI is not installed.** | `supabase db push`, `supabase status` and `npm run db:types` all need it. Install it (§1) or use the `psql` path, which needs nothing extra. |
 | **Check what is on ports 54321/54322 before trusting it.** | It is now the Mingalar stack (`supabase_db_mingalar`), but it has been a different project's before. `docker ps --format '{{.Names}}'` settles it in a second, and `.env.local` normally points at the cloud project regardless. |
-| **There are FIFTEEN migrations.** | `0001`–`0015`, applied in filename order. Three are easy to skip and each breaks something silently: `0006` carries the settlement lifecycle and `admin_overview` (the Super Admin panel is dead without it), `0012` exists only to add one enum value because `ALTER TYPE … ADD VALUE` cannot be *used* in the transaction that adds it, and `0014` adds the notification outbox. `0015` repairs data as well as code — it realigns any parcel naming a different rider from its run. |
+| **There are SIXTEEN migrations.** | `0001`–`0016`, applied in filename order. Three are easy to skip and each breaks something silently: `0006` carries the settlement lifecycle and `admin_overview` (the Super Admin panel is dead without it), `0012` exists only to add one enum value because `ALTER TYPE … ADD VALUE` cannot be *used* in the transaction that adds it, and `0015` repairs data as well as code — it realigns any parcel naming a different rider from its run. `0014` adds an SMS outbox that `0016` removes again; both are kept so a fresh database and staging agree. |
 
 ### The one genuinely destructive command
 
@@ -330,8 +330,8 @@ which is the whole point of having built them.
 
 ## 6. `npm run db:verify`
 
-Resets a throwaway container, applies all fifteen migrations, seeds, and runs
-eight SQL suites (174 assertions). One `ERROR` line in `route_flow` (R4i2) is
+Resets a throwaway container, applies all sixteen migrations, seeds, and runs
+seven SQL suites (154 assertions). One `ERROR` line in `route_flow` (R4i2) is
 deliberate — a commit that must be refused — and is labelled in the output. **Never** point it at anything else (§0).
 
 One-time container setup:
@@ -558,79 +558,6 @@ Sign in `admin@mingalar.test`.
 
 ---
 
-## 7b. Notifications (migration 0014)
-
-Two SMS, to shops only: a parcel failed and can still be redirected, or it has
-hit the attempt ceiling and we have stopped trying. Nothing goes to customers.
-
-**It ships switched off in all but name.** `SMS_PROVIDER` defaults to `log`,
-which writes the message to the console and sends nothing, so the outbox, the
-quiet hours, the dedupe, the backoff and the dead-letter path can all be watched
-working before a paid account exists.
-
-### Turning it on
-
-| Step | |
-|---|---|
-| 1 | Choose a Yangon aggregator and **start sender-ID registration**. MPT / ATOM / Ooredoo all require a pre-registered sender ID and it takes weeks — begin before the code needs it. |
-| 2 | Check the request and response shape in `lib/notifications/providers/http.ts` against the vendor's docs. Two functions are marked `VENDOR-SPECIFIC`; nothing else should need touching. |
-| 3 | Set `SMS_PROVIDER=http`, `SMS_API_URL`, `SMS_API_KEY`, `SMS_SENDER_ID` and `NOTIFY_CRON_SECRET` in Vercel. |
-| 4 | Set `NEXT_PUBLIC_SITE_URL` to a **short** custom domain (see below). |
-| 5 | Run `supabase/snippets/notify_cron.sql` once, in the project's SQL editor, with the URL and secret filled in. |
-
-### The site URL is load-bearing
-
-A Burmese SMS is UCS-2: **70 characters per segment**, not 160. The templates are
-measured to fit two segments with a base URL of up to 36 characters. Point
-`NEXT_PUBLIC_SITE_URL` at `https://mingalar-express-staging.vercel.app` (43) and
-every Burmese message costs three segments instead of two — a 50% bill increase
-that nothing would otherwise report. The worker logs a warning when it happens,
-and `lib/notifications/messages.test.ts` pins the budget.
-
-### Watching it
-
-```sql
--- what is waiting, and what we gave up on
-select id, event, status, attempts, send_after, last_error
-  from public.notification_outbox
- where status in ('queued','sending','dead')
- order by created_at desc limit 50;
-
--- did cron fire?
-select status, start_time, return_message from cron.job_run_details
- where jobname = 'drain-notification-outbox' order by start_time desc limit 20;
-```
-
-Or by hand, which is also how you test it:
-
-```bash
-curl -X POST https://<site>/api/notifications/drain \
-  -H "Authorization: Bearer $NOTIFY_CRON_SECRET"
-# {"provider":"log","claimed":1,"sent":1,"requeued":0,"dead":0}
-```
-
-### Two taps, and which to use
-
-```sql
-update public.app_settings set notifications_enabled = false where id;
-```
-stops the outbox **filling**. Use this for a bad template or a runaway bill;
-messages already queued still go out.
-
-```sql
-select cron.unschedule('drain-notification-outbox');
-```
-stops it **draining**. The outbox keeps filling and everything is delivered late
-once cron is back. Use this for a gateway incident.
-
-Quiet hours are `app_settings.notify_quiet_from` / `notify_quiet_until`
-(Yangon-local hours, default 21→7). They are applied when a message is
-**enqueued**, not when it is sent, so changing them does not reschedule anything
-already queued. Setting the two equal disables the window — which is how staging
-avoids waiting until morning.
-
----
-
 ## 8. Production deployment
 
 ### Vercel
@@ -646,9 +573,6 @@ avoids waiting until morning.
    | `NEXT_PUBLIC_SUPABASE_URL` | |
    | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | |
    | `SUPABASE_SERVICE_ROLE_KEY` | **Secret.** No `NEXT_PUBLIC_` prefix, ever |
-   | `NEXT_PUBLIC_SITE_URL` | Where SMS links point. Keep it **under 36 characters** (§7b) |
-   | `NOTIFY_CRON_SECRET` | **Secret.** The drain endpoint fails closed without it |
-   | `SMS_PROVIDER` | `log` until a gateway account exists, then `http` (§7b) |
    | `NEXT_PUBLIC_MAP_PROVIDER` | `maptiler` |
    | `NEXT_PUBLIC_MAP_API_KEY` | referrer-restricted |
    | `NEXT_PUBLIC_GEOCODER_PROVIDER` | `maptiler` |

@@ -1535,7 +1535,9 @@ parcel stops at the attempt cap rather than retrying forever; a returned parcel
 charges the shop nothing and books no ledger line.
 
 ### Post-MVP backlog
-Bulk order CSV import for shops · Viber/SMS customer notifications on `picked_up`/`delivered` · rider batch/multi-drop routing · true route distance via OSRM · Burmese/English i18n toggle · township polygon replacing the bbox · shop-side wallet top-up · rider leaderboard.
+Bulk order CSV import for shops · rider batch/multi-drop routing · true route distance via OSRM · Burmese/English i18n toggle · township polygon replacing the bbox · shop-side wallet top-up · rider leaderboard.
+
+Automated shop/customer messaging is a **non-goal**, not a backlog item. An SMS outbox was built (0014) and removed (0016): the office rings the shop instead, working the "Waiting on a shop" view in `/admin/orders`.
 
 ---
 

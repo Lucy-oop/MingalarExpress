@@ -18,22 +18,23 @@ Architecture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · Database: [supabas
 | 6 | Route model: scheduled runs, flat route pricing, trip pay, offer engine retired | **Done** — migrations 0007–0010 |
 | 7 | Shop panel: real KPIs, proof of delivery, orders workspace + CSV, money page | **Done** — migration 0010 |
 | 8 | Failed parcels: shop decides retry / return / cancel, capped auto-retry, return leg | **Done** — migrations 0011–0013 |
-| 9 | All-orders screen for the office; SMS notification outbox behind a provider seam | **Done** — migration 0014, sending stubbed to `log` |
+| 9 | All-orders screen for the office (`/admin/orders`) | **Done** — every parcel, every shop, every status |
 | 9b | Rider/trip integrity: a parcel on a run always names the run's rider | **Done** — migration 0015, found live on staging |
 
 Every route in the table above now ships. `/admin/super/*` is gated three times over:
 middleware (longest-prefix), `requireAdmin` in its layout, and RLS `is_admin()` on every write.
 
-**15 migrations · 174 SQL assertions across eight suites · 318 unit tests.**
+**16 migrations · 154 SQL assertions across seven suites · 289 unit tests.**
 `docs/ARCHITECTURE.md` describes the Phase 1–5 design and is partly superseded by
 phases 6–9 — it carries a banner saying exactly where. `docs/RUNBOOK.md` is
 current.
 
-Phase 9 ships the notification pipeline end to end **except the gateway**: the
-outbox fills, quiet hours hold, the worker drains and settles, and the default
-provider writes to the log instead of sending. Choosing a Yangon aggregator and
-registering a sender ID is the remaining step, and it is procurement, not code —
-see `.env.example` and `supabase/snippets/notify_cron.sql`.
+**There is no automated messaging.** An SMS outbox was built in 0014 and removed
+in 0016 in favour of a human loop: the rider phones the office, the office phones
+the shop and records the decision. What the outbox used to raise,
+`/admin/orders?view=awaiting` already shows — every parcel that failed, came off
+its run, and is waiting on a shop to choose. Commit `c501237` has the outbox if
+the volume ever justifies it again.
 
 ## Getting started
 

@@ -1,4 +1,4 @@
-// Generated from migrations 0001-0014 via postgres-meta (the same generator
+// Generated from migrations 0001-0016 via postgres-meta (the same generator
 // the Supabase CLI uses). DO NOT EDIT BY HAND.
 // Regenerate:  npm run db:types      (supabase gen types typescript --local)
 export type Json =
@@ -31,10 +31,6 @@ export type Database = {
           map_provider: string
           max_delivery_attempts: number
           min_parcels_per_trip: number
-          notifications_enabled: boolean
-          notify_max_attempts: number
-          notify_quiet_from: number
-          notify_quiet_until: number
           offer_ttl_seconds: number
           order_code_prefix: string
           per_km_fee: number
@@ -67,10 +63,6 @@ export type Database = {
           map_provider?: string
           max_delivery_attempts?: number
           min_parcels_per_trip?: number
-          notifications_enabled?: boolean
-          notify_max_attempts?: number
-          notify_quiet_from?: number
-          notify_quiet_until?: number
           offer_ttl_seconds?: number
           order_code_prefix?: string
           per_km_fee?: number
@@ -103,10 +95,6 @@ export type Database = {
           map_provider?: string
           max_delivery_attempts?: number
           min_parcels_per_trip?: number
-          notifications_enabled?: boolean
-          notify_max_attempts?: number
-          notify_quiet_from?: number
-          notify_quiet_until?: number
           offer_ttl_seconds?: number
           order_code_prefix?: string
           per_km_fee?: number
@@ -246,97 +234,6 @@ export type Database = {
             columns: ["trip_id"]
             isOneToOne: false
             referencedRelation: "trips"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      notification_outbox: {
-        Row: {
-          attempts: number
-          channel: string
-          claimed_at: string | null
-          created_at: string
-          dedupe_key: string
-          event: string
-          id: number
-          lang: string
-          last_error: string | null
-          order_id: string | null
-          payload: Json
-          provider: string | null
-          provider_message_id: string | null
-          recipient_profile_id: string | null
-          send_after: string
-          sent_at: string | null
-          shop_id: string | null
-          status: string
-          to_phone: string | null
-          updated_at: string
-        }
-        Insert: {
-          attempts?: number
-          channel?: string
-          claimed_at?: string | null
-          created_at?: string
-          dedupe_key: string
-          event: string
-          id?: number
-          lang?: string
-          last_error?: string | null
-          order_id?: string | null
-          payload?: Json
-          provider?: string | null
-          provider_message_id?: string | null
-          recipient_profile_id?: string | null
-          send_after?: string
-          sent_at?: string | null
-          shop_id?: string | null
-          status?: string
-          to_phone?: string | null
-          updated_at?: string
-        }
-        Update: {
-          attempts?: number
-          channel?: string
-          claimed_at?: string | null
-          created_at?: string
-          dedupe_key?: string
-          event?: string
-          id?: number
-          lang?: string
-          last_error?: string | null
-          order_id?: string | null
-          payload?: Json
-          provider?: string | null
-          provider_message_id?: string | null
-          recipient_profile_id?: string | null
-          send_after?: string
-          sent_at?: string | null
-          shop_id?: string | null
-          status?: string
-          to_phone?: string | null
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "notification_outbox_order_id_fkey"
-            columns: ["order_id"]
-            isOneToOne: false
-            referencedRelation: "orders"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "notification_outbox_recipient_profile_id_fkey"
-            columns: ["recipient_profile_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "notification_outbox_shop_id_fkey"
-            columns: ["shop_id"]
-            isOneToOne: false
-            referencedRelation: "shops"
             referencedColumns: ["id"]
           },
         ]
@@ -1494,37 +1391,6 @@ export type Database = {
           isSetofReturn: false
         }
       }
-      claim_notifications: {
-        Args: { p_limit?: number }
-        Returns: {
-          attempts: number
-          channel: string
-          claimed_at: string | null
-          created_at: string
-          dedupe_key: string
-          event: string
-          id: number
-          lang: string
-          last_error: string | null
-          order_id: string | null
-          payload: Json
-          provider: string | null
-          provider_message_id: string | null
-          recipient_profile_id: string | null
-          send_after: string
-          sent_at: string | null
-          shop_id: string | null
-          status: string
-          to_phone: string | null
-          updated_at: string
-        }[]
-        SetofOptions: {
-          from: "*"
-          to: "notification_outbox"
-          isOneToOne: false
-          isSetofReturn: true
-        }
-      }
       claimed_role: {
         Args: { p_meta: Json }
         Returns: Database["public"]["Enums"]["user_role"]
@@ -1597,10 +1463,6 @@ export type Database = {
           trip_pay: number
         }[]
       }
-      complete_notification: {
-        Args: { p_id: number; p_message_id?: string; p_provider: string }
-        Returns: undefined
-      }
       depart_trip: {
         Args: { p_override_reason?: string; p_trip_id: string }
         Returns: {
@@ -1630,46 +1492,6 @@ export type Database = {
         SetofOptions: {
           from: "*"
           to: "trips"
-          isOneToOne: true
-          isSetofReturn: false
-        }
-      }
-      enqueue_notification: {
-        Args: {
-          p_dedupe_key: string
-          p_event: string
-          p_order_id: string
-          p_payload?: Json
-        }
-        Returns: number
-      }
-      fail_notification: {
-        Args: { p_error: string; p_id: number; p_retryable?: boolean }
-        Returns: {
-          attempts: number
-          channel: string
-          claimed_at: string | null
-          created_at: string
-          dedupe_key: string
-          event: string
-          id: number
-          lang: string
-          last_error: string | null
-          order_id: string | null
-          payload: Json
-          provider: string | null
-          provider_message_id: string | null
-          recipient_profile_id: string | null
-          send_after: string
-          sent_at: string | null
-          shop_id: string | null
-          status: string
-          to_phone: string | null
-          updated_at: string
-        }
-        SetofOptions: {
-          from: "*"
-          to: "notification_outbox"
           isOneToOne: true
           isSetofReturn: false
         }
@@ -1745,7 +1567,6 @@ export type Database = {
       mm_day_end: { Args: { p_date: string }; Returns: string }
       mm_day_start: { Args: { p_date: string }; Returns: string }
       mm_today: { Args: never; Returns: string }
-      notify_send_after: { Args: { p_at?: string }; Returns: string }
       order_attempt_count: { Args: { p_order_id: string }; Returns: number }
       order_rider_card: { Args: { p_order_id: string }; Returns: Json }
       owns_shop: { Args: { p_shop_id: string }; Returns: boolean }
