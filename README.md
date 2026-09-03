@@ -18,14 +18,21 @@ Architecture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · Database: [supabas
 | 6 | Route model: scheduled runs, flat route pricing, trip pay, offer engine retired | **Done** — migrations 0007–0010 |
 | 7 | Shop panel: real KPIs, proof of delivery, orders workspace + CSV, money page | **Done** — migration 0010 |
 | 8 | Failed parcels: shop decides retry / return / cancel, capped auto-retry, return leg | **Done** — migrations 0011–0013 |
+| 9 | All-orders screen for the office; SMS notification outbox behind a provider seam | **Done** — migration 0014, sending stubbed to `log` |
 
 Every route in the table above now ships. `/admin/super/*` is gated three times over:
 middleware (longest-prefix), `requireAdmin` in its layout, and RLS `is_admin()` on every write.
 
-**13 migrations · 143 SQL assertions across seven suites · 289 unit tests.**
+**14 migrations · 170 SQL assertions across eight suites · 318 unit tests.**
 `docs/ARCHITECTURE.md` describes the Phase 1–5 design and is partly superseded by
-phases 6–8 — it carries a banner saying exactly where. `docs/RUNBOOK.md` is
+phases 6–9 — it carries a banner saying exactly where. `docs/RUNBOOK.md` is
 current.
+
+Phase 9 ships the notification pipeline end to end **except the gateway**: the
+outbox fills, quiet hours hold, the worker drains and settles, and the default
+provider writes to the log instead of sending. Choosing a Yangon aggregator and
+registering a sender ID is the remaining step, and it is procurement, not code —
+see `.env.example` and `supabase/snippets/notify_cron.sql`.
 
 ## Getting started
 

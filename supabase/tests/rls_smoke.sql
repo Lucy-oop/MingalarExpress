@@ -15,7 +15,7 @@
 \set RIDER2   '55555555-5555-5555-5555-555555555555'
 \set RIDER3   '66666666-6666-6666-6666-666666666666'
 
-\echo '=== 0. structural: 15 tables, 9 enums ==='
+\echo '=== 0. structural: 16 tables, 9 enums, and RLS on every one ==='
 do $$
 declare t int; e int;
 begin
@@ -23,11 +23,21 @@ begin
   select count(*) into e from pg_type ty join pg_namespace n on n.oid = ty.typnamespace
    where n.nspname = 'public' and ty.typtype = 'e';
   -- 0007 added routes, route_areas, route_pay_tiers, trips and the
-  -- trip_status enum. A bare count is a blunt instrument, but it is the one
-  -- assertion that notices a table shipped without RLS being considered at all.
-  if t <> 15 then raise exception 'FAIL: expected 15 public tables, found %', t; end if;
+  -- trip_status enum; 0014 added notification_outbox. A bare count is a blunt
+  -- instrument, but it is the one assertion that notices a table shipped
+  -- without RLS being considered at all.
+  if t <> 16 then raise exception 'FAIL: expected 16 public tables, found %', t; end if;
   if e <> 9  then raise exception 'FAIL: expected 9 enums, found %', e; end if;
-  raise notice 'PASS: % tables, % enums', t, e;
+
+  -- And the count is only useful because of this: a new table with RLS left off
+  -- is readable by every logged-in user of every role.
+  if exists (select 1 from pg_tables
+              where schemaname = 'public' and not rowsecurity) then
+    raise exception 'FAIL: RLS is off on %',
+      (select string_agg(tablename, ', ') from pg_tables
+        where schemaname = 'public' and not rowsecurity);
+  end if;
+  raise notice 'PASS: % tables, % enums, RLS on all of them', t, e;
 end $$;
 
 \echo '=== 1. every public table has RLS enabled ==='
