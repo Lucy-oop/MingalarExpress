@@ -16,9 +16,11 @@ import { Field } from '@/components/ui/field'
 import { Alert } from '@/components/ui/alert'
 import { Overlay } from '@/components/ui/overlay'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { bookingBlocker, bookingPayment, parseAmount } from '@/lib/orders/booking'
 import { codCollectable } from '@/lib/pricing'
 import { formatMmk, cn } from '@/lib/utils'
 import { isInServiceArea } from '@/lib/geo/thingangyun'
+import type { MessageKey } from '@/lib/i18n'
 import { useLocale, useT } from '@/components/shared/i18n-provider'
 import type { LatLng } from '@/types/domain'
 
@@ -135,6 +137,20 @@ export function OrderForm({ shop, areas }: OrderFormProps) {
   const [areaId, setAreaId] = useState('')
   const [feePayer, setFeePayer] = useState<'customer' | 'shop'>('customer')
   const [collect, setCollect] = useState('')
+  /** Prepaid is this tick and only this tick — never an inferred empty field. */
+  const [prepaid, setPrepaid] = useState(false)
+
+  /**
+   * Bumped on "Book another", and used as the picker's `key`.
+   *
+   * `LocationPicker` decides whether to auto-fill the address from the pin using
+   * a ref initialised once at mount (`addressTouched`). Clearing the address
+   * state does not reset that ref, so once a shop had corrected an address —
+   * which the hint text invites — the pin stopped auto-filling for every later
+   * parcel in the session. Remounting is one line and cannot fall out of step
+   * with the picker's internals the way a reset handle would.
+   */
+  const [resetSeq, setResetSeq] = useState(0)
 
   const formRef = useRef<HTMLFormElement>(null)
   const pickup: LatLng = { lat: shop.pickup_lat, lng: shop.pickup_lng }
@@ -157,7 +173,10 @@ export function OrderForm({ shop, areas }: OrderFormProps) {
     setDropoffAddress('')
     setAreaId('')
     setCollect('')
+    setPrepaid(false)
     setFeePayer('customer')
+    // Remounts LocationPicker so the pin auto-fills the address again.
+    setResetSeq((n) => n + 1)
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
@@ -172,20 +191,54 @@ export function OrderForm({ shop, areas }: OrderFormProps) {
   const area = useMemo(() => areas.find((a) => a.areaId === areaId) ?? null, [areas, areaId])
   const fee = area?.fee ?? 0
 
-  // ONE field decides both. Any amount is COD; zero is prepaid. The old form had
-  // a select as well, so the two could disagree and the shop got a refinement
-  // error about a field they had not touched.
-  const goods = Math.max(0, Math.trunc(Number(collect) || 0))
-  const paymentMethod: 'cod' | 'prepaid' = goods > 0 ? 'cod' : 'prepaid'
-  const codTotal = area && paymentMethod === 'cod' ? codCollectable(goods, fee, feePayer) : 0
+  /**
+   * The amount, parsed once and used for everything: the preview, the gate and
+   * the posted value. It used to be sanitised for display only while the raw
+   * string was posted, so `45000.5` previewed a total the server then rejected,
+   * and `-5` previewed as "prepaid, nothing to collect" before erroring.
+   */
+  const amount = useMemo(() => parseAmount(collect), [collect])
+  const { paymentMethod, goodsValue, feePayer: postedFeePayer } = bookingPayment(
+    prepaid,
+    amount,
+    feePayer,
+  )
+  const codTotal =
+    area && paymentMethod === 'cod' ? codCollectable(goodsValue, fee, postedFeePayer) : 0
 
-  // Mirrors what the server accepts. Pickup is checked because a shop whose
-  // saved point predates the geofence widening would otherwise submit an order
-  // the database rejects, with the failure landing on a field that has no input.
+  // The gate lives in lib/orders/booking so a missing clause is a failing test
+  // rather than an invisible boolean — see the note at the top of that file.
   const pickupOutside = !isInServiceArea(pickup)
-  const canSubmit =
-    !!dropoff && !!area && isInServiceArea(dropoff) && !pickupOutside &&
-    dropoffAddress.trim().length >= 5
+  const blocker = bookingBlocker({
+    hasPin: !!dropoff,
+    pinInServiceArea: !!dropoff && isInServiceArea(dropoff),
+    pickupInServiceArea: !pickupOutside,
+    addressLength: dropoffAddress.trim().length,
+    hasArea: !!area,
+    prepaid,
+    amount,
+  })
+  const canSubmit = blocker === null
+
+  const BLOCKER_MESSAGE: Record<NonNullable<typeof blocker>, MessageKey> = {
+    pickup_outside: 'book.pickupOutside',
+    no_pin: 'book.needPin',
+    pin_outside: 'book.pinOutside',
+    no_address: 'book.needAddress',
+    no_area: 'book.needArea',
+    amount_empty: 'book.needAmount',
+    amount_decimal: 'book.amtDecimal',
+    amount_negative: 'book.amtNegative',
+    amount_not_a_number: 'book.amtNotNumber',
+    amount_too_large: 'book.amtTooLarge',
+  }
+
+  // Shown under the amount rather than under the button when it IS the amount:
+  // an error about a figure belongs beside the figure.
+  const amountProblem =
+    blocker && blocker.startsWith('amount_') && collect.trim().length > 0
+      ? t(BLOCKER_MESSAGE[blocker])
+      : undefined
 
   const byRoute = useMemo(
     () =>
@@ -215,9 +268,12 @@ export function OrderForm({ shop, areas }: OrderFormProps) {
           ) : null}
         </div>
 
-        {/* Derived, never asked. See the note on `paymentMethod` above. */}
+        {/* All three come from bookingPayment, so what posts is exactly what the
+            quote above the button showed — including feePayer, which is forced
+            to `shop` on a prepaid parcel because cod_by_shop bills the shop
+            regardless of what this column says. */}
         <input type="hidden" name="paymentMethod" value={paymentMethod} />
-        <input type="hidden" name="feePayer" value={feePayer} />
+        <input type="hidden" name="feePayer" value={postedFeePayer} />
         {/* The shop's own saved location. Changed in shop settings, not here. */}
         <input type="hidden" name="pickupAddress" value={shop.pickup_address} />
         <input type="hidden" name="pickupLat" value={shop.pickup_lat} />
@@ -245,6 +301,9 @@ export function OrderForm({ shop, areas }: OrderFormProps) {
           </CardHeader>
           <CardContent className="space-y-3">
             <LocationPicker
+              // Remounted on "Book another" so the pin auto-fills again. See
+              // `resetSeq` above.
+              key={`dropoff-${resetSeq}`}
               kind="dropoff"
               label={t('book.address')}
               point={dropoff}
@@ -344,32 +403,57 @@ export function OrderForm({ shop, areas }: OrderFormProps) {
             <Field
               label={t('book.collect')}
               htmlFor="goodsValue"
-              hint={t('book.collectHint')}
-              error={err('codAmount')}
+              hint={prepaid ? undefined : t('book.collectHint')}
+              error={err('codAmount') ?? amountProblem}
             >
+              {/*
+                `type="text"` with a numeric keypad, not `type="number"`. The
+                form is noValidate so `min` never fired anyway, and a text field
+                lets `parseAmount` name the problem — "whole kyat only" — instead
+                of the browser silently swallowing the keystroke or the server
+                rejecting it after a round trip.
+
+                No `placeholder="0"`: an empty box that reads 0 looks filled in,
+                which is how a COD parcel used to get booked as prepaid.
+              */}
               <Input
                 id="goodsValue"
                 name="goodsValue"
-                type="number"
+                type="text"
                 inputMode="numeric"
-                min={0}
-                placeholder="0"
-                value={collect}
+                autoComplete="off"
+                disabled={prepaid}
+                value={prepaid ? '' : collect}
                 onChange={(e) => setCollect(e.target.value)}
-                aria-invalid={!!err('codAmount')}
+                aria-invalid={!!(err('codAmount') ?? amountProblem)}
                 className="h-14 text-xl font-semibold tabular-nums"
               />
             </Field>
 
-            {paymentMethod === 'prepaid' ? (
+            {/* The ONLY way to book a parcel with nothing to collect. Leaving
+                the amount blank is now a blocked submit, not a silent prepaid. */}
+            <label className="flex min-h-11 items-center gap-3 rounded-lg border bg-muted/30 px-3 text-base font-medium">
+              <input
+                type="checkbox"
+                checked={prepaid}
+                onChange={(e) => {
+                  setPrepaid(e.target.checked)
+                  if (e.target.checked) setCollect('')
+                }}
+                className="size-5 accent-brand-red"
+              />
+              {t('book.alreadyPaid')}
+            </label>
+
+            {prepaid ? (
               <p className="text-sm text-muted-foreground">{t('book.prepaidNote')}</p>
             ) : null}
 
             <QuoteSummary
               area={area}
               paymentMethod={paymentMethod}
-              feePayer={feePayer}
-              goods={goods}
+              feePayer={postedFeePayer}
+              goods={goodsValue}
               codTotal={codTotal}
             />
           </CardContent>
@@ -414,16 +498,22 @@ export function OrderForm({ shop, areas }: OrderFormProps) {
               >
                 <Input id="customerPhoneAlt" name="customerPhoneAlt" type="tel" inputMode="tel" />
               </Field>
-              <Field label={t('book.feePayer')} htmlFor="feePayerSelect">
-                <Select
-                  id="feePayerSelect"
-                  value={feePayer}
-                  onChange={(e) => setFeePayer(e.target.value as 'customer' | 'shop')}
-                >
-                  <option value="customer">{t('book.feeCustomer')}</option>
-                  <option value="shop">{t('book.feeShop')}</option>
-                </Select>
-              </Field>
+              {/* Hidden on a prepaid parcel, where it does nothing: cod_by_shop
+                  bills the shop the delivery fee on ANY non-COD order and never
+                  reads fee_payer. Leaving it enabled offered a choice the
+                  database ignores. */}
+              {prepaid ? null : (
+                <Field label={t('book.feePayer')} htmlFor="feePayerSelect">
+                  <Select
+                    id="feePayerSelect"
+                    value={feePayer}
+                    onChange={(e) => setFeePayer(e.target.value as 'customer' | 'shop')}
+                  >
+                    <option value="customer">{t('book.feeCustomer')}</option>
+                    <option value="shop">{t('book.feeShop')}</option>
+                  </Select>
+                </Field>
+              )}
             </div>
 
             <div className="grid gap-3 sm:grid-cols-3">
@@ -470,8 +560,15 @@ export function OrderForm({ shop, areas }: OrderFormProps) {
         </details>
 
         <SubmitButton disabled={!canSubmit} />
-        {!canSubmit && !pickupOutside ? (
-          <p className="text-center text-sm text-muted-foreground">{t('book.needPin')}</p>
+        {/* The actual reason, not a generic one. It used to say "drop the pin
+            and choose the area" whatever was wrong — including when the real
+            problem was a missing amount, the case that booked a COD parcel as
+            prepaid. `pickup_outside` already has its own banner at the top, and
+            an amount problem is shown beside the amount. */}
+        {blocker && blocker !== 'pickup_outside' && !amountProblem ? (
+          <p className="text-center text-sm text-muted-foreground">
+            {t(BLOCKER_MESSAGE[blocker])}
+          </p>
         ) : null}
       </form>
 

@@ -180,7 +180,35 @@ export const DICTIONARY = {
   'book.moreHint': { en: 'optional', my: 'မထည့်လည်းရ' },
   'book.submit': { en: 'BOOK THIS PARCEL', my: 'ပါဆယ် တင်မည်' },
   'book.submitting': { en: 'Booking…', my: 'တင်နေသည်…' },
-  'book.needPin': { en: 'Drop the pin on the map and choose the area.', my: 'မြေပုံတွင် အမှတ်ထည့်ပြီး မြို့နယ် ရွေးပါ။' },
+
+  // ---- why the button is disabled -------------------------------------------
+  //
+  // One reason at a time, in the order a shop would fix them. These replaced a
+  // single generic "drop the pin and choose the area", which was wrong whenever
+  // the real problem was the amount — the case that used to book a COD parcel
+  // as prepaid.
+  'book.alreadyPaid': { en: 'Already paid — collect nothing', my: 'ငွေရှင်းပြီးသား — မကောက်ပါ' },
+  'book.needPin': { en: 'Drop the pin on the map.', my: 'မြေပုံတွင် အမှတ် ထည့်ပါ။' },
+  'book.pinOutside': {
+    en: 'That pin is outside the delivery area.',
+    my: 'ဤအမှတ်သည် ပို့ဆောင်နယ်ပယ် အပြင် ဖြစ်ပါသည်။',
+  },
+  'book.needAddress': { en: 'Add the delivery address.', my: 'ပို့ရမည့် လိပ်စာ ထည့်ပါ။' },
+  'book.needArea': { en: 'Choose the area.', my: 'မြို့နယ် ရွေးပါ။' },
+  'book.needAmount': {
+    en: 'Enter the amount, or tick “already paid”.',
+    my: 'ပမာဏ ထည့်ပါ၊ သို့မဟုတ် “ငွေရှင်းပြီးသား” ကို အမှန်ခြစ်ပါ။',
+  },
+  'book.amtDecimal': {
+    en: 'Whole kyat only — no decimal point.',
+    my: 'ကျပ်အပြည့်သာ — ဒဿမ မထည့်ပါနှင့်။',
+  },
+  'book.amtNegative': { en: 'That is a negative amount.', my: 'အနုတ်ဂဏန်း မဖြစ်ရပါ။' },
+  'book.amtNotNumber': { en: 'Numbers only.', my: 'ဂဏန်းသာ ထည့်ပါ။' },
+  'book.amtTooLarge': {
+    en: 'That amount is too large — check it.',
+    my: 'ပမာဏ များလွန်းပါသည် — ပြန်စစ်ပါ။',
+  },
   'book.pickupOutside': {
     en: 'Your shop location is outside the delivery area. Fix it in shop settings.',
     my: 'ဆိုင်တည်နေရာ ပို့ဆောင်နယ်ပယ် အပြင် ရှိပါသည်။ ဆိုင်အပြင်အဆင်တွင် ပြင်ပါ။',

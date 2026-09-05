@@ -2,6 +2,8 @@ import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { dbId, orderCreateSchema } from './schemas'
+import { MAX_MMK } from './limits'
+import { codCollectable } from '@/lib/pricing'
 
 /**
  * `dbId` is deliberately LOOSER than Zod's `.uuid()`. These tests exist to stop
@@ -209,5 +211,47 @@ describe('orderCreateSchema — the four-field booking form', () => {
       orderCreateSchema.safeParse({ ...minimal, paymentMethod: 'prepaid', codAmount: 500 }).success,
       false,
     )
+  })
+})
+
+/**
+ * The ceiling guards the GOODS value, not what is stored.
+ *
+ * `cod_amount` is written as goods + fee when the customer pays the fee, so a
+ * parcel at exactly the limit stores MORE than the limit. The schema cannot see
+ * that — `deliveryFee` is still a placeholder zero when it runs — which is why
+ * `createOrder` re-checks the collectable total once the route fee is known.
+ */
+describe('orderCreateSchema — where the money ceiling does and does not apply', () => {
+  const atCeiling = {
+    shopId: SEEDED_SHOP,
+    pickupAddress: 'No. 24, Thitsar Road, Thingangyun',
+    pickupPoint: { lat: 16.8478, lng: 96.1693 },
+    customerName: 'Daw Myint',
+    customerPhone: '09791234567',
+    dropoffAddress: 'Sule Pagoda Road, Kyauktada',
+    dropoffAreaId: SEEDED_SHOP,
+    dropoffPoint: { lat: 16.776, lng: 96.158 },
+    paymentMethod: 'cod' as const,
+    codAmount: MAX_MMK,
+    deliveryFee: 0,
+  }
+
+  test('goods exactly at the ceiling pass the schema', () => {
+    assert.ok(orderCreateSchema.safeParse(atCeiling).success)
+  })
+
+  test('one kyat over is refused', () => {
+    const r = orderCreateSchema.safeParse({ ...atCeiling, codAmount: MAX_MMK + 1 })
+    assert.equal(r.success, false)
+  })
+
+  test('but goods + fee can still exceed it — hence the check in createOrder', () => {
+    const parsed = orderCreateSchema.safeParse(atCeiling)
+    assert.ok(parsed.success)
+    // What the action would store for a 3,500 Ks route, before its own guard.
+    const stored = codCollectable(parsed.data.codAmount, 3_500, 'customer')
+    assert.ok(stored > MAX_MMK, 'the gap this test documents has closed — check createOrder')
+    assert.equal(stored, MAX_MMK + 3_500)
   })
 })

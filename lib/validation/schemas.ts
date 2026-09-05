@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { THINGANGYUN_BBOX } from '@/lib/geo/thingangyun'
+import { MAX_MMK } from '@/lib/validation/limits'
 
 // ---------------------------------------------------------------------------
 // Primitives
@@ -27,12 +28,18 @@ export const optionalMyanmarPhone = z
   .union([z.literal(''), myanmarPhone])
   .transform((v) => (v === '' ? null : v))
 
-/** Whole MMK. Rejects decimals outright rather than silently rounding money. */
+/**
+ * Whole MMK. Rejects decimals outright rather than silently rounding money.
+ *
+ * The ceiling lives in `./limits` so the booking form can apply the same one
+ * without importing Zod into the client bundle. Note it bounds the GOODS value
+ * the shop types, not the collectable total — see the note in that file.
+ */
 export const mmk = z.coerce
   .number({ error: 'Enter an amount in kyat' })
   .int('Amount must be a whole number of kyat')
   .min(0, 'Amount cannot be negative')
-  .max(50_000_000, 'Amount looks too large — check the value')
+  .max(MAX_MMK, 'Amount looks too large — check the value')
 
 const lat = z.coerce.number().min(-90).max(90)
 const lng = z.coerce.number().min(-180).max(180)

@@ -9,6 +9,8 @@ import { explainResolutionError } from '@/lib/orders/errors'
 import { haversineKm } from '@/lib/geo/haversine'
 import { codCollectable } from '@/lib/pricing'
 import { resolveAreaRoute } from '@/lib/orders/queries'
+import { MAX_MMK } from '@/lib/validation/limits'
+import { formatMmk } from '@/lib/utils'
 
 /** What the confirmation modal needs. Every money figure is the SERVER's. */
 export type CreatedOrder = {
@@ -166,6 +168,28 @@ export async function createOrder(
 
   const goodsValue = v.paymentMethod === 'cod' ? v.codAmount : 0
   const codTotal = v.paymentMethod === 'cod' ? codCollectable(goodsValue, fee, v.feePayer) : 0
+
+  /**
+   * The ceiling applies to what is STORED, not only to what was typed.
+   *
+   * `mmk` bounds `codAmount`, which carries the goods value — but `cod_amount`
+   * is written as goods PLUS the fee when the customer pays it. So 50,000,000
+   * on a 4,000 route passed validation and stored 50,004,000: past the
+   * validator's own maximum, and legal at the database, whose only check is
+   * `cod_amount >= 0`. The schema cannot catch it because `deliveryFee` is
+   * still a placeholder zero when it runs; the fee is only known here.
+   */
+  if (codTotal > MAX_MMK) {
+    return {
+      error: 'That collection amount is too large.',
+      fieldErrors: {
+        codAmount: [
+          `With the ${formatMmk(fee)} delivery fee this comes to ${formatMmk(codTotal)}, ` +
+            `over the ${formatMmk(MAX_MMK)} limit.`,
+        ],
+      },
+    }
+  }
 
   const { data: created, error } = await supabase
     .from('orders')
