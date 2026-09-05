@@ -589,5 +589,105 @@ begin
   reset role;
 end $$;
 
+-- ----------------------------------------------------------------------------
+--  shops_guard (0026) -- a shop owns its description, not the decision about
+--  itself. Before this trigger existed a suspended shop could run one UPDATE
+--  and un-suspend itself; that is what assertion 1 reproduces.
+-- ----------------------------------------------------------------------------
+do $$
+declare
+  v_shop  uuid := 'aaaaaaaa-0000-0000-0000-000000000001';
+  v_owner uuid := '33333333-3333-3333-3333-333333333333';
+  n int;
+begin
+  -- A shop that predates approval keeps trading. Checked on the seeded shop
+  -- rather than "no shop anywhere is unapproved", because the fixtures in this
+  -- file create rival shops on purpose and those SHOULD arrive unapproved.
+  select count(*) into n from public.shops where id = v_shop and approved_at is not null;
+  if n <> 1 then
+    raise exception 'FAIL: an established shop was left unapproved and cannot trade';
+  end if;
+  raise notice 'PASS: an established shop keeps trading after 0026';
+
+  update public.shops set is_active = false where id = v_shop;
+
+  perform set_config('request.jwt.claims',
+    format('{"sub":"%s","role":"authenticated"}', v_owner), false);
+  execute 'set role authenticated';
+
+  -- 1. THE LIVE BUG. One UPDATE used to be enough.
+  begin
+    update public.shops set is_active = true where id = v_shop;
+    raise exception 'FAIL: a suspended shop un-suspended itself';
+  exception when insufficient_privilege then
+    raise notice 'PASS: a suspended shop cannot un-suspend itself';
+  end;
+
+  -- 2. And it cannot wave itself through the office either.
+  begin
+    update public.shops set approved_at = now() where id = v_shop;
+    raise exception 'FAIL: a shop approved itself';
+  exception when insufficient_privilege then
+    raise notice 'PASS: a shop cannot approve itself';
+  end;
+  -- Genuinely different values: the guard compares old to new, so setting a
+  -- field to what it already holds is not a change and is rightly allowed.
+  begin
+    update public.shops set rejected_at = now() where id = v_shop;
+    raise exception 'FAIL: a shop rejected itself';
+  exception when insufficient_privilege then
+    raise notice 'PASS: a shop cannot write its own rejection';
+  end;
+  begin
+    update public.shops set owner_id = '22222222-2222-2222-2222-222222222222'
+     where id = v_shop;
+    raise exception 'FAIL: a shop handed itself to another owner';
+  exception when insufficient_privilege then
+    raise notice 'PASS: a shop cannot change its own owner';
+  end;
+
+  -- 3. INSERT is guarded too: the setup step inserts under the OWNER's session,
+  --    so without this a shop could simply arrive pre-approved.
+  insert into public.shops (owner_id, name, phone, pickup_address, pickup_lat, pickup_lng,
+                            goods_type, approved_at, is_active)
+  values (v_owner, 'Self Approved Shop', '+959770001234',
+          'No. 1, Thitsar Road, Thingangyun', 16.8478, 96.1693,
+          'Anything', now(), true);
+  select count(*) into n from public.shops
+   where name = 'Self Approved Shop' and approved_at is null;
+  if n <> 1 then
+    raise exception 'FAIL: a shop inserted itself pre-approved';
+  end if;
+  raise notice 'PASS: a shop arrives unapproved however it asks';
+
+  -- 4. But it still owns its own description -- shop settings must keep working.
+  update public.shops
+     set name = 'Renamed By Owner', goods_type = 'Phone accessories',
+         pickup_address = 'No. 9, Thitsar Road, Thingangyun'
+   where id = v_shop;
+  select count(*) into n from public.shops
+   where id = v_shop and name = 'Renamed By Owner' and goods_type = 'Phone accessories';
+  if n <> 1 then raise exception 'FAIL: a shop cannot edit its own details'; end if;
+  raise notice 'PASS: a shop still owns its own name, goods and address';
+
+  -- 5. The office can do all of it, and it is written down. Impersonating the
+  --    ADMIN, not resetting to the superuser: is_service_ctx() skips the guard
+  --    entirely (as it does for profiles), so a superuser write audits nothing
+  --    and would prove nothing about what an admin's click records.
+  perform set_config('request.jwt.claims',
+    '{"sub":"11111111-1111-1111-1111-111111111111","role":"authenticated"}', false);
+  update public.shops set approved_at = now(), is_active = true where id = v_shop;
+  select count(*) into n from public.audit_log where action = 'shop.decision';
+  if n < 1 then raise exception 'FAIL: an approval left no audit row'; end if;
+  raise notice 'PASS: the office decides, and the decision is on the audit log';
+
+  reset role;
+  perform set_config('request.jwt.claims','',false);
+  delete from public.shops where name = 'Self Approved Shop';
+  update public.shops set name = 'San Pya Mini Mart', goods_type = null,
+         pickup_address = 'No. 24, Thitsar Road, San Pya Ward, Thingangyun, Yangon'
+   where id = v_shop;
+end $$;
+
 \echo ''
 \echo '######  ALL PHASE 1 CHECKS PASSED  ######'

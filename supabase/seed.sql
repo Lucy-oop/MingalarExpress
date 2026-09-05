@@ -183,7 +183,13 @@ on conflict (route_id, area_id) do nothing;
 -- Shop
 -- ----------------------------------------------------------------------------
 
-insert into public.shops (id, owner_id, name, phone, area_id, pickup_address, pickup_lat, pickup_lng, pickup_note)
+-- Approved on purpose (0026): the seed represents shops that are already
+-- trading, and the grandfathering in the migration cannot reach rows the seed
+-- inserts afterwards. A seeded shop left unapproved cannot book, and every
+-- order fixture below would fail for a reason that has nothing to do with the
+-- test.
+insert into public.shops (id, owner_id, name, phone, area_id, pickup_address, pickup_lat, pickup_lng, pickup_note,
+                          goods_type, approved_at)
 select
   'aaaaaaaa-0000-0000-0000-000000000001',
   '33333333-3333-3333-3333-333333333333',
@@ -192,7 +198,9 @@ select
   (select id from public.service_areas where name = 'San Pya'),
   'No. 24, Thitsar Road, San Pya Ward, Thingangyun, Yangon',
   16.8478, 96.1693,
-  'Green shutter next to the tea shop. Ask for Ma Su.'
+  'Green shutter next to the tea shop. Ask for Ma Su.',
+  'Groceries and household goods',
+  now()
 on conflict (id) do nothing;
 
 
