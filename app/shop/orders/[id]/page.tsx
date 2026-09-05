@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation'
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { Bike, ExternalLink, Phone } from 'lucide-react'
+import { Bike, ExternalLink, Phone, Printer } from 'lucide-react'
 import { requireShop } from '@/lib/auth/guards'
 import { getShopOrderDetail } from '@/lib/orders/queries'
 import { StatusBadge } from '@/components/orders/status-badge'
@@ -93,6 +93,19 @@ export default async function ShopOrderDetailPage({
           >
             Customer tracking link <ExternalLink className="size-3.5" />
           </Link>
+          {/* The reprint path, for a shop that closed the success popup before
+              printing. Not offered for a cancelled parcel -- there is no box
+              left to stick it on. */}
+          {order.status !== 'cancelled' ? (
+            <a
+              href={`/shop/orders/labels?ids=${order.id}&print=1`}
+              target="_blank"
+              rel="noopener"
+              className="flex items-center gap-1 text-sm text-primary hover:underline"
+            >
+              <Printer className="size-3.5" /> Print label
+            </a>
+          ) : null}
           {/* RLS permits `pending -> cancelled` for the owning shop, and the
               action has existed since Phase 2 with nothing calling it. */}
           {order.status === 'pending' ? (

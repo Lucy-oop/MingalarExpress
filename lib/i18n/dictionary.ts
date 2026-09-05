@@ -150,7 +150,10 @@ export const DICTIONARY = {
   'shop.title': { en: 'Mingalar Express shop', my: 'Mingalar Express ဆိုင်' },
   'shop.nav.dashboard': { en: 'Home', my: 'ပင်မ' },
   'shop.nav.orders': { en: 'Parcels', my: 'ပါဆယ်များ' },
-  'shop.nav.new': { en: 'Book a parcel', my: 'ပါဆယ် တင်ရန်' },
+  // English says "New Order" because that is what the office calls it; the
+  // Burmese stays ပါဆယ် (parcel) rather than the အော်ဒါ loanword, matching every
+  // other string in the shop panel.
+  'shop.nav.new': { en: 'New Order', my: 'ပါဆယ် တင်ရန်' },
   'shop.nav.money': { en: 'Money', my: 'ငွေစာရင်း' },
   'shop.nav.settings': { en: 'Shop settings', my: 'ဆိုင် အပြင်အဆင်' },
 
@@ -281,6 +284,25 @@ export const DICTIONARY = {
   'created.writeCode': { en: 'Write this code on the parcel', my: 'ဒီကုဒ်ကို ပါဆယ်ပေါ် ရေးပါ' },
   'created.another': { en: 'Book another', my: 'ထပ်တင်မည်' },
   'created.viewOrders': { en: 'See my parcels', my: 'ပါဆယ်များ ကြည့်မည်' },
+  'created.print': { en: 'Print label', my: 'လိပ်စာစာရွက် ပရင့်ထုတ်ရန်' },
+
+  // ---- waybill / labels -----------------------------------------------------
+  // The label ITSELF is not translated -- it is fixed English scaffolding with
+  // the Burmese area name alongside, because a rider and a customer read it,
+  // not whoever pressed print. These are the keys for the page AROUND it.
+  'label.title': { en: 'Parcel labels', my: 'ပါဆယ် လိပ်စာစာရွက်များ' },
+  'label.print': { en: 'Print', my: 'ပရင့်ထုတ်ရန်' },
+  'label.back': { en: 'Back to my parcels', my: 'ပါဆယ်များသို့ ပြန်သွားရန်' },
+  'label.count': { en: '{n} label(s) · 100 × 150 mm', my: 'လိပ်စာစာရွက် {n} ခု · 100 × 150 mm' },
+  'label.none': { en: 'Nothing to print', my: 'ပရင့်ထုတ်စရာ မရှိပါ' },
+  'label.noneHint': {
+    en: 'These parcels are not yours, or the filters matched nothing.',
+    my: 'ဤပါဆယ်များ သင့်ဟာ မဟုတ်ပါ၊ သို့မဟုတ် ကိုက်ညီမှု မရှိပါ။',
+  },
+  'label.tooMany': {
+    en: 'Showing the first {n} only — narrow the dates and print the rest after.',
+    my: 'ပထမ {n} ခုသာ ပြသည် — ရက်စွဲ ကျဉ်းအောင်ချုံ့ပြီး ကျန်ကို ထပ်ပရင့်ထုတ်ပါ။',
+  },
 
   // ---- shop dashboard -------------------------------------------------------
   'sd.waiting': { en: 'Waiting for a rider', my: 'ရိုက်ဒါ စောင့်နေ' },

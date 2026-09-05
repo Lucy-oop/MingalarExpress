@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Download, Search, X } from 'lucide-react'
+import { Download, Printer, Search, X } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Button } from '@/components/ui/button'
@@ -23,11 +23,14 @@ const STATUSES = Object.keys(ORDER_STATUS_LABEL) as OrderStatus[]
 export function OrderFilters({
   total,
   exportHref,
+  labelsHref,
   basePath = '/shop/orders',
   extra,
 }: {
   total: number
   exportHref: string
+  /** Print waybills for everything matching these filters. Shop list only. */
+  labelsHref?: string
   /** Which list this bar drives. The office's is the same bar, different route. */
   basePath?: string
   /** Slot for filters only one of the two lists has, e.g. the office's shop picker. */
@@ -128,14 +131,26 @@ export function OrderFilters({
           </Button>
         ) : null}
 
-        {/* A link, not a fetch: the browser handles the download and the file
-            name comes from Content-Disposition. */}
-        <a href={exportHref} className="ml-auto">
-          <Button variant="outline" size="sm" type="button">
-            <Download />
-            Export CSV
-          </Button>
-        </a>
+        <div className="ml-auto flex items-center gap-2">
+          {/* Book ten, filter to today, print one stack. Opens in its own tab so
+              the filtered list is still here when the printing is done. */}
+          {labelsHref && total > 0 ? (
+            <a href={labelsHref} target="_blank" rel="noopener">
+              <Button variant="outline" size="sm" type="button">
+                <Printer />
+                Print labels
+              </Button>
+            </a>
+          ) : null}
+          {/* A link, not a fetch: the browser handles the download and the file
+              name comes from Content-Disposition. */}
+          <a href={exportHref}>
+            <Button variant="outline" size="sm" type="button">
+              <Download />
+              Export CSV
+            </Button>
+          </a>
+        </div>
       </div>
 
       <p className="text-xs text-muted-foreground">

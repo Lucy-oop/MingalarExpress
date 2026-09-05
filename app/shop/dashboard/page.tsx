@@ -1,13 +1,11 @@
 import Link from 'next/link'
 import type { Metadata } from 'next'
-import { PackagePlus } from 'lucide-react'
 import { requireShop } from '@/lib/auth/guards'
 import { getLocale } from '@/lib/i18n/locale'
 import { translator } from '@/lib/i18n'
 import { getShopDashboard } from '@/lib/orders/queries'
 import { OrderTable } from '@/components/orders/order-table'
 import { Kpi } from '@/components/admin/kpi'
-import { buttonVariants } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
 import { formatMmk } from '@/lib/utils'
 
@@ -28,17 +26,11 @@ export default async function ShopDashboardPage() {
   return (
     <div className="space-y-6">
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold">{shop?.name ?? 'Your shop'}</h1>
-          <p className="text-sm text-muted-foreground">
-            {shop?.pickup_address ?? 'No pickup address set'}
-          </p>
-        </div>
-        <Link href="/shop/orders/new" className={buttonVariants()}>
-          <PackagePlus className="size-4" />
-          New order
-        </Link>
+      <div>
+        <h1 className="text-xl font-semibold">{shop?.name ?? 'Your shop'}</h1>
+        <p className="text-sm text-muted-foreground">
+          {shop?.pickup_address ?? 'No pickup address set'}
+        </p>
       </div>
 
       {!shop ? (

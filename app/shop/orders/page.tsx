@@ -88,7 +88,11 @@ export default async function ShopOrdersPage({
           </Link>
         </Alert>
       ) : (
-        <OrderFilters total={total} exportHref={`/shop/orders/export?${qs.toString()}`} />
+        <OrderFilters
+          total={total}
+          exportHref={`/shop/orders/export?${qs.toString()}`}
+          labelsHref={`/shop/orders/labels?${qs.toString()}&print=1`}
+        />
       )}
 
       <OrderTable orders={rows} />

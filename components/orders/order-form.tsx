@@ -3,7 +3,7 @@
 import { useActionState, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useFormStatus } from 'react-dom'
-import { CheckCircle2, ChevronDown, MapPin, PackagePlus, Store } from 'lucide-react'
+import { CheckCircle2, ChevronDown, MapPin, PackagePlus, Printer, Store } from 'lucide-react'
 import Link from 'next/link'
 import { createOrder, type CreatedOrder, type OrderFormState } from '@/lib/orders/actions'
 import type { AreaRoute } from '@/lib/orders/queries'
@@ -739,13 +739,32 @@ function OrderCreatedDialog({
       onClose={onCreateAnother}
       footer={
         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <Button variant="ghost" size="touch" onClick={() => router.push('/shop/orders')}>
+            {t('created.viewOrders')}
+          </Button>
           <Button variant="outline" size="touch" onClick={onCreateAnother}>
             <PackagePlus />
             {t('created.another')}
           </Button>
-          <Button size="touch" onClick={() => router.push('/shop/orders')}>
-            {t('created.viewOrders')}
-          </Button>
+          {/*
+            A PLAIN ANCHOR, deliberately. `window.open` from a handler can be
+            caught by a popup blocker; a real link with target=_blank never is.
+            It also cannot call onCreateAnother -- and it must not: the doc
+            comment above says Escape and the backdrop both mean "create
+            another", so the dialog has to stay open BEHIND the new tab or the
+            code leaves the screen at the exact moment it is being labelled.
+          */}
+          <a
+            href={`/shop/orders/labels?ids=${order.id}&print=1`}
+            target="_blank"
+            rel="noopener"
+            className="contents"
+          >
+            <Button size="touch" className="w-full">
+              <Printer />
+              {t('created.print')}
+            </Button>
+          </a>
         </div>
       }
     >

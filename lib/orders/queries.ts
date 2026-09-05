@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { isoDaysAgo, nextDay, yangonToday } from '@/lib/admin/day'
 import type { Order, OrderStatus } from '@/types/domain'
+import { MAX_LABELS } from '@/lib/orders/label'
 
 /**
  * Shop-side reads.
@@ -28,6 +29,56 @@ export type ShopOrderRow = {
   delivery_fee: number
   payment_method: 'cod' | 'prepaid'
   created_at: string
+}
+
+/**
+ * Everything a printed waybill carries, in one round trip.
+ *
+ * A third column list rather than a widening of ORDER_LIST_COLUMNS, which the
+ * paginated list and the CSV export share and which has no use for any of this.
+ * Nor is `getShopOrderDetail` reused: it fires six further queries — a signed
+ * proof URL, the rider card, two attempt counts, `app_settings` — that a label
+ * ignores, and it still would not have the shop's name and phone.
+ *
+ * The shop is EMBEDDED rather than fetched separately; `shops_owner_all` scopes
+ * it to the caller's own shop. But the pickup ADDRESS comes off the order, not
+ * the shop: init.sql:227 records that pickup and dropoff are snapshots so a shop
+ * editing its address never rewrites delivery history, and a label reprinted
+ * next month must say where the parcel actually came from.
+ */
+export const ORDER_LABEL_COLUMNS = `
+  id, code, status, created_at,
+  customer_name, customer_phone, customer_phone_alt, dropoff_address, dropoff_note,
+  parcel_desc, parcel_weight_g, is_fragile,
+  payment_method, cod_amount, delivery_fee, fee_payer,
+  pickup_address, pickup_contact,
+  shops:shop_id ( name, phone ),
+  service_areas:dropoff_area_id ( name, name_mm ),
+  routes:route_id ( code, name, colour )
+` as const
+
+export type OrderLabelRow = {
+  id: string
+  code: string
+  status: OrderStatus
+  created_at: string
+  customer_name: string
+  customer_phone: string
+  customer_phone_alt: string | null
+  dropoff_address: string
+  dropoff_note: string | null
+  parcel_desc: string
+  parcel_weight_g: number | null
+  is_fragile: boolean
+  payment_method: 'cod' | 'prepaid'
+  cod_amount: number
+  delivery_fee: number
+  fee_payer: string
+  pickup_address: string
+  pickup_contact: string | null
+  shops: { name: string; phone: string } | null
+  service_areas: { name: string; name_mm: string | null } | null
+  routes: { code: string; name: string; colour: string } | null
 }
 
 export type ShopDashboard = {
@@ -521,6 +572,56 @@ export async function searchShopOrders(filters: OrderFilters): Promise<OrderPage
     pageSize,
     pageCount: Math.max(1, Math.ceil(total / pageSize)),
   }
+}
+
+/**
+ * Labels for an explicit set of parcels — the modal's "print this one" and the
+ * detail page's reprint.
+ *
+ * Ordered oldest first so a batch comes off the printer in the order the shop
+ * booked it, which is the order the parcels are sitting in on their table.
+ *
+ * RLS scopes it, as everywhere else in this file. An id belonging to another
+ * shop simply returns no row, so a hand-edited `?ids=` is a short stack, not a
+ * leak and not an error.
+ */
+export async function getOrderLabels(ids: string[]): Promise<OrderLabelRow[]> {
+  if (ids.length === 0) return []
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('orders')
+    .select(ORDER_LABEL_COLUMNS)
+    .in('id', ids.slice(0, MAX_LABELS))
+    .order('created_at', { ascending: true })
+
+  if (error) throw new Error(`labels unavailable: ${error.message}`)
+  return (data ?? []) as unknown as OrderLabelRow[]
+}
+
+/**
+ * Labels for everything matching the list's current filters — book ten, filter
+ * to today, print one stack.
+ *
+ * Asks for one row beyond the cap so the page can say "showing 100 of 137"
+ * rather than silently handing back a short stack of labels, which a shop would
+ * discover only by counting parcels against paper.
+ */
+export async function getOrderLabelsByFilter(
+  filters: OrderFilters,
+): Promise<{ rows: OrderLabelRow[]; capped: boolean }> {
+  const supabase = await createClient()
+  const query = applyOrderFilters(
+    supabase
+      .from('orders')
+      .select(ORDER_LABEL_COLUMNS)
+      .order('created_at', { ascending: true }),
+    filters,
+  ).limit(MAX_LABELS + 1)
+
+  const { data, error } = await query
+  if (error) throw new Error(`labels unavailable: ${error.message}`)
+  const all = (data ?? []) as unknown as OrderLabelRow[]
+  return { rows: all.slice(0, MAX_LABELS), capped: all.length > MAX_LABELS }
 }
 
 /** Every row matching the filters, for the CSV export. Capped, never paged. */
