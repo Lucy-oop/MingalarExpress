@@ -7,6 +7,7 @@ import { getSupabaseEnv } from '@/lib/env'
 import { ROLE_HOME } from '@/lib/auth/guards'
 import { loginSchema, registerSchema } from '@/lib/validation/schemas'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { explainSignUpError } from '@/lib/auth/errors'
 import { toE164Myanmar } from '@/lib/utils'
 
 export type AuthFormState = {
@@ -195,25 +196,31 @@ export async function signUpShop(
   })
 
   if (error) {
-    if (error.message.toLowerCase().includes('already registered')) {
-      return { error: 'An account with this email already exists.' }
-    }
+    const code = (error as { code?: string }).code
+    const status = (error as { status?: number }).status
+    const explained = explainSignUpError(code, status, error.message)
 
     /*
-      The check above is not a lock, so two people can claim the same number in
-      the same instant. Rather than guess, ask again: if the phone is taken NOW
-      and it was free a moment ago, that is exactly what happened and the field
-      error is the truth.
+      The pre-check above is not a lock, so two people can claim the same number
+      in the same instant. Asked before the generic branch and only then: if the
+      phone was free a moment ago and is taken now, that is the race, and it is
+      the truth where "something went wrong" is not.
     */
-    if (await phoneTaken(e164)) return { fieldErrors: { phone: [PHONE_TAKEN] } }
-
-    // Anything else is ours, not theirs. The raw text is a Postgres or GoTrue
-    // string that means nothing to a shop owner, so it goes to the server log
-    // and they get something they can act on.
-    console.error('[signUpShop] unexpected auth error:', error.message)
-    return {
-      error: 'Could not create the account. Please try again, or contact the Mingalar Express office.',
+    if (explained.kind === 'unknown' && (await phoneTaken(e164))) {
+      return { fieldErrors: { phone: [PHONE_TAKEN] } }
     }
+
+    if (explained.kind === 'unknown') {
+      // Ours, not theirs. The code is what makes it diagnosable later, so it
+      // goes to the server log rather than to a shop owner.
+      console.error(
+        `[signUpShop] unhandled auth error  code=${code ?? '(none)'} status=${status ?? 0}: ${error.message}`,
+      )
+    }
+
+    return explained.field
+      ? { fieldErrors: { [explained.field]: [explained.message] } }
+      : { error: explained.message }
   }
 
   redirect('/auth/login?registered=1')
