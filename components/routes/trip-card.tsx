@@ -4,21 +4,24 @@ import * as React from 'react'
 import {
   ChevronDown,
   Coins,
-  CornerUpLeft,
   Inbox,
   Info,
-  PackagePlus,
+  MapPin,
   Send,
   Truck,
   Undo2,
-  UserRound,
   X,
 } from 'lucide-react'
-import { TripVolumeBanner, TripVolumePill } from '@/components/routes/trip-volume-banner'
+import {
+  isVolumeSilent,
+  TripVolumeBanner,
+  TripVolumePill,
+} from '@/components/routes/trip-volume-banner'
+import { RiderPicker } from '@/components/routes/rider-picker'
 import { departBlocker, DEPART_BLOCKER_MESSAGE } from '@/lib/routes/depart-gate'
+import { summariseManifest } from '@/lib/routes/load-gate'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Select } from '@/components/ui/select'
 import { StatusBadge } from '@/components/orders/status-badge'
 import { cn, formatMmk } from '@/lib/utils'
 import type { BoardRider, BoardTrip, BoardRoute } from '@/lib/routes/queries'
@@ -46,22 +49,34 @@ const TRIP_STATUS_LABEL: Record<BoardTrip['status'], string> = {
 /**
  * One run on the planning board.
  *
- * The volume banner is mounted here rather than at the top of the page on
- * purpose: the 20-parcel rule is a property of a RUN, and a page-level banner
- * would leave a dispatcher hunting for which of four runs it meant.
+ * WHAT CHANGED, and why the card is much shorter than it was:
  *
- * `TripVolumeBanner` renders nothing when the run is fine, so a full run is a
- * quiet card. That is deliberate — a warning that is always on screen stops
- * being read.
+ *  - LOADING LEFT. Three "Load N selected" buttons lived here, on every card,
+ *    all enabled together and all reading the same global tick count — twelve
+ *    identical buttons across four routes, with nothing saying which run a click
+ *    would fill. There is now one button, in the parcel panel, against an
+ *    explicit target. See lib/routes/load-gate.
+ *  - THE RIDER CAME UP. Assignment was a native select buried inside the
+ *    collapsed body; it is now chips in the header, visible without expanding.
+ *  - THE MANIFEST IS A SUMMARY. Thirty parcels meant thirty rows, thirty
+ *    identical status pills and thirty unload buttons — roughly 1,600px per
+ *    card. The list is one click away and carries bulk unload.
+ *  - EXPANSION FLIPPED. It was `trip.status !== 'planned'`, so the one card with
+ *    a decision in it started closed while finished runs started open and filled
+ *    the column with manifests nobody can act on.
+ *
+ * The volume banner stays mounted here rather than at the top of the page: the
+ * rule is a property of a RUN, and a page-level banner leaves a dispatcher
+ * hunting for which of four runs it meant.
  */
 export function TripCard({
   trip,
   route,
   riders,
-  selectedCount,
+  targeted,
   busy,
+  onTarget,
   onAssignRider,
-  onLoadSelected,
   onUnload,
   onDepart,
   onReturn,
@@ -71,20 +86,23 @@ export function TripCard({
   trip: BoardTrip
   route: BoardRoute
   riders: BoardRider[]
-  /** How many unrouted parcels are ticked in the panel next door. */
-  selectedCount: number
+  /** This is the run the parcel panel will load into. */
+  targeted: boolean
   busy: boolean
+  onTarget: () => void
   onAssignRider: (riderId: string) => void
-  onLoadSelected: (leg: 'delivery' | 'pickup' | 'return') => void
   onUnload: (orderIds: string[]) => void
   onDepart: () => void
   onReturn: () => void
   onClose: () => void
   onCancel: () => void
 }) {
-  const [expanded, setExpanded] = React.useState(trip.status !== 'planned')
-
   const canLoad = trip.status === 'planned' || trip.status === 'loading'
+  // Open where there is a decision to make, closed where there is not.
+  const [expanded, setExpanded] = React.useState(canLoad)
+  const [showParcels, setShowParcels] = React.useState(false)
+  const [picked, setPicked] = React.useState<Set<string>>(new Set())
+
   // One reason, mirroring depart_trip's own order. See lib/routes/depart-gate.
   const blocker = departBlocker({
     status: trip.status,
@@ -92,53 +110,84 @@ export function TripCard({
     parcelCount: trip.parcelCount,
     pickupCount: trip.pickupCount,
   })
-  const codHeadroom = route.maxCod - trip.codTotal
-  const parcelHeadroom = route.maxParcels - trip.parcelCount
+  const summary = React.useMemo(() => summariseManifest(trip.parcels), [trip.parcels])
+  const quiet = isVolumeSilent(trip.status, trip.parcelCount, trip.pickupCount)
+
+  // Drop ticks for parcels that have left this run, so "Unload 4" cannot
+  // silently become "unload 2" the way the board's own selection once did.
+  const parcelIds = React.useMemo(() => new Set(trip.parcels.map((p) => p.id)), [trip.parcels])
+  React.useEffect(() => {
+    setPicked((prev) => {
+      const next = new Set([...prev].filter((id) => parcelIds.has(id)))
+      return next.size === prev.size ? prev : next
+    })
+  }, [parcelIds])
 
   return (
-    <article className="overflow-hidden rounded-lg border bg-card">
-      {/* ---- header ------------------------------------------------------ */}
+    <article
+      className={cn(
+        'overflow-hidden rounded-lg border bg-card transition-shadow',
+        // The target is the one thing on the board that must be unmistakable:
+        // it is where the next Load lands.
+        targeted && 'ring-2 ring-primary ring-offset-1',
+      )}
+      onFocusCapture={canLoad ? onTarget : undefined}
+    >
       <header
-        className="flex flex-wrap items-center gap-x-3 gap-y-2 border-l-4 p-3"
+        className="space-y-2 border-l-4 p-3"
         style={{ borderLeftColor: route.colour }}
       >
-        <button
-          type="button"
-          onClick={() => setExpanded((v) => !v)}
-          className="flex min-w-0 flex-1 items-center gap-2 text-left"
-          aria-expanded={expanded}
-        >
-          <ChevronDown
-            className={cn('size-4 shrink-0 transition-transform', expanded && 'rotate-180')}
-            aria-hidden="true"
-          />
-          <span className="min-w-0">
-            <span className="block truncate text-sm font-semibold">{route.name}</span>
-            {route.nameMm ? (
-              <span className="block truncate text-xs text-muted-foreground">{route.nameMm}</span>
-            ) : null}
-          </span>
-        </button>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          <button
+            type="button"
+            onClick={() => setExpanded((v) => !v)}
+            className="flex min-w-0 flex-1 items-center gap-2 rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+            aria-expanded={expanded}
+          >
+            <ChevronDown
+              className={cn('size-4 shrink-0 transition-transform', expanded && 'rotate-180')}
+              aria-hidden="true"
+            />
+            {/* The section heading directly above already names the route in its
+                own colour; repeating it here was the card's widest element. */}
+            <span className="truncate text-sm font-semibold">
+              {summary.total > 0
+                ? `${summary.total} parcel${summary.total === 1 ? '' : 's'}`
+                : 'Empty run'}
+            </span>
+          </button>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <TripVolumePill check={trip.volume} />
-          {trip.pickupCount > 0 ? (
-            <Badge tone="neutral">
-              <Inbox className="size-3" />
-              {trip.pickupCount} pickup{trip.pickupCount === 1 ? '' : 's'}
+          <div className="flex flex-wrap items-center gap-2">
+            {quiet ? null : <TripVolumePill check={trip.volume} />}
+            {trip.pickupCount > 0 ? (
+              <Badge tone="neutral">
+                <Inbox className="size-3" />
+                {trip.pickupCount} pickup{trip.pickupCount === 1 ? '' : 's'}
+              </Badge>
+            ) : null}
+            <Badge tone={summary.cod > 0 ? 'amber' : 'neutral'}>
+              <Coins className="size-3" />
+              {formatMmk(summary.cod)}
             </Badge>
-          ) : null}
-          <Badge tone={trip.codTotal > 0 ? 'amber' : 'neutral'}>
-            <Coins className="size-3" />
-            {formatMmk(trip.codTotal)}
-          </Badge>
-          <Badge tone={TRIP_STATUS_TONE[trip.status]}>{TRIP_STATUS_LABEL[trip.status]}</Badge>
+            <Badge tone={TRIP_STATUS_TONE[trip.status]}>{TRIP_STATUS_LABEL[trip.status]}</Badge>
+          </div>
         </div>
+
+        {/* The rider, in the header, never behind the expander. */}
+        <RiderPicker
+          riders={riders}
+          riderId={trip.riderId}
+          riderName={trip.riderName}
+          editable={canLoad}
+          busy={busy}
+          loadedCount={trip.parcels.length}
+          onAssign={onAssignRider}
+        />
       </header>
 
       {expanded ? (
         <div className="space-y-3 border-t p-3">
-          <TripVolumeBanner check={trip.volume} />
+          {quiet ? null : <TripVolumeBanner check={trip.volume} />}
 
           {trip.departOverrideReason ? (
             <p className="rounded-md border border-amber-300 bg-amber-50 p-2.5 text-xs text-amber-900">
@@ -146,120 +195,108 @@ export function TripCard({
             </p>
           ) : null}
 
-          {/* ---- rider ---------------------------------------------------- */}
-          <div className="flex flex-wrap items-center gap-2">
-            <UserRound className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-            {canLoad ? (
-              <Select
-                value={trip.riderId ?? ''}
-                onChange={(e) => e.target.value && onAssignRider(e.target.value)}
-                disabled={busy}
-                className="w-64"
-                aria-label="Rider for this run"
-              >
-                <option value="">Choose a rider…</option>
-                {riders.map((r) => (
-                  <option
-                    key={r.id}
-                    value={r.id}
-                    // A rider already out cannot take a second run
-                    // (trips_rider_open_uk). Shown but not selectable, so the
-                    // board explains the gap instead of hiding it.
-                    disabled={r.onOpenTrip && r.id !== trip.riderId}
-                  >
-                    {r.name}
-                    {r.vehiclePlate ? ` · ${r.vehiclePlate}` : ''}
-                    {r.onOpenTrip && r.id !== trip.riderId ? ' — already out' : ''}
-                    {!r.isOnline ? ' — offline' : ''}
-                    {r.codInHand > 0 ? ` · holding ${r.codInHand.toLocaleString()} Ks` : ''}
-                  </option>
-                ))}
-              </Select>
-            ) : (
-              <span className="text-sm font-medium">{trip.riderName ?? 'No rider'}</span>
-            )}
-          </div>
-
-          {/* ---- loading -------------------------------------------------- */}
-          {canLoad ? (
-            <div className="flex flex-wrap items-center gap-2 rounded-md bg-muted/50 p-2">
-              <Button
-                size="sm"
-                disabled={busy || selectedCount === 0}
-                onClick={() => onLoadSelected('delivery')}
-              >
-                <PackagePlus />
-                Load {selectedCount > 0 ? selectedCount : ''} selected
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={busy || selectedCount === 0}
-                onClick={() => onLoadSelected('pickup')}
-              >
-                <Inbox />
-                As pickups
-              </Button>
-              {/* Parcels the shop asked back. load_trip refuses to mix them with
-                  deliveries in either direction, so this is a separate button
-                  rather than a mode on the others. */}
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={busy || selectedCount === 0}
-                onClick={() => onLoadSelected('return')}
-              >
-                <CornerUpLeft />
-                As returns
-              </Button>
-              <span className="text-xs text-muted-foreground">
-                room for {parcelHeadroom} more · {formatMmk(codHeadroom)} COD headroom
-              </span>
-            </div>
-          ) : null}
-
-          {/* ---- manifest ------------------------------------------------- */}
-          {trip.parcels.length === 0 ? (
+          {/* ---- manifest, as a shape ------------------------------------- */}
+          {summary.total === 0 ? (
             <p className="rounded-md border border-dashed p-4 text-center text-xs text-muted-foreground">
-              Nothing loaded yet. Tick parcels on the right, then load them onto this run.
+              {targeted
+                ? 'Tick parcels on the right, then load them onto this run.'
+                : 'Nothing loaded yet.'}
             </p>
           ) : (
-            <ul className="divide-y rounded-md border">
-              {trip.parcels.map((p) => (
-                <li key={p.id} className="flex items-center gap-2 p-2 text-xs">
-                  <span className="w-6 shrink-0 text-center font-semibold tabular-nums text-muted-foreground">
-                    {p.stopOrder ?? '–'}
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="flex items-center gap-1.5">
-                      <span className="font-mono font-semibold">{p.code}</span>
-                      {p.leg === 'pickup' ? <Badge tone="neutral">Pickup</Badge> : null}
-                      {p.leg === 'return' ? <Badge tone="blue">Return</Badge> : null}
-                      <StatusBadge status={p.status as OrderStatus} />
+            <div className="rounded-md border">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 p-2 text-xs">
+                <span className="flex flex-wrap items-center gap-1.5">
+                  <MapPin className="size-3 shrink-0 text-muted-foreground" aria-hidden="true" />
+                  {summary.areas.slice(0, 4).map((a) => (
+                    <span key={a.name} className="rounded bg-muted px-1.5 py-0.5">
+                      {a.name} <span className="tabular-nums font-semibold">{a.count}</span>
                     </span>
-                    <span className="block truncate text-muted-foreground">
-                      {p.areaName ? `${p.areaName} · ` : ''}
-                      {p.dropoffAddress}
+                  ))}
+                  {summary.areas.length > 4 ? (
+                    <span className="text-muted-foreground">
+                      +{summary.areas.length - 4} more
                     </span>
-                  </span>
-                  <span className="shrink-0 tabular-nums">
-                    {p.paymentMethod === 'cod' ? formatMmk(p.codAmount) : 'Prepaid'}
-                  </span>
-                  {canLoad ? (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="size-7 shrink-0"
-                      disabled={busy}
-                      onClick={() => onUnload([p.id])}
-                      aria-label={`Unload ${p.code}`}
-                    >
-                      <Undo2 className="size-3.5" />
-                    </Button>
                   ) : null}
-                </li>
-              ))}
-            </ul>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowParcels((v) => !v)}
+                  className="ml-auto rounded text-xs font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+                  aria-expanded={showParcels}
+                >
+                  {showParcels ? 'Hide parcels' : `Show ${summary.total} parcels`}
+                </button>
+              </div>
+
+              {showParcels ? (
+                <>
+                  {canLoad && picked.size > 0 ? (
+                    <div className="flex items-center gap-2 border-t bg-muted/50 p-2">
+                      {/* unload_trip has always taken an array; only the UI
+                          insisted on one parcel per round trip. */}
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={busy}
+                        onClick={() => {
+                          onUnload([...picked])
+                          setPicked(new Set())
+                        }}
+                      >
+                        <Undo2 />
+                        Unload {picked.size}
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => setPicked(new Set())}>
+                        Clear
+                      </Button>
+                    </div>
+                  ) : null}
+
+                  <ul className="divide-y border-t">
+                    {trip.parcels.map((p) => (
+                      <li key={p.id} className="flex items-center gap-2 p-2 text-xs">
+                        {canLoad ? (
+                          <input
+                            type="checkbox"
+                            checked={picked.has(p.id)}
+                            onChange={() =>
+                              setPicked((prev) => {
+                                const next = new Set(prev)
+                                if (next.has(p.id)) next.delete(p.id)
+                                else next.add(p.id)
+                                return next
+                              })
+                            }
+                            className="size-4 shrink-0 accent-brand-red"
+                            aria-label={`Select ${p.code} to unload`}
+                          />
+                        ) : null}
+                        <span className="w-6 shrink-0 text-center font-semibold tabular-nums text-muted-foreground">
+                          {p.stopOrder ?? '–'}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="flex items-center gap-1.5">
+                            <span className="font-mono font-semibold">{p.code}</span>
+                            {p.leg === 'pickup' ? <Badge tone="neutral">Pickup</Badge> : null}
+                            {p.leg === 'return' ? <Badge tone="blue">Return</Badge> : null}
+                            {/* Only worth a pill once the run is moving; on a
+                                planned run every parcel says the same thing. */}
+                            {canLoad ? null : <StatusBadge status={p.status as OrderStatus} />}
+                          </span>
+                          <span className="block truncate text-muted-foreground">
+                            {p.areaName ? `${p.areaName} · ` : ''}
+                            {p.dropoffAddress}
+                          </span>
+                        </span>
+                        <span className="shrink-0 tabular-nums">
+                          {p.paymentMethod === 'cod' ? formatMmk(p.codAmount) : 'Prepaid'}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              ) : null}
+            </div>
           )}
 
           {/* ---- actions -------------------------------------------------- */}
@@ -279,8 +316,7 @@ export function TripCard({
                   hover. A disabled control has `pointer-events-none`, so it can
                   carry no tooltip and take no focus -- a `title` here would
                   never fire, which is precisely how this became "the button
-                  does nothing". Stating it up front also means the dispatcher
-                  knows before reaching for it.
+                  does nothing".
                 */}
                 {blocker ? (
                   <p className="flex items-center gap-1.5 self-center text-xs text-muted-foreground">

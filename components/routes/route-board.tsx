@@ -6,7 +6,7 @@ import { Plus, RefreshCw } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { TripCard } from '@/components/routes/trip-card'
 import { DepartDialog } from '@/components/routes/depart-dialog'
-import { UnroutedPanel } from '@/components/routes/unrouted-panel'
+import { UnroutedPanel, type PanelTarget } from '@/components/routes/unrouted-panel'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Alert } from '@/components/ui/alert'
@@ -54,8 +54,16 @@ export function RouteBoard({ board }: { board: PlanningBoard }) {
   const [departing, setDeparting] = React.useState<BoardTrip | null>(null)
   const [departError, setDepartError] = React.useState<string | null>(null)
 
-  /** Which run the parcel panel is filtered to — the last one interacted with. */
-  const [focusRouteId, setFocusRouteId] = React.useState<string | null>(null)
+  /**
+   * The run the next Load lands on.
+   *
+   * This used to be `focusRouteId`, a filter hint only: the panel followed it,
+   * but the load TARGET was still whichever of a dozen identical "Load 10
+   * selected" buttons the dispatcher happened to press. Now the target is
+   * explicit, highlighted on the card, named in the panel, and there is one
+   * button.
+   */
+  const [targetTripId, setTargetTripId] = React.useState<string | null>(null)
 
   // Drop ticks for parcels that left the pool (another dispatcher loaded them).
   // Without this, "Load 12 selected" silently becomes "load 9".
@@ -186,11 +194,45 @@ export function RouteBoard({ board }: { board: PlanningBoard }) {
     return map
   }, [board.trips])
 
-  const shortRuns = board.trips.filter(
-    (t) => t.volume.severity !== 'ok' && (t.status === 'planned' || t.status === 'loading'),
-  ).length
-  const totalUnrouted = board.unrouted.length
+  const totalUnrouted = board.unrouted.length + board.returns.length
   const unmapped = board.unrouted.filter((p) => p.suggestedRouteId === null).length
+
+  /**
+   * One pool, deliveries and returns together.
+   *
+   * `board.returns` used to be shown only as an alert that told the dispatcher
+   * to "tick them in the parcel list" — a list they never reached, because the
+   * panel was passed `board.unrouted` alone. The return leg shipped in 0014 was
+   * unreachable for that whole time. Tagging them here is what makes the
+   * instruction true; `loadPlan` derives leg='return' from the tag.
+   */
+  const poolParcels = React.useMemo(
+    () => [
+      ...board.returns.map((p) => ({ ...p, isReturn: true })),
+      ...board.unrouted.map((p) => ({ ...p, isReturn: false })),
+    ],
+    [board.returns, board.unrouted],
+  )
+
+  /** The targeted run, measured for the panel's ceilings and headroom. */
+  const target = React.useMemo((): PanelTarget | null => {
+    const trip = board.trips.find((t) => t.id === targetTripId)
+    if (!trip) return null
+    const route = board.routes.find((r) => r.id === trip.routeId)
+    if (!route) return null
+    const index = board.trips.filter((t) => t.routeId === trip.routeId).indexOf(trip) + 1
+    return {
+      tripId: trip.id,
+      routeId: trip.routeId,
+      status: trip.status,
+      loaded: trip.parcels.map((p) => ({ leg: p.leg, codAmount: p.codAmount })),
+      maxParcels: route.maxParcels,
+      maxCod: route.maxCod,
+      label: `${route.code.replace('ROUTE_', 'Route ')} · run ${index}`,
+      colour: route.colour,
+      riderName: trip.riderName,
+    }
+  }, [board.trips, board.routes, targetTripId])
 
   return (
     <div className="space-y-3">
@@ -201,11 +243,6 @@ export function RouteBoard({ board }: { board: PlanningBoard }) {
           <Badge tone={totalUnrouted > 0 ? 'amber' : 'green'}>
             {totalUnrouted} unrouted
           </Badge>
-          {shortRuns > 0 ? (
-            <Badge tone="amber">
-              {shortRuns} run{shortRuns === 1 ? '' : 's'} under {board.minParcels}
-            </Badge>
-          ) : null}
         </div>
         <Button variant="outline" size="sm" onClick={refresh} disabled={refreshing}>
           <RefreshCw className={refreshing ? 'animate-spin' : undefined} />
@@ -238,9 +275,10 @@ export function RouteBoard({ board }: { board: PlanningBoard }) {
         >
           <ParcelLine parcels={board.returns} />
           <span className="mt-1 block text-xs">
-            The shop asked for these back. Tick them in the parcel list and load them onto a run
-            with <strong>As returns</strong> — they travel to the shop&rsquo;s own address and end
-            at <em>Returned</em>, never at delivered, so no fee is charged.
+            The shop asked for these back. They sit at the top of the parcel list under{' '}
+            <strong>Back to the shop</strong> — pick a run, tick them, and load. They travel to the
+            shop&rsquo;s own address and end at <em>Returned</em>, never at delivered, so no fee is
+            charged.
           </span>
         </Alert>
       ) : null}
@@ -253,7 +291,7 @@ export function RouteBoard({ board }: { board: PlanningBoard }) {
         </Alert>
       ) : null}
 
-      <div className="grid gap-3 xl:grid-cols-[minmax(0,1.6fr)_minmax(340px,1fr)]">
+      <div className="grid gap-3 lg:grid-cols-[minmax(0,1.6fr)_minmax(340px,1fr)]">
         {/* ---- runs, grouped by route --------------------------------- */}
         <div className="space-y-4">
           {board.routes.map((route) => {
@@ -277,8 +315,12 @@ export function RouteBoard({ board }: { board: PlanningBoard }) {
                     size="sm"
                     disabled={busyTripId !== null}
                     onClick={() => {
-                      setFocusRouteId(route.id)
-                      void run('new', () => planTrip(route.id, board.serviceDate))
+                      void run('new', () => planTrip(route.id, board.serviceDate)).then((r) => {
+                        // planTrip returns the new trip's id, so the run it just
+                        // created becomes the target — the dispatcher's next act
+                        // is always to fill it.
+                        if (r.ok && r.tripId) setTargetTripId(r.tripId)
+                      })
                     }}
                   >
                     <Plus />
@@ -292,20 +334,17 @@ export function RouteBoard({ board }: { board: PlanningBoard }) {
                   </p>
                 ) : (
                   trips.map((trip) => (
-                    <div key={trip.id} onFocusCapture={() => setFocusRouteId(route.id)}>
+                    <div key={trip.id} onClick={() => setTargetTripId(trip.id)}>
                       <TripCard
                         trip={trip}
                         route={route}
                         riders={board.riders}
-                        selectedCount={selected.size}
+                        targeted={trip.id === targetTripId}
                         busy={busyTripId === trip.id}
+                        onTarget={() => setTargetTripId(trip.id)}
                         onAssignRider={(riderId) =>
                           void run(trip.id, () => assignTripRider(trip.id, riderId))
                         }
-                        onLoadSelected={(leg) => {
-                          setFocusRouteId(route.id)
-                          void run(trip.id, () => loadTrip(trip.id, [...selected], leg), true)
-                        }}
                         onUnload={(ids) => void run(trip.id, () => unloadTrip(trip.id, ids))}
                         onDepart={() => void handleDepart(trip)}
                         onReturn={() => void run(trip.id, () => returnTrip(trip.id))}
@@ -334,17 +373,22 @@ export function RouteBoard({ board }: { board: PlanningBoard }) {
 
         {/* ---- unrouted parcels -------------------------------------- */}
         <section
-          className="max-h-[80vh] rounded-lg border bg-card p-3 xl:sticky xl:top-3"
+          className="max-h-[85vh] rounded-lg border bg-card p-3 lg:sticky lg:top-3"
           aria-label="Unrouted parcels"
         >
           <UnroutedPanel
-            parcels={board.unrouted}
+            parcels={poolParcels}
             routes={board.routes}
             selected={selected}
+            target={target}
+            busy={busyTripId !== null}
             onToggle={toggle}
             onToggleMany={toggleMany}
             onClear={() => setSelected(new Set())}
-            focusRouteId={focusRouteId}
+            onLoad={(ids, leg) => {
+              if (!target) return
+              void run(target.tripId, () => loadTrip(target.tripId, ids, leg), true)
+            }}
           />
         </section>
       </div>

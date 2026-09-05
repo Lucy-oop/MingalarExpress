@@ -306,6 +306,37 @@ export type TripVolumeCheck = {
 }
 
 /**
+ * When a volume judgement is noise or a lie, and must not be shown at all.
+ *
+ * `checkTripVolume` always returns a grade, because it is arithmetic. Whether
+ * that grade is worth SAYING is a different question, and the board got it
+ * wrong three ways:
+ *
+ *  - A FINISHED run cannot be changed. A closed run carrying a permanent red
+ *    "8/20 parcels" is a standing complaint about the past, and by mid-afternoon
+ *    the board is full of them.
+ *  - A PICKUP-ONLY run is not an under-loaded delivery run. Volume counts
+ *    delivery legs alone — deliberately, because depart_trip's gate counts the
+ *    same — while departBlocker counts parcels + pickups. So a run collecting
+ *    from ten shops showed a red loss alert beside a fully enabled Depart
+ *    button: three signals, two alarming, all disagreeing.
+ *  - An EMPTY run has not run. "Running at a loss: 0/6 parcels" appeared on
+ *    every freshly planned run, before the dispatcher had the chance to put
+ *    anything on it.
+ *
+ * The last two are the same rule: with no delivery legs aboard there is no
+ * delivery run to grade yet.
+ */
+export function isVolumeSilent(
+  status: string,
+  parcelCount: number,
+  _pickupCount = 0,
+): boolean {
+  if (status === 'closed' || status === 'cancelled' || status === 'returned') return true
+  return parcelCount === 0
+}
+
+/**
  * Grade a trip's loaded volume for the dispatcher board.
  *
  * `loss` outranks `below_minimum`: if a run is actually losing money that is the

@@ -1,5 +1,7 @@
 import { AlertTriangle, PackageCheck, TrendingDown } from 'lucide-react'
-import type { TripVolumeCheck } from '@/lib/pricing'
+import { isVolumeSilent, type TripVolumeCheck } from '@/lib/pricing'
+
+export { isVolumeSilent }
 import { cn, formatMmk } from '@/lib/utils'
 
 /**

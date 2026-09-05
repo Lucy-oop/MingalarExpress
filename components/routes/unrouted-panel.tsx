@@ -1,49 +1,74 @@
 'use client'
 
 import * as React from 'react'
-import { Coins, MapPin, PackageOpen, Search } from 'lucide-react'
+import { Coins, CornerUpLeft, MapPin, PackageOpen, PackagePlus, Search } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
+import { loadPlan, LOAD_BLOCKER_MESSAGE, type LoadTarget } from '@/lib/routes/load-gate'
 import { cn, formatMmk } from '@/lib/utils'
 import type { BoardRoute, UnroutedParcel } from '@/lib/routes/queries'
 
+/** An unrouted parcel plus whether the shop has asked for it back. */
+export type PanelParcel = UnroutedParcel & { isReturn: boolean }
+
+/** Everything the panel needs to name and measure the run it will load into. */
+export type PanelTarget = LoadTarget & {
+  /** Drives the panel's default route filter, so the pool follows the run. */
+  routeId: string
+  label: string
+  colour: string
+  riderName: string | null
+}
+
 /**
- * Parcels not yet on a run, grouped by the area they are going to.
+ * Parcels not yet on a run, and the one button that loads them.
  *
- * Grouped by AREA rather than by shop or by age because that is how a run is
+ * GROUPED BY AREA rather than by shop or by age because that is how a run is
  * built: everything for မြောက်ဥက္ကလာ goes on the same bike, and a dispatcher
- * wants to tick a whole township at once. The group header carries a select-all
- * for exactly that.
+ * wants to tick a whole township at once.
  *
- * Each group is labelled with the route its area maps to by default
- * (`route_areas.is_primary`), and the "This route only" filter uses it — so the
- * usual workflow is: pick a run, filter to it, tick all, load.
+ * THE LOAD BUTTON LIVES HERE NOW. It used to be three buttons on every trip
+ * card, all reading the same global tick count, so twelve identical controls
+ * competed to be the destination and the dispatcher's click was the only thing
+ * distinguishing them. One button, next to the ticks it acts on, naming the run
+ * it will fill.
+ *
+ * RETURNS ARE IN THE POOL. They were previously in a separate array that never
+ * reached this component, so the board's own instruction — "tick them in the
+ * parcel list and load them with As returns" — described something the data
+ * model made impossible, and the return leg shipped in 0014 was unreachable.
  */
 export function UnroutedPanel({
   parcels,
   routes,
   selected,
+  target,
+  busy,
   onToggle,
   onToggleMany,
   onClear,
-  /** Route of the run currently being built, for the default filter. */
-  focusRouteId,
+  onLoad,
 }: {
-  parcels: UnroutedParcel[]
+  parcels: PanelParcel[]
   routes: BoardRoute[]
   selected: Set<string>
+  /** The run the board has targeted, or null when none is chosen. */
+  target: PanelTarget | null
+  busy: boolean
   onToggle: (id: string) => void
   onToggleMany: (ids: string[], select: boolean) => void
   onClear: () => void
-  focusRouteId: string | null
+  onLoad: (orderIds: string[], leg: 'delivery' | 'pickup' | 'return') => void
 }) {
   const [query, setQuery] = React.useState('')
   const [routeFilter, setRouteFilter] = React.useState<string>('')
+  const [mode, setMode] = React.useState<'delivery' | 'pickup'>('delivery')
 
-  // Reset the filter when the dispatcher switches which run they are building,
-  // otherwise the panel silently keeps showing another route's parcels.
+  const focusRouteId = target?.routeId ?? null
+  // Follow the targeted run, otherwise the panel silently keeps showing another
+  // route's parcels. The filter is stated on screen so the change is explained.
   React.useEffect(() => {
     setRouteFilter(focusRouteId ?? '')
   }, [focusRouteId])
@@ -53,12 +78,16 @@ export function UnroutedPanel({
   const visible = React.useMemo(() => {
     const q = query.trim().toLowerCase()
     return parcels.filter((p) => {
-      // '__none' is its own case: a parcel whose area maps to no route cannot be
-      // loaded anywhere and needs surfacing, not hiding.
-      if (routeFilter === '__none') {
-        if (p.suggestedRouteId !== null) return false
-      } else if (routeFilter && p.suggestedRouteId !== routeFilter) {
-        return false
+      // Returns travel to the shop, not to the customer's area, so a route
+      // filter must never hide them — they belong on whichever run is going.
+      if (!p.isReturn) {
+        // '__none' is its own case: a parcel whose area maps to no route cannot
+        // be loaded anywhere and needs surfacing, not hiding.
+        if (routeFilter === '__none') {
+          if (p.suggestedRouteId !== null) return false
+        } else if (routeFilter && p.suggestedRouteId !== routeFilter) {
+          return false
+        }
       }
       if (!q) return true
       return (
@@ -72,28 +101,73 @@ export function UnroutedPanel({
 
   /** Area groups, ordered by the stop sequence of the route they belong to. */
   const groups = React.useMemo(() => {
-    const map = new Map<string, { label: string; routeId: string | null; items: UnroutedParcel[] }>()
+    const map = new Map<
+      string,
+      { key: string; label: string; routeId: string | null; isReturn: boolean; items: PanelParcel[] }
+    >()
     for (const p of visible) {
-      const key = p.areaId ?? 'unmapped'
+      // Returns are one group of their own, whatever area they came from: they
+      // are a different job, and mixing them into an area group would invite
+      // the mixed selection that load_trip refuses.
+      const key = p.isReturn ? '__return' : (p.areaId ?? 'unmapped')
       const entry = map.get(key) ?? {
-        label: p.areaName ?? 'No area set',
-        routeId: p.suggestedRouteId,
+        key,
+        label: p.isReturn ? 'Back to the shop' : (p.areaName ?? 'No area set'),
+        routeId: p.isReturn ? null : p.suggestedRouteId,
+        isReturn: p.isReturn,
         items: [],
       }
       entry.items.push(p)
       map.set(key, entry)
     }
     return [...map.values()].sort((a, b) => {
+      if (a.isReturn !== b.isReturn) return a.isReturn ? -1 : 1
       const ra = a.routeId ? routeById.get(a.routeId)?.sortOrder ?? 999 : 999
       const rb = b.routeId ? routeById.get(b.routeId)?.sortOrder ?? 999 : 999
       return ra - rb || a.label.localeCompare(b.label)
     })
   }, [visible, routeById])
 
-  const selectedVisible = visible.filter((p) => selected.has(p.id)).length
+  const chosen = React.useMemo(
+    () => parcels.filter((p) => selected.has(p.id)),
+    [parcels, selected],
+  )
+  const plan = loadPlan(chosen, target, mode)
+  const hiddenTicks = selected.size - visible.filter((p) => selected.has(p.id)).length
+  const hasReturns = chosen.some((p) => p.isReturn)
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-2">
+      {/* ---- what this will load into ---------------------------------- */}
+      <div className="rounded-md border bg-muted/40 p-2">
+        {target ? (
+          <>
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Loading into
+            </p>
+            <p className="flex items-center gap-1.5 text-sm font-semibold">
+              <span
+                className="size-2.5 shrink-0 rounded-full"
+                style={{ backgroundColor: target.colour }}
+                aria-hidden="true"
+              />
+              <span className="truncate">{target.label}</span>
+              <span className="truncate font-normal text-muted-foreground">
+                {target.riderName ?? 'no rider yet'}
+              </span>
+            </p>
+            <p className="text-[11px] tabular-nums text-muted-foreground">
+              room for {plan.parcelHeadroom} more · {formatMmk(plan.codHeadroom)} cash headroom
+            </p>
+          </>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            <span className="font-medium text-foreground">Pick a run</span> on the left, then tick
+            parcels to load into it.
+          </p>
+        )}
+      </div>
+
       <div className="flex items-center gap-2">
         <div className="relative min-w-0 flex-1">
           <Search
@@ -126,8 +200,15 @@ export function UnroutedPanel({
 
       <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
         <span>
-          {visible.length} of {parcels.length} unrouted
-          {selectedVisible > 0 ? ` · ${selected.size} ticked` : ''}
+          {visible.length} of {parcels.length} waiting
+          {/*
+            Always the global count. This used to be conditioned on VISIBLE ticks
+            while printing the global number, so changing the filter made the
+            text vanish while the selection stayed live and loadable — the
+            dispatcher saw "0 ticked" and a button offering to load ten.
+          */}
+          {selected.size > 0 ? ` · ${selected.size} ticked` : ''}
+          {hiddenTicks > 0 ? ` (${hiddenTicks} hidden by the filter)` : ''}
         </span>
         {selected.size > 0 ? (
           <Button variant="ghost" size="sm" onClick={onClear}>
@@ -142,9 +223,7 @@ export function UnroutedPanel({
             <PackageOpen className="size-6 text-muted-foreground" aria-hidden="true" />
             <p className="text-sm font-medium">Nothing waiting</p>
             <p className="text-xs text-muted-foreground">
-              {parcels.length > 0
-                ? 'No parcels match this filter.'
-                : 'Every parcel is on a run.'}
+              {parcels.length > 0 ? 'No parcels match this filter.' : 'Every parcel is on a run.'}
             </p>
           </div>
         ) : (
@@ -155,8 +234,16 @@ export function UnroutedPanel({
             const cod = group.items.reduce((sum, p) => sum + p.codAmount, 0)
 
             return (
-              <section key={group.label} className="rounded-lg border">
-                <header className="flex items-center gap-2 border-b bg-muted/40 p-2">
+              <section
+                key={group.key}
+                className={cn('rounded-lg border', group.isReturn && 'border-blue-300')}
+              >
+                <header
+                  className={cn(
+                    'flex items-center gap-2 border-b p-2',
+                    group.isReturn ? 'bg-blue-50' : 'bg-muted/40',
+                  )}
+                >
                   <input
                     type="checkbox"
                     checked={allSelected}
@@ -166,11 +253,17 @@ export function UnroutedPanel({
                   />
                   <span className="min-w-0 flex-1">
                     <span className="flex items-center gap-1.5 text-xs font-semibold">
-                      <MapPin className="size-3 shrink-0" aria-hidden="true" />
+                      {group.isReturn ? (
+                        <CornerUpLeft className="size-3 shrink-0" aria-hidden="true" />
+                      ) : (
+                        <MapPin className="size-3 shrink-0" aria-hidden="true" />
+                      )}
                       <span className="truncate">{group.label}</span>
                     </span>
                   </span>
-                  {route ? (
+                  {group.isReturn ? (
+                    <Badge tone="blue">Return</Badge>
+                  ) : route ? (
                     <span
                       className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold text-white"
                       style={{ backgroundColor: route.colour }}
@@ -205,7 +298,9 @@ export function UnroutedPanel({
                           <span className="min-w-0 flex-1">
                             <span className="flex flex-wrap items-center gap-1.5">
                               <span className="font-mono font-semibold">{p.code}</span>
-                              {p.status === 'failed' ? <Badge tone="red">Retry</Badge> : null}
+                              {p.status === 'failed' && !p.isReturn ? (
+                                <Badge tone="red">Retry</Badge>
+                              ) : null}
                               {p.isFragile ? <Badge tone="amber">Fragile</Badge> : null}
                             </span>
                             <span className="block truncate text-muted-foreground">
@@ -213,7 +308,9 @@ export function UnroutedPanel({
                             </span>
                           </span>
                           <span className="shrink-0 text-right tabular-nums">
-                            {p.paymentMethod === 'cod' ? (
+                            {p.isReturn ? (
+                              <span className="text-muted-foreground">No fee</span>
+                            ) : p.paymentMethod === 'cod' ? (
                               <span className="flex items-center gap-1 font-medium">
                                 <Coins className="size-3" aria-hidden="true" />
                                 {formatMmk(p.codAmount)}
@@ -231,6 +328,54 @@ export function UnroutedPanel({
             )
           })
         )}
+      </div>
+
+      {/* ---- the one load button --------------------------------------- */}
+      <div className="space-y-1.5 border-t pt-2">
+        {/*
+          Deliver or collect, and only when it is a real choice. A return
+          selection has its leg decided by the data — load_trip refuses any other
+          — so offering the toggle there would be offering a choice the server
+          does not have.
+        */}
+        {!hasReturns && chosen.length > 0 ? (
+          <div className="flex gap-1" role="group" aria-label="What this load is">
+            {(['delivery', 'pickup'] as const).map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setMode(m)}
+                aria-pressed={mode === m}
+                className={cn(
+                  'flex-1 rounded-md border px-2 py-1 text-xs font-medium',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
+                  mode === m ? 'border-primary bg-primary text-primary-foreground' : 'hover:bg-muted',
+                )}
+              >
+                {m === 'delivery' ? 'Deliver' : 'Collect'}
+              </button>
+            ))}
+          </div>
+        ) : null}
+
+        <Button
+          block
+          disabled={busy || plan.blocker !== null}
+          onClick={() => onLoad(chosen.map((p) => p.id), plan.leg)}
+        >
+          {plan.leg === 'return' ? <CornerUpLeft /> : <PackagePlus />}
+          {plan.leg === 'return'
+            ? `Send ${plan.count} back`
+            : plan.count > 0
+              ? `Load ${plan.count} into this run`
+              : 'Load into this run'}
+        </Button>
+
+        {plan.blocker ? (
+          <p className="text-center text-xs text-muted-foreground">
+            {LOAD_BLOCKER_MESSAGE[plan.blocker]}
+          </p>
+        ) : null}
       </div>
     </div>
   )

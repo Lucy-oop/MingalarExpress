@@ -1,7 +1,7 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { MIN_PARCELS_PER_TRIP, OFFICIAL_ROUTE_FEES, breakEvenParcels, checkTripVolume, codBreakdown, codCollectable, isTripProfitable, pickPayTier, quoteRouteFee, quoteTripPay, routeMargin, splitCommission, type RouteCode, type RoutePayTier, type TripPayRates } from './pricing'
+import { MIN_PARCELS_PER_TRIP, OFFICIAL_ROUTE_FEES, breakEvenParcels, checkTripVolume, codBreakdown, codCollectable, isTripProfitable, isVolumeSilent, pickPayTier, quoteRouteFee, quoteTripPay, routeMargin, splitCommission, type RouteCode, type RoutePayTier, type TripPayRates } from './pricing'
 
 /**
  * The seeded tiers from migration 0007. Boundaries resolve DOWNWARD: 20 parcels
@@ -553,5 +553,42 @@ describe('codBreakdown — what the rider collects, and why', () => {
     const b = codBreakdown(2_000, 3_500, 'customer')
     assert.equal(b.goods, 0)
     assert.ok(b.goods >= 0)
+  })
+})
+
+describe('isVolumeSilent — when a volume grade must not be shown', () => {
+  /**
+   * The three cases the dispatcher board got wrong. `checkTripVolume` is
+   * arithmetic and always answers; this decides whether the answer is worth
+   * saying.
+   */
+  test('a finished run carries no standing judgement', () => {
+    for (const status of ['closed', 'cancelled', 'returned']) {
+      assert.equal(isVolumeSilent(status, 3, 0), true, status)
+    }
+  })
+
+  test('a live run under minimum still warns', () => {
+    assert.equal(isVolumeSilent('planned', 3, 0), false)
+    assert.equal(isVolumeSilent('loading', 3, 0), false)
+    assert.equal(isVolumeSilent('departed', 3, 0), false)
+  })
+
+  /**
+   * A run collecting from ten shops is not an under-loaded delivery run. It
+   * used to show a red loss alert beside a fully enabled Depart button, because
+   * departBlocker counts parcels + pickups and volume counts deliveries only.
+   */
+  test('a pickup-only run is not graded as a delivery run', () => {
+    assert.equal(isVolumeSilent('planned', 0, 10), true)
+  })
+
+  /** "Running at a loss: 0/6" appeared on every run the moment it was created. */
+  test('an empty run has not run yet', () => {
+    assert.equal(isVolumeSilent('planned', 0, 0), true)
+  })
+
+  test('one delivery aboard is enough to be graded', () => {
+    assert.equal(isVolumeSilent('planned', 1, 0), false)
   })
 })
