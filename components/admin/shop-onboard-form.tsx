@@ -88,7 +88,7 @@ export function ShopOnboardForm({
       open
       onClose={onClose}
       title="Register a shop"
-      description="Walk-in registration, or finish setup for an owner who signed up online."
+      description="Walk-in registration — create the login and the shop together. An owner who signed up online is confirmed from their row instead."
     >
       {state.ok && state.inviteLink ? (
         <div className="space-y-3">
@@ -278,8 +278,8 @@ export function ShopOnboardForm({
             />
             {!point ? (
               <p className="text-xs text-muted-foreground">
-                Drop a pin on the shop&rsquo;s door. It must be inside Thingangyun — the database
-                rejects anything outside the geofence.
+                Drop a pin on the shop&rsquo;s door. It must be inside Greater Yangon — the
+                database rejects anything outside the geofence.
               </p>
             ) : null}
           </fieldset>

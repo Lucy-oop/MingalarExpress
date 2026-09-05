@@ -127,7 +127,7 @@ export function ShopTable({
                   <div className="flex justify-end gap-1.5">
                     {pending ? (
                       <Button size="sm" onClick={() => onRegisterFor(r)}>
-                        Register shop
+                        Confirm shop
                       </Button>
                     ) : (
                       <>

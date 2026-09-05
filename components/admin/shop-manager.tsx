@@ -11,6 +11,7 @@ import { ShopTable } from '@/components/admin/shop-table'
 import { ShopDetailModal } from '@/components/admin/shop-detail-modal'
 import { ShopStatusDialog } from '@/components/admin/shop-status-dialog'
 import { ShopOnboardForm, type UnattachedOwner } from '@/components/admin/shop-onboard-form'
+import { ShopConfirmDialog } from '@/components/admin/shop-confirm-dialog'
 import { Kpi } from '@/components/admin/kpi'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -49,6 +50,8 @@ export function ShopManager({
   } | null>(null)
   const [onboarding, setOnboarding] = useState(false)
   const [presetOwnerId, setPresetOwnerId] = useState<string | null>(null)
+  /** The pending owner being confirmed — the quick path, not the full form. */
+  const [confirming, setConfirming] = useState<UnattachedOwner | null>(null)
 
   const searchable = useMemo(
     () => data.rows.map((r) => ({ row: r, text: haystack(r) })),
@@ -162,10 +165,9 @@ export function ShopManager({
         rows={visible}
         onOpen={setDetailRow}
         onStatus={(row, action) => setStatusTarget({ row, action })}
-        onRegisterFor={(row) => {
-          setPresetOwnerId(row.ownerId)
-          setOnboarding(true)
-        }}
+        onRegisterFor={(row) =>
+          setConfirming({ id: row.ownerId, fullName: row.ownerName, phone: row.ownerPhone })
+        }
       />
 
       <p className="text-xs text-muted-foreground">
@@ -189,6 +191,14 @@ export function ShopManager({
         row={statusTarget?.row ?? null}
         action={statusTarget?.action ?? 'suspend'}
         onClose={() => setStatusTarget(null)}
+        onDone={settle}
+      />
+
+      <ShopConfirmDialog
+        open={confirming !== null}
+        onClose={() => setConfirming(null)}
+        owner={confirming}
+        areas={areas}
         onDone={settle}
       />
 
