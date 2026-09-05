@@ -3,21 +3,21 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
+import { activeHref } from '@/lib/nav/active'
 
 /**
  * Sub-navigation for the Super Admin panel. Client-side only for the active
  * highlight — longest-prefix matching so /settlements/<id> keeps Settlements lit.
+ *
+ * That matcher used to live inline here and was the only one in the product;
+ * it now lives in lib/nav/active.ts with tests, and the shop shell uses it too.
  */
 export function SuperNav({ items }: { items: Array<{ href: string; label: string }> }) {
   const pathname = usePathname()
-
-  const active = items
-    .map((i) => i.href)
-    .filter((href) => pathname === href || pathname.startsWith(`${href}/`))
-    .sort((a, b) => b.length - a.length)[0]
+  const active = activeHref(pathname, items.map((i) => i.href))
 
   return (
-    <nav className="flex gap-1 overflow-x-auto rounded-lg border bg-card p-1">
+    <nav aria-label="Super admin" className="flex gap-1 overflow-x-auto rounded-lg border bg-card p-1">
       {items.map(({ href, label }) => (
         <Link
           key={href}

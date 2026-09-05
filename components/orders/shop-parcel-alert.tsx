@@ -193,29 +193,44 @@ export function ShopParcelAlert({ userId }: { userId: string }) {
     return () => clearTimeout(timer)
   }, [message, dismiss])
 
-  if (!message) return null
+  /*
+    THE LIVE REGION IS ALWAYS MOUNTED, and it is empty rather than absent when
+    there is nothing to say.
 
+    It used to `return null` and then render the role="status" element together
+    with its text. Screen readers only announce MUTATIONS to a live region that
+    was already in the accessibility tree; one that appears at the same instant
+    as its content is routinely dropped by NVDA and VoiceOver. So the shop most
+    in need of hearing "a rider has your parcel" was the one least likely to.
+
+    An empty region also costs no layout: the spacing and the border belong to
+    the banner inside it, never to the region itself. That is what lets the
+    shell drop the wrapper div whose unconditional `pt-4` used to leave a dead
+    band under the header on every page.
+  */
   return (
-    <div
-      role="status"
-      aria-live="polite"
-      className="mx-auto flex max-w-6xl items-center gap-3 rounded-xl border-2 border-emerald-500 bg-emerald-50 p-3"
-    >
-      <PackageCheck className="size-6 shrink-0 text-emerald-700" aria-hidden="true" />
-      <p className="flex-1 text-base font-semibold text-emerald-900">
-        {t(message.key, { n: localeNumber(locale, message.count) })}
-        {fromCatchUp ? (
-          <span className="ml-1 font-normal text-emerald-800">({t('shop.alert.whileAway')})</span>
-        ) : null}
-      </p>
-      <Button
-        variant="ghost"
-        size="icon"
-        onClick={dismiss}
-        aria-label={t('shop.alert.dismiss')}
-      >
-        <X />
-      </Button>
+    <div role="status" aria-live="polite">
+      {message ? (
+        <div className="mb-4 flex items-center gap-3 rounded-xl border-2 border-emerald-500 bg-emerald-50 p-3">
+          <PackageCheck className="size-6 shrink-0 text-emerald-700" aria-hidden="true" />
+          <p className="flex-1 text-base font-semibold text-emerald-900">
+            {t(message.key, { n: localeNumber(locale, message.count) })}
+            {fromCatchUp ? (
+              <span className="ml-1 font-normal text-emerald-800">
+                ({t('shop.alert.whileAway')})
+              </span>
+            ) : null}
+          </p>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={dismiss}
+            aria-label={t('shop.alert.dismiss')}
+          >
+            <X />
+          </Button>
+        </div>
+      ) : null}
     </div>
   )
 }

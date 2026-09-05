@@ -27,7 +27,12 @@
   --accent-foreground: var(--charcoal);
   --destructive: #b91c1c;
   --destructive-foreground: #ffffff;
-  --ring: var(--brand-gold);
+  /* The focus ring, and it has to clear WCAG 1.4.11's 3:1 against what sits
+     behind it. Gold measures 2.24:1 on white -- and `ring-offset-2` puts a
+     white gap behind the ring deliberately, so white IS what sits behind it.
+     Brand red is 5.62:1. This one line is the focus indicator for every
+     button, input, textarea and select in the product. */
+  --ring: var(--brand-red);
   --radius: 0.625rem;
 }
 
@@ -45,6 +50,7 @@
   --secondary: #27272a;
   --secondary-foreground: #fafafa;
   --destructive: #ef4444;
+  /* Gold stays in dark mode: 8.13:1 against #151517, where red would be 3.24. */
   --ring: var(--brand-gold);
 }
 

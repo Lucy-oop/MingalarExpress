@@ -23,7 +23,11 @@ export default async function RiderLayout({ children }: { children: React.ReactN
     // The locale crosses the boundary as a STRING; every client component below
     // reads it through useT(). See components/shared/i18n-provider.
     <I18nProvider locale={locale}>
-    <div className="flex min-h-dvh flex-col bg-muted/30">
+    {/* `lang` here, not on <html>: globals.css's `:lang(my)` line-height rule
+        for stacked Myanmar diacritics had never matched, because the root
+        layout hardcodes lang="en". Admin is English-only whatever the cookie
+        says, so the attribute belongs on the bilingual shells. */}
+    <div lang={locale} className="flex min-h-dvh flex-col bg-muted/30">
       <ServiceWorkerRegistrar />
       <header className="sticky top-0 z-20 border-b bg-background/95 backdrop-blur">
         <div className="flex items-center justify-between gap-3 px-4 py-2.5">

@@ -30,19 +30,31 @@ export function LanguageToggle({ locale }: { locale: Locale }) {
         <button
           key={l}
           type="button"
-          disabled={pending || l === locale}
+          /*
+            NOT `disabled` when this is the current language. Disabling it took
+            it out of the tab order, so the aria-pressed="true" it carries was
+            never announced: a keyboard or screen-reader user tabbed into the
+            group, reached only the OTHER language, and was never told which one
+            was on. It stays focusable and the click is a no-op instead.
+          */
+          disabled={pending}
           aria-pressed={l === locale}
-          onClick={() =>
+          onClick={() => {
+            if (l === locale) return
             startTransition(async () => {
               await setLocale(l)
               router.refresh()
             })
-          }
+          }}
           className={cn(
-            'min-h-11 rounded-md px-3 text-sm font-medium',
+            // Thumb-sized on a phone, which is every rider always; eight pixels
+            // shorter in a desktop toolbar, where it was the tallest thing in
+            // the bar and set the whole header's height.
+            'min-h-11 rounded-md px-3 text-sm font-medium lg:min-h-9',
+            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
             l === locale
               ? 'bg-primary text-primary-foreground'
-              : 'text-muted-foreground active:bg-muted',
+              : 'text-muted-foreground hover:bg-muted active:bg-muted',
             pending && 'opacity-60',
           )}
         >
