@@ -196,6 +196,12 @@ export const DICTIONARY = {
   'book.area': { en: 'Area', my: 'မြို့နယ်' },
   'book.areaHint': { en: 'Sets the delivery fee', my: 'ပို့ဆောင်ခ သတ်မှတ်ပါမည်' },
   'book.areaChoose': { en: 'Choose an area…', my: 'မြို့နယ် ရွေးပါ…' },
+  'book.areaFromAddress': { en: 'Filled in from the address', my: 'လိပ်စာမှ အလိုအလျောက် ထည့်ထားသည်' },
+  'book.areaDisagrees': {
+    en: 'This address says {area}. Sending it as {chosen} puts it on the wrong run.',
+    my: 'ဤလိပ်စာသည် {area} ဟု ဆိုပါသည်။ {chosen} အဖြစ် ပို့လျှင် လမ်းကြောင်း မှားပါမည်။',
+  },
+  'book.areaUse': { en: 'Use {area} — {fee}', my: '{area} သုံးမည် — {fee}' },
   'book.name': { en: 'Name', my: 'နာမည်' },
   'book.phone': { en: 'Phone', my: 'ဖုန်း' },
   'book.collect': { en: 'Amount to collect', my: 'ကောက်ခံရမည့် ပမာဏ' },

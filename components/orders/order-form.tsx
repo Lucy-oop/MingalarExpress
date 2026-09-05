@@ -17,6 +17,7 @@ import { Alert } from '@/components/ui/alert'
 import { Overlay } from '@/components/ui/overlay'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { bookingBlocker, bookingPayment, parseAmount } from '@/lib/orders/booking'
+import { matchAreaFromAddress } from '@/lib/orders/area-match'
 import { codCollectable } from '@/lib/pricing'
 import { formatMmk, cn } from '@/lib/utils'
 import { isInServiceArea } from '@/lib/geo/thingangyun'
@@ -135,6 +136,15 @@ export function OrderForm({ shop, areas }: OrderFormProps) {
   const [dropoff, setDropoff] = useState<LatLng | null>(null)
   const [dropoffAddress, setDropoffAddress] = useState('')
   const [areaId, setAreaId] = useState('')
+  /**
+   * Set once the shop picks an area BY HAND.
+   *
+   * Until then the address drives the dropdown; after it, their choice stands
+   * and the address can only warn. Reset with `resetSeq` on "Book another" —
+   * the LocationPicker's `addressTouched` taught that lesson: a ref that
+   * survives a reset silently changes behaviour from the second parcel on.
+   */
+  const areaTouched = useRef(false)
   const [feePayer, setFeePayer] = useState<'customer' | 'shop'>('customer')
   const [collect, setCollect] = useState('')
   /** Prepaid is this tick and only this tick — never an inferred empty field. */
@@ -172,6 +182,7 @@ export function OrderForm({ shop, areas }: OrderFormProps) {
     setDropoff(null)
     setDropoffAddress('')
     setAreaId('')
+    areaTouched.current = false
     setCollect('')
     setPrepaid(false)
     setFeePayer('customer')
@@ -190,6 +201,32 @@ export function OrderForm({ shop, areas }: OrderFormProps) {
    */
   const area = useMemo(() => areas.find((a) => a.areaId === areaId) ?? null, [areas, areaId])
   const fee = area?.fee ?? 0
+
+  /**
+   * The area, read out of the address the shop already typed.
+   *
+   * Three of nine live orders had an area contradicting their own address — one
+   * undercharged, all three routed onto the wrong run. See lib/orders/area-match
+   * for why the address text beats measuring the pin against area centroids.
+   */
+  const match = useMemo(
+    () => matchAreaFromAddress(dropoffAddress, areas, areaId || null),
+    [dropoffAddress, areas, areaId],
+  )
+  const suggested = useMemo(
+    () => areas.find((a) => a.areaId === match.suggestedId) ?? null,
+    [areas, match.suggestedId],
+  )
+
+  // Fill the dropdown from the address until the shop overrides it. This is the
+  // speed half of the fix: for a geocoded address the 24-item list never has to
+  // be opened at all.
+  useEffect(() => {
+    if (areaTouched.current) return
+    if (match.suggestedId && match.suggestedId !== areaId) setAreaId(match.suggestedId)
+  }, [match.suggestedId, areaId])
+
+  const autoFilled = !areaTouched.current && !!areaId && areaId === match.suggestedId
 
   /**
    * The amount, parsed once and used for everything: the preview, the gate and
@@ -329,7 +366,10 @@ export function OrderForm({ shop, areas }: OrderFormProps) {
                 id="dropoffAreaId"
                 name="dropoffAreaId"
                 value={areaId}
-                onChange={(e) => setAreaId(e.target.value)}
+                onChange={(e) => {
+                  areaTouched.current = true
+                  setAreaId(e.target.value)
+                }}
                 required
                 aria-invalid={!!err('dropoffAreaId')}
                 className="h-12 text-base"
@@ -347,6 +387,37 @@ export function OrderForm({ shop, areas }: OrderFormProps) {
                 ))}
               </Select>
             </Field>
+
+            {/* WARN, NEVER BLOCK. The rule is a heuristic — an address can
+                legitimately mention a neighbour ("near Bahan market, Yankin") —
+                so the shop always keeps the final say. */}
+            {match.contradicts && suggested ? (
+              <Alert tone="warning">
+                <p>
+                  {t('book.areaDisagrees', {
+                    area: locale === 'my' && suggested.areaNameMm ? suggested.areaNameMm : suggested.areaName,
+                    chosen: locale === 'my' && area?.areaNameMm ? area.areaNameMm : (area?.areaName ?? ''),
+                  })}
+                </p>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="mt-2"
+                  onClick={() => {
+                    areaTouched.current = true
+                    setAreaId(suggested.areaId)
+                  }}
+                >
+                  {t('book.areaUse', {
+                    area: locale === 'my' && suggested.areaNameMm ? suggested.areaNameMm : suggested.areaName,
+                    fee: formatMmk(suggested.fee),
+                  })}
+                </Button>
+              </Alert>
+            ) : autoFilled ? (
+              <p className="text-xs text-muted-foreground">{t('book.areaFromAddress')}</p>
+            ) : null}
           </CardContent>
         </Card>
 
