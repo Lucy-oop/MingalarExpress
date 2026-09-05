@@ -102,3 +102,34 @@ describe('activeHref — the Super Admin sub-nav it came from', () => {
     assert.equal(activeHref('/admin/super', SUPER), '/admin/super')
   })
 })
+
+describe('activeHref — exact-match entries', () => {
+  const SUB = ['/admin/super', '/admin/super/areas', '/admin/super/pricing'] as const
+  const opts = { exact: ['/admin/super'] }
+
+  /**
+   * THE BUG THIS OPTION EXISTS FOR. `/admin/super` is a prefix of every page in
+   * the section, so once Riders and Settlements were removed from the sub-nav
+   * there was nothing longer to beat it — and the bar lit "Overview" while the
+   * reader was standing on Riders.
+   */
+  test('a section index does not light for its children', () => {
+    assert.equal(activeHref('/admin/super/riders', SUB, opts), null)
+    assert.equal(activeHref('/admin/super/settlements/abc', SUB, opts), null)
+  })
+
+  test('but it still lights for itself', () => {
+    assert.equal(activeHref('/admin/super', SUB, opts), '/admin/super')
+    assert.equal(activeHref('/admin/super/', SUB, opts), '/admin/super')
+  })
+
+  test('siblings are unaffected and still prefix-match', () => {
+    assert.equal(activeHref('/admin/super/areas', SUB, opts), '/admin/super/areas')
+    assert.equal(activeHref('/admin/super/pricing/x', SUB, opts), '/admin/super/pricing')
+  })
+
+  /** Without the option the old behaviour is intact — the top bar relies on it. */
+  test('omitting the option changes nothing', () => {
+    assert.equal(activeHref('/admin/super/riders', SUB), '/admin/super')
+  })
+})

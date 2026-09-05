@@ -1,6 +1,6 @@
 import { requireAdmin } from '@/lib/auth/guards'
 import { SuperNav } from '@/components/admin/super-nav'
-import { SUPER_NAV_ITEMS } from '@/lib/admin/nav'
+import { SUPER_NAV_EXACT, SUPER_NAV_ITEMS } from '@/lib/admin/nav'
 
 /**
  * Third gate on the Super Admin panel.
@@ -15,7 +15,7 @@ export default async function SuperAdminLayout({ children }: { children: React.R
 
   return (
     <div className="space-y-4">
-      <SuperNav items={[...SUPER_NAV_ITEMS]} />
+      <SuperNav items={[...SUPER_NAV_ITEMS]} exact={SUPER_NAV_EXACT} />
       {children}
     </div>
   )

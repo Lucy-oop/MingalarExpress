@@ -1,20 +1,11 @@
 import Link from 'next/link'
-import {
-  Banknote,
-  Bike,
-  LayoutDashboard,
-  LogOut,
-  Package,
-  Radio,
-  Scale,
-  Smartphone,
-  Store,
-} from 'lucide-react'
+import { LogOut } from 'lucide-react'
 import { requireDispatch, isAdmin } from '@/lib/auth/guards'
 import { signOut } from '@/lib/auth/actions'
 import { BrandMark } from '@/components/shared/brand-mark'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { AdminNav } from '@/components/admin/admin-nav'
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   // Dispatchers and Super Admins share this shell; /admin/super is additionally
@@ -22,24 +13,6 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const { profile } = await requireDispatch()
   const admin = isAdmin(profile.role)
 
-  // /admin/super carries its own sub-navigation, so this bar only needs the
-  // entry points: the board every dispatcher lives on, and the Super Admin
-  // areas.
-  const nav = [
-    { href: '/admin/dispatcher', label: 'Dispatch', icon: Radio, show: true },
-    // Visible to dispatchers, not just admins: answering "where is this parcel"
-    // is the job of whoever picks up the phone.
-    { href: '/admin/orders', label: 'Orders', icon: Package, show: true },
-    // Dispatchers too, not admins only: a KPay transfer sits in neither the
-    // rider's hands nor the books until somebody checks it, and leaving that to
-    // one person is how a queue builds up for a week.
-    { href: '/admin/kpay', label: 'KBZPay', icon: Smartphone, show: true },
-    { href: '/admin/super', label: 'Overview', icon: LayoutDashboard, show: admin },
-    { href: '/admin/super/riders', label: 'Riders', icon: Bike, show: admin },
-    { href: '/admin/shops', label: 'Shops', icon: Store, show: admin },
-    { href: '/admin/super/settlements', label: 'Settlements', icon: Banknote, show: admin },
-    { href: '/admin/audit', label: 'COD audit', icon: Scale, show: admin },
-  ].filter((n) => n.show)
 
   return (
     <div className="min-h-dvh bg-muted/30">
@@ -63,18 +36,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
             </form>
           </div>
         </div>
-        <nav className="mx-auto flex max-w-[1600px] gap-1 overflow-x-auto px-2 pb-2">
-          {nav.map(({ href, label, icon: Icon }) => (
-            <Link
-              key={href}
-              href={href}
-              className="flex shrink-0 items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
-            >
-              <Icon className="size-4" />
-              {label}
-            </Link>
-          ))}
-        </nav>
+        <AdminNav admin={admin} />
       </header>
       <main className="mx-auto max-w-[1600px] px-4 py-4">{children}</main>
     </div>

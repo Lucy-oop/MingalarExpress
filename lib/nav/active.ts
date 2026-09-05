@@ -33,14 +33,31 @@ function normalise(path: string): string {
  * light. Handing back a cleaned-up copy would silently fail that comparison for
  * anyone who wrote an href with a trailing slash.
  */
-export function activeHref(pathname: string, hrefs: readonly string[]): string | null {
+export function activeHref(
+  pathname: string,
+  hrefs: readonly string[],
+  options?: {
+    /**
+     * Hrefs that light only on an EXACT match, never as a prefix.
+     *
+     * A section index needs this. `/admin/super` is a prefix of every page in
+     * the Super Admin section, so as a plain entry it wins wherever nothing
+     * longer is listed -- lighting "Overview" while the reader is on Riders.
+     * That was invisible while Riders and Settlements were also in the list
+     * (both longer, both winning) and appeared the moment they were removed.
+     */
+    exact?: readonly string[]
+  },
+): string | null {
   const path = normalise(pathname)
+  const exact = new Set((options?.exact ?? []).map(normalise))
   let best: string | null = null
   let bestLength = -1
 
   for (const raw of hrefs) {
     const href = normalise(raw)
-    if (path !== href && !path.startsWith(`${href}/`)) continue
+    const matches = exact.has(href) ? path === href : path === href || path.startsWith(`${href}/`)
+    if (!matches) continue
     if (href.length > bestLength) {
       best = raw
       bestLength = href.length

@@ -12,9 +12,16 @@ import { activeHref } from '@/lib/nav/active'
  * That matcher used to live inline here and was the only one in the product;
  * it now lives in lib/nav/active.ts with tests, and the shop shell uses it too.
  */
-export function SuperNav({ items }: { items: Array<{ href: string; label: string }> }) {
+export function SuperNav({
+  items,
+  exact,
+}: {
+  items: Array<{ href: string; label: string }>
+  /** Entries that light only on an exact match — the section index. */
+  exact?: readonly string[]
+}) {
   const pathname = usePathname()
-  const active = activeHref(pathname, items.map((i) => i.href))
+  const active = activeHref(pathname, items.map((i) => i.href), { exact })
 
   return (
     <nav aria-label="Super admin" className="flex gap-1 overflow-x-auto rounded-lg border bg-card p-1">
