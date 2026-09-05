@@ -2042,6 +2042,7 @@ export type Database = {
         Returns: undefined
       }
       route_for_area: { Args: { p_area_id: string }; Returns: string }
+      public_settings: { Args: Record<PropertyKey, never>; Returns: Json }
       track_order: { Args: { p_code: string }; Returns: Json }
       unload_trip: {
         Args: { p_order_ids: string[]; p_trip_id: string }

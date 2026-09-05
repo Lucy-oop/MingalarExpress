@@ -384,6 +384,11 @@ export const DICTIONARY = {
   'ss.language': { en: 'Language', my: 'ဘာသာစကား' },
   'ss.ward': { en: 'Ward', my: 'ရပ်ကွက်' },
   'ss.suspended': { en: 'This shop is suspended', my: 'ဆိုင် ရပ်ဆိုင်းထားပါသည်' },
+  'ss.help': { en: 'Need help?', my: 'အကူအညီ လိုပါသလား' },
+  'ss.helpHint': {
+    en: 'Call the Mingalar Express office during working hours.',
+    my: 'ရုံးချိန်အတွင်း Mingalar Express ရုံးသို့ ဖုန်းဆက်ပါ။',
+  },
   'ss.noShop': { en: 'No shop registered', my: 'ဆိုင် မမှတ်ပုံတင်ရသေး' },
 
   // ---- offline --------------------------------------------------------------

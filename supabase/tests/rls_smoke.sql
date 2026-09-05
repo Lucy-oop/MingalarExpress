@@ -551,5 +551,43 @@ begin
   delete from public.policy_acceptances;
 end $$;
 
+-- ----------------------------------------------------------------------------
+--  public_settings() (0024) -- the support number has to reach people who
+--  cannot sign in, without app_settings itself reaching them.
+-- ----------------------------------------------------------------------------
+do $$
+declare
+  v jsonb;
+  n int;
+begin
+  perform set_config('request.jwt.claims','',false);
+  execute 'set role anon';
+
+  -- 1. anon may call it, and gets the two public fields
+  v := public.public_settings();
+  if v is null then raise exception 'FAIL: anon got nothing from public_settings()'; end if;
+  if not (v ? 'support_phone' and v ? 'brand_name') then
+    raise exception 'FAIL: public_settings() is missing a public field: %', v;
+  end if;
+  -- and nothing else: a widened function is the failure this guards against
+  select count(*) into n from jsonb_object_keys(v);
+  if n <> 2 then
+    raise exception 'FAIL: public_settings() exposes % fields, expected 2: %', n, v;
+  end if;
+  raise notice 'PASS: anon reads the support number, and only that';
+
+  -- 2. THE WALL IS STILL THERE. The function widened the door; if the table
+  --    itself became readable, anon would also have pricing, commission, the
+  --    geofence and the KPay account.
+  begin
+    perform 1 from public.app_settings;
+    raise exception 'FAIL: anon can read app_settings directly';
+  exception when insufficient_privilege then
+    raise notice 'PASS: anon still cannot read app_settings itself';
+  end;
+
+  reset role;
+end $$;
+
 \echo ''
 \echo '######  ALL PHASE 1 CHECKS PASSED  ######'

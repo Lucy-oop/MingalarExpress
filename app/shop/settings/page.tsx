@@ -8,9 +8,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Alert } from '@/components/ui/alert'
 import { formatDateTimeYangon, formatMyanmarPhone } from '@/lib/utils'
 import Link from 'next/link'
-import { CheckCircle2, FileText } from 'lucide-react'
+import { CheckCircle2, FileText, LifeBuoy } from 'lucide-react'
 import { getPolicyAcceptedAt, readPolicyAcceptance } from '@/lib/legal/queries'
 import { COD_ADVANCE_POLICY } from '@/lib/legal/cod-advance'
+import { ContactSupport } from '@/components/shared/contact-support'
+import { getPublicSettings } from '@/lib/settings/public'
 import { shouldBlock } from '@/lib/legal/gate'
 
 export const metadata: Metadata = { title: 'Shop settings' }
@@ -30,9 +32,10 @@ export default async function ShopSettingsPage() {
     .limit(1)
     .maybeSingle()
 
-  const [acceptance, policyAcceptedAt] = await Promise.all([
+  const [acceptance, policyAcceptedAt, { supportPhone }] = await Promise.all([
     readPolicyAcceptance(COD_ADVANCE_POLICY.key),
     getPolicyAcceptedAt(COD_ADVANCE_POLICY.key),
+    getPublicSettings(),
   ])
   const policyOutstanding = shouldBlock(acceptance, COD_ADVANCE_POLICY.version)
 
@@ -44,7 +47,10 @@ export default async function ShopSettingsPage() {
           learned that was by trying. */}
       {shop && !shop.is_active ? (
         <Alert tone="error" title={t('ss.suspended')}>
-          New orders are blocked. Contact the Mingalar Express office to reactivate it.
+          <span className="block">
+            New orders are blocked. Contact the Mingalar Express office to reactivate it.
+          </span>
+          <ContactSupport phone={supportPhone} className="mt-2 text-sm" />
         </Alert>
       ) : null}
 
@@ -70,9 +76,29 @@ export default async function ShopSettingsPage() {
         <ShopSettingsForm shop={shop} />
       ) : (
         <Alert tone="error" title={t('ss.noShop')}>
-          Ask the Mingalar Express office to register your shop and pickup point.
+          <span className="block">
+            Ask the Mingalar Express office to register your shop and pickup point.
+          </span>
+          <ContactSupport phone={supportPhone} className="mt-2 text-sm" />
         </Alert>
       )}
+
+      {/* The permanent home for the number, so it is somewhere findable and not
+          only on the screens that happen to be broken. */}
+      {supportPhone ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <LifeBuoy className="size-4 shrink-0 text-brand-gold" aria-hidden="true" />
+              {t('ss.help')}
+            </CardTitle>
+            <CardDescription>{t('ss.helpHint')}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ContactSupport phone={supportPhone} className="text-base" />
+          </CardContent>
+        </Card>
+      ) : null}
 
       {/* The permanent home for the terms. The interstitial in the shell is
           dismissible, so this is where a shop comes back to read what they

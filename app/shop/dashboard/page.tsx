@@ -8,6 +8,8 @@ import { OrderTable } from '@/components/orders/order-table'
 import { Kpi } from '@/components/admin/kpi'
 import { Alert } from '@/components/ui/alert'
 import { formatMmk } from '@/lib/utils'
+import { ContactSupport } from '@/components/shared/contact-support'
+import { getPublicSettings } from '@/lib/settings/public'
 
 export const metadata: Metadata = { title: 'Dashboard' }
 
@@ -22,6 +24,7 @@ export default async function ShopDashboardPage() {
   const locale = await getLocale()
   const t = translator(locale)
   const { shop, counts, codInTransit, recent } = await getShopDashboard()
+  const { supportPhone } = await getPublicSettings()
 
   return (
     <div className="space-y-6">
@@ -35,7 +38,12 @@ export default async function ShopDashboardPage() {
 
       {!shop ? (
         <Alert tone="error" title={t('sd.notSetUp')}>
-          Your account has no shop yet. Ask the Mingalar Express office to add your pickup point.
+          <span className="block">
+            Your account has no shop yet. Ask the Mingalar Express office to add your pickup point.
+          </span>
+          {/* The message that sends every new shop looking for a number that
+              was nowhere in the product. */}
+          <ContactSupport phone={supportPhone} className="mt-2 text-sm" />
         </Alert>
       ) : null}
 
