@@ -348,7 +348,7 @@ export function UnroutedPanel({
                 aria-pressed={mode === m}
                 className={cn(
                   'flex-1 rounded-md border px-2 py-1 text-xs font-medium',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                   mode === m ? 'border-primary bg-primary text-primary-foreground' : 'hover:bg-muted',
                 )}
               >

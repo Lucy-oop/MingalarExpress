@@ -185,7 +185,7 @@ export function CustomerLookup({ onPick }: { onPick: (customer: ReusedCustomer) 
           id={listboxId}
           role="listbox"
           // Above Leaflet's controls, which sit at z-1000 further down the form.
-          className="absolute inset-x-0 top-full z-[1200] mt-1 max-h-72 overflow-y-auto rounded-lg border bg-background shadow-lg"
+          className="absolute inset-x-0 top-full z-1200 mt-1 max-h-72 overflow-y-auto rounded-lg border bg-background shadow-lg"
         >
           {loading ? (
             <li className="px-3 py-3 text-sm text-muted-foreground">{t('book.searching')}</li>

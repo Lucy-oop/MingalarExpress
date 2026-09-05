@@ -141,7 +141,7 @@ export function TripCard({
           <button
             type="button"
             onClick={() => setExpanded((v) => !v)}
-            className="flex min-w-0 flex-1 items-center gap-2 rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+            className="flex min-w-0 flex-1 items-center gap-2 rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             aria-expanded={expanded}
           >
             <ChevronDown
@@ -221,7 +221,7 @@ export function TripCard({
                 <button
                   type="button"
                   onClick={() => setShowParcels((v) => !v)}
-                  className="ml-auto rounded text-xs font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+                  className="ml-auto rounded text-xs font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   aria-expanded={showParcels}
                 >
                   {showParcels ? 'Hide parcels' : `Show ${summary.total} parcels`}

@@ -48,7 +48,7 @@ function useActive() {
   return activeHref(pathname ?? '', MATCHABLE)
 }
 
-const FOCUS = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]'
+const FOCUS = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
 
 /** The header nav: one row of its own until `xl`, inline in the bar after that. */
 export function ShopNavLinks({ className }: { className?: string }) {

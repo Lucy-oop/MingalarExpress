@@ -664,7 +664,7 @@ export function OrderForm({ shop, areas }: OrderFormProps) {
                   <input
                     type="checkbox"
                     name="isFragile"
-                    className="size-4 accent-[var(--brand-red)]"
+                    className="size-4 accent-brand-red"
                   />
                   {t('book.fragile')}
                 </label>

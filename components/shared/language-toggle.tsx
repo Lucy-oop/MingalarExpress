@@ -51,7 +51,7 @@ export function LanguageToggle({ locale }: { locale: Locale }) {
             // shorter in a desktop toolbar, where it was the tallest thing in
             // the bar and set the whole header's height.
             'min-h-11 rounded-md px-3 text-sm font-medium lg:min-h-9',
-            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
+            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
             l === locale
               ? 'bg-primary text-primary-foreground'
               : 'text-muted-foreground hover:bg-muted active:bg-muted',

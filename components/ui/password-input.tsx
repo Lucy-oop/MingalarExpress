@@ -49,7 +49,7 @@ export function PasswordInput({
           'absolute inset-y-0 right-0 flex w-10 items-center justify-center rounded-r-md',
           'text-muted-foreground transition-colors hover:text-foreground',
           'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset',
-          'focus-visible:ring-[var(--ring)]',
+          'focus-visible:ring-ring',
         )}
       >
         <Icon className="size-4" aria-hidden="true" />

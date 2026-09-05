@@ -164,7 +164,7 @@ function RiderChip({
       title={barred ? `${rider.name} is already out on another run` : undefined}
       className={cn(
         'flex min-h-11 shrink-0 flex-col items-start justify-center rounded-md border px-2.5 py-1 text-left transition-colors',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
         current
           ? 'border-primary bg-primary text-primary-foreground'
           : 'bg-background hover:bg-muted',

@@ -549,7 +549,7 @@ function AddressField({
           /* Above Leaflet's own controls, which sit at z-index 1000. At equal
              z-index the map would win on DOM order and the zoom buttons would
              punch through the list. */
-          className="absolute z-[1200] mt-1 max-h-64 w-full overflow-y-auto rounded-md border bg-background shadow-lg"
+          className="absolute z-1200 mt-1 max-h-64 w-full overflow-y-auto rounded-md border bg-background shadow-lg"
         >
           {results.length === 0 ? (
             <li className="px-3 py-3 text-sm text-muted-foreground">
