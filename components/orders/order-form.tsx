@@ -8,7 +8,7 @@ import Link from 'next/link'
 import { createOrder, type CreatedOrder, type OrderFormState } from '@/lib/orders/actions'
 import type { AreaRoute } from '@/lib/orders/queries'
 import { LocationPicker } from '@/components/map/location-picker'
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
@@ -707,6 +707,29 @@ export function OrderForm({ shop, areas }: OrderFormProps) {
 }
 
 /**
+ * Three buttons in a 512px modal, labelled in Burmese.
+ *
+ * `size="touch"` is a FIXED h-14 with no wrapping, and "လိပ်စာစာရွက်
+ * ပရင့်ထုတ်ရန်" beside two more labels does not fit that row -- the text
+ * clipped or forced the row wider than the panel. So the height is a floor
+ * rather than a fixed value and the label may take a second line: 48px still
+ * clears the tap-target minimum, and the footer wraps instead of overflowing
+ * whatever a translation turns out to be. Tuning the button to the string is
+ * the wrong way round.
+ *
+ * `w-full sm:w-auto` because these are stacked on a phone and inline on a
+ * desktop. A bare `w-full` -- which is what shipped first -- makes a flex-row
+ * item claim the whole row, which is why the print button looked like the
+ * primary action even as an outline.
+ *
+ * Applied to the print ANCHOR directly rather than to a Button nested inside
+ * it: `<a>` may not contain interactive content, and the repo already styles
+ * links as buttons this way everywhere else.
+ */
+const FOOTER_BTN =
+  'h-auto min-h-12 w-full whitespace-normal px-4 py-2.5 text-sm leading-snug sm:w-auto'
+
+/**
  * Shown once, immediately after the insert, before anyone navigates.
  *
  * Escape and the backdrop are wired to "create another", not to a bare close.
@@ -738,13 +761,17 @@ function OrderCreatedDialog({
       title={t('created.title')}
       onClose={onCreateAnother}
       footer={
-        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-          <Button variant="ghost" size="touch" onClick={() => router.push('/shop/orders')}>
+        /*
+          Left to right: look at them, print one, book the next -- ending on the
+          only filled control, which is the one thing a shop does over and over.
+          Printing is a utility beside that, so it is an outline.
+
+          `flex-col-reverse` on a phone is what puts the primary at the TOP of
+          the stack while keeping that reading order in the markup.
+        */
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
+          <Button variant="ghost" className={FOOTER_BTN} onClick={() => router.push('/shop/orders')}>
             {t('created.viewOrders')}
-          </Button>
-          <Button variant="outline" size="touch" onClick={onCreateAnother}>
-            <PackagePlus />
-            {t('created.another')}
           </Button>
           {/*
             A PLAIN ANCHOR, deliberately. `window.open` from a handler can be
@@ -758,13 +785,15 @@ function OrderCreatedDialog({
             href={`/shop/orders/labels?ids=${order.id}&print=1`}
             target="_blank"
             rel="noopener"
-            className="contents"
+            className={cn(buttonVariants({ variant: 'outline' }), FOOTER_BTN)}
           >
-            <Button size="touch" className="w-full">
-              <Printer />
-              {t('created.print')}
-            </Button>
+            <Printer className="size-4" />
+            {t('created.print')}
           </a>
+          <Button className={FOOTER_BTN} onClick={onCreateAnother}>
+            <PackagePlus />
+            {t('created.another')}
+          </Button>
         </div>
       }
     >
