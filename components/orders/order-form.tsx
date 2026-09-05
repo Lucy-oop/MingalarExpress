@@ -18,6 +18,8 @@ import { Overlay } from '@/components/ui/overlay'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { bookingBlocker, bookingPayment, parseAmount } from '@/lib/orders/booking'
 import { matchAreaFromAddress } from '@/lib/orders/area-match'
+import type { ReusedCustomer } from '@/lib/orders/customer-lookup'
+import { CustomerLookup } from '@/components/orders/customer-lookup'
 import { codCollectable } from '@/lib/pricing'
 import { formatMmk, cn } from '@/lib/utils'
 import { isInServiceArea } from '@/lib/geo/thingangyun'
@@ -165,6 +167,47 @@ export function OrderForm({ shop, areas }: OrderFormProps) {
   const formRef = useRef<HTMLFormElement>(null)
   const pickup: LatLng = { lat: shop.pickup_lat, lng: shop.pickup_lng }
 
+  /** Set when the customer half was filled from a past parcel, cleared on reset. */
+  const [reused, setReused] = useState(false)
+
+  /**
+   * Fill the whole customer half from a parcel this shop has sent before.
+   *
+   * The COORDINATE is the real prize. `dropoff_lat/lng` are NOT NULL behind a
+   * geofence CHECK, so every booking needs a point; a reused one is somewhere a
+   * rider has actually delivered, which beats a geocode guess and beats a
+   * township centroid the seed itself flags as VERIFY-CENTROID.
+   *
+   * Name and phone are uncontrolled inputs, so they are written straight into
+   * the DOM node rather than mirrored into state — the same reason
+   * `formRef.current?.reset()` is what clears them.
+   */
+  const applyCustomer = (c: ReusedCustomer) => {
+    const form = formRef.current
+    if (form) {
+      const set = (name: string, value: string) => {
+        const el = form.elements.namedItem(name)
+        if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) el.value = value
+      }
+      set('customerName', c.name)
+      set('customerPhone', c.phone)
+      set('customerPhoneAlt', c.phoneAlt)
+      set('dropoffNote', c.note)
+    }
+
+    setDropoffAddress(c.address)
+    setDropoff(c.point)
+    setAreaId(c.areaId)
+    // Their past choice stands: the address matcher may only warn from here,
+    // not silently re-pick.
+    areaTouched.current = true
+    setReused(true)
+    // Remount the picker so it initialises with the address already present —
+    // otherwise `addressTouched` stays false and the next pin nudge would
+    // overwrite an address the shop deliberately reused.
+    setResetSeq((n) => n + 1)
+  }
+
   /**
    * Which confirmation the shop has already dismissed.
    *
@@ -183,6 +226,7 @@ export function OrderForm({ shop, areas }: OrderFormProps) {
     setDropoffAddress('')
     setAreaId('')
     areaTouched.current = false
+    setReused(false)
     setCollect('')
     setPrepaid(false)
     setFeePayer('customer')
@@ -426,7 +470,15 @@ export function OrderForm({ shop, areas }: OrderFormProps) {
           <CardHeader className="pb-3">
             <CardTitle className="text-base">{t('book.who')}</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-3">
+            {/* One tap fills name, phone, address, area AND the exact point the
+                rider went to last time. */}
+            <CustomerLookup onPick={applyCustomer} />
+
+            {reused ? (
+              <p className="text-xs text-muted-foreground">{t('book.reused')}</p>
+            ) : null}
+
             <div className="grid gap-3 sm:grid-cols-2">
               <Field
                 label={t('book.name')}

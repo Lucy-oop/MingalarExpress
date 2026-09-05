@@ -426,5 +426,70 @@ begin
   raise notice 'PASS: anon tracking works and leaks no PII: %', j->>'code';
 end $$;
 
+-- ============================================================================
+--  THE CUSTOMER LOOKUP SURFACE
+--
+--  The booking form lets a shop search its own past parcels to reuse a
+--  customer's name, phone, address and delivery point. That is the shop's own
+--  data — but it is also the first screen that deliberately shows customer PII
+--  in bulk, so the boundary gets its own assertion rather than relying on the
+--  general orders policy being read correctly by whoever adds the next feature.
+-- ============================================================================
+
+\echo '=== customer lookup: a shop searches its OWN customers and nobody else''s ==='
+do $$
+declare
+  v_mine int;
+  v_other int;
+  v_second uuid := 'aaaaaaaa-0000-0000-0000-00000000beef';
+begin
+  -- A second shop, owned by somebody else, with a parcel of its own.
+  insert into public.shops (id, owner_id, name, phone, pickup_address, pickup_lat, pickup_lng)
+  values (v_second, '11111111-1111-1111-1111-111111111111', 'Rival Store', '+959770009999',
+          'No. 1, Other Road', 16.8478, 96.1693)
+  on conflict (id) do nothing;
+
+  insert into public.orders (
+    shop_id, pickup_address, pickup_lat, pickup_lng, customer_name, customer_phone,
+    dropoff_address, dropoff_area_id, dropoff_lat, dropoff_lng, parcel_desc,
+    payment_method, cod_amount, delivery_fee, created_by)
+  select v_second, 'No. 1, Other Road', 16.8478, 96.1693,
+         'SECRET RIVAL CUSTOMER', '+959770008888',
+         'Rival customer address', a.id, 16.7760, 96.1580, 'p', 'prepaid', 0, 3500,
+         '11111111-1111-1111-1111-111111111111'
+  from public.service_areas a where a.name = 'Kyauktada / Sule';
+
+  set local role authenticated;
+  perform set_config('request.jwt.claims',
+    '{"sub":"33333333-3333-3333-3333-333333333333","role":"authenticated"}', true);
+
+  -- Exactly the columns and the shape the lookup component asks for, and
+  -- deliberately WITHOUT a shop_id filter — the point is that the policy is
+  -- what scopes it, not the query.
+  select count(*) into v_mine
+    from public.orders
+   where customer_phone is not null;
+
+  select count(*) into v_other
+    from public.orders
+   where customer_name = 'SECRET RIVAL CUSTOMER'
+      or customer_phone = '+959770008888'
+      or dropoff_address = 'Rival customer address';
+
+  if v_other <> 0 then
+    raise exception 'FAIL: a shop read % row(s) of another shop''s customers', v_other;
+  end if;
+  if v_mine = 0 then
+    raise exception 'FAIL: the shop cannot see its own customers either';
+  end if;
+  raise notice 'PASS: shop sees its own % customer row(s), 0 of the rival''s', v_mine;
+
+  reset role;
+  perform set_config('request.jwt.claims','',false);
+
+  delete from public.orders where shop_id = v_second;
+  delete from public.shops where id = v_second;
+end $$;
+
 \echo ''
 \echo '######  ALL PHASE 1 CHECKS PASSED  ######'
