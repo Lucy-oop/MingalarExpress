@@ -199,7 +199,12 @@ export const DICTIONARY = {
   'book.reused': { en: 'Filled in from a past parcel — check it is still right', my: 'ယခင်ပါဆယ်မှ ထည့်ထားသည် — မှန်မမှန် စစ်ပါ' },
   'book.money': { en: 'Money', my: 'ငွေ' },
   'book.address': { en: 'Delivery address', my: 'ပို့ရမည့် လိပ်စာ' },
-  'book.addressHint': { en: 'Filled in from the pin — correct it if you need to', my: 'အမှတ်မှ အလိုအလျောက် ထည့်ပါမည် — လိုလျှင် ပြင်ပါ' },
+  // The address leads now and the pin follows it, so this no longer describes a
+  // value arriving from the map.
+  'book.addressHint': {
+    en: 'Type it, then pick the match to set the map pin',
+    my: 'လိပ်စာရိုက်ပြီး ကိုက်ညီသည့်အရာကို ရွေးပါ — မြေပုံအမှတ် အလိုအလျောက် ကျပါမည်',
+  },
   'book.area': { en: 'Area', my: 'မြို့နယ်' },
   'book.areaHint': { en: 'Sets the delivery fee', my: 'ပို့ဆောင်ခ သတ်မှတ်ပါမည်' },
   'book.areaChoose': { en: 'Choose an area…', my: 'မြို့နယ် ရွေးပါ…' },
@@ -229,7 +234,12 @@ export const DICTIONARY = {
   // the real problem was the amount — the case that used to book a COD parcel
   // as prepaid.
   'book.alreadyPaid': { en: 'Already paid — collect nothing', my: 'ငွေရှင်းပြီးသား — မကောက်ပါ' },
-  'book.needPin': { en: 'Drop the pin on the map.', my: 'မြေပုံတွင် အမှတ် ထည့်ပါ။' },
+  // The map is the fallback for an address OSM does not know, not the first
+  // step, so this names the suggestion list first.
+  'book.needPin': {
+    en: 'Pick a suggested address, or set it on the map.',
+    my: 'အကြံပြုလိပ်စာ ရွေးပါ၊ သို့မဟုတ် မြေပုံတွင် သတ်မှတ်ပါ။',
+  },
   'book.pinOutside': {
     en: 'That pin is outside the delivery area.',
     my: 'ဤအမှတ်သည် ပို့ဆောင်နယ်ပယ် အပြင် ဖြစ်ပါသည်။',
