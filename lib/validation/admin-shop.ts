@@ -40,12 +40,14 @@ export const SUSPEND_REASON_LABEL: Record<SuspendReason, string> = {
 export const shopStatusSchema = z
   .object({
     shopId: dbId('Select a shop'),
-    action: z.enum(['activate', 'suspend']),
+    action: z.enum(['activate', 'suspend', 'approve', 'reject']),
     reason: z.preprocess(blankToNull, z.union([z.null(), z.enum(SUSPEND_REASONS)])),
     detail: z.string().trim().max(300, 'Keep it under 300 characters'),
   })
-  .refine((v) => v.action !== 'suspend' || v.reason !== null, {
-    message: 'Choose why this shop is being suspended',
+  // Rejecting is as final as suspending -- the shop is told no and leaves the
+  // queue -- so it carries the same obligation to say why.
+  .refine((v) => !['suspend', 'reject'].includes(v.action) || v.reason !== null, {
+    message: 'Choose a reason',
     path: ['reason'],
   })
   // "Other" with no explanation is the same as no reason at all.
@@ -125,10 +127,22 @@ export type ShopOnboardExistingOwnerValues = z.output<typeof shopOnboardExisting
 // List filters
 // ---------------------------------------------------------------------------
 
-export const SHOP_STATUSES = ['active', 'suspended', 'pending'] as const
+/*
+  Four states now, and the two new ones are the point of 0026:
+
+    pending    signed up, has not described their shop yet
+    awaiting   described it, the office has not looked
+    active     approved and trading
+    suspended  approved, then switched off
+
+  `awaiting` and `suspended` were one thing before, and they call for opposite
+  actions -- wait, versus ring the office.
+*/
+export const SHOP_STATUSES = ['awaiting', 'active', 'suspended', 'pending'] as const
 export type ShopStatus = (typeof SHOP_STATUSES)[number]
 
 export const SHOP_STATUS_LABEL: Record<ShopStatus, string> = {
+  awaiting: 'Awaiting approval',
   active: 'Active',
   suspended: 'Suspended',
   pending: 'Pending setup',

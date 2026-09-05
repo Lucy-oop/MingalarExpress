@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { requireShop } from '@/lib/auth/guards'
 import { getLocale } from '@/lib/i18n/locale'
 import { translator } from '@/lib/i18n'
+import type { MessageKey } from '@/lib/i18n/dictionary'
 import { createClient } from '@/lib/supabase/server'
 import { ShopSettingsForm } from '@/components/orders/shop-settings-form'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -14,9 +15,22 @@ import { COD_ADVANCE_POLICY } from '@/lib/legal/cod-advance'
 import { ContactSupport } from '@/components/shared/contact-support'
 import { getPublicSettings } from '@/lib/settings/public'
 import { shouldBlock } from '@/lib/legal/gate'
+import {
+  SHOP_BLOCKED_MESSAGE,
+  shopApprovalState,
+  type ShopApprovalState,
+} from '@/lib/shops/approval'
+import { buttonVariants } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 
 export const metadata: Metadata = { title: 'Shop settings' }
 export const dynamic = 'force-dynamic'
+
+const BLOCKED_TITLE: Record<Exclude<ShopApprovalState, 'active'>, MessageKey> = {
+  awaiting: 'ss.awaiting',
+  rejected: 'ss.rejected',
+  suspended: 'ss.suspended',
+}
 
 export default async function ShopSettingsPage() {
   const { profile } = await requireShop()
@@ -27,7 +41,7 @@ export default async function ShopSettingsPage() {
   const { data: shop } = await supabase
     .from('shops')
     .select(
-      'id, name, phone, pickup_address, pickup_lat, pickup_lng, pickup_note, is_active, service_areas:area_id (name)',
+      'id, name, phone, pickup_address, pickup_lat, pickup_lng, pickup_note, is_active, approved_at, rejected_at, goods_type, service_areas:area_id (name)',
     )
     .limit(1)
     .maybeSingle()
@@ -38,6 +52,14 @@ export default async function ShopSettingsPage() {
     getPublicSettings(),
   ])
   const policyOutstanding = shouldBlock(acceptance, COD_ADVANCE_POLICY.version)
+  const state = shop
+    ? shopApprovalState({
+        isActive: shop.is_active,
+        approvedAt: shop.approved_at,
+        rejectedAt: shop.rejected_at,
+      })
+    : null
+  const blocked = state && state !== 'active' ? SHOP_BLOCKED_MESSAGE[state] : null
 
   return (
     <div className="space-y-5">
@@ -45,11 +67,14 @@ export default async function ShopSettingsPage() {
 
       {/* A suspended shop cannot create orders, and until now the only way it
           learned that was by trying. */}
-      {shop && !shop.is_active ? (
-        <Alert tone="error" title={t('ss.suspended')}>
-          <span className="block">
-            New orders are blocked. Contact the Mingalar Express office to reactivate it.
-          </span>
+      {/*
+        One of three reasons, and the TITLE has to move with it too: telling a
+        shop that has never been looked at that it is "suspended" is the exact
+        confusion lib/shops/approval exists to prevent.
+      */}
+      {blocked && state && state !== 'active' ? (
+        <Alert tone="warning" title={t(BLOCKED_TITLE[state])}>
+          <span className="block">{blocked}</span>
           <ContactSupport phone={supportPhone} className="mt-2 text-sm" />
         </Alert>
       ) : null}
@@ -75,11 +100,16 @@ export default async function ShopSettingsPage() {
       {shop ? (
         <ShopSettingsForm shop={shop} />
       ) : (
-        <Alert tone="error" title={t('ss.noShop')}>
+        <Alert tone="warning" title={t('ss.noShop')}>
           <span className="block">
-            Ask the Mingalar Express office to register your shop and pickup point.
+            Tell us your shop name, what you sell and where riders collect from.
           </span>
-          <ContactSupport phone={supportPhone} className="mt-2 text-sm" />
+          <Link href="/shop/setup" className={cn(buttonVariants({ size: 'sm' }), 'mt-3')}>
+            Set up my shop
+          </Link>
+          {/* The button is the answer for most owners; the number is for the
+              one whose address the map cannot find. */}
+          <ContactSupport phone={supportPhone} className="mt-3 text-sm" />
         </Alert>
       )}
 

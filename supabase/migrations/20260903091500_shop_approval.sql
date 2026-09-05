@@ -120,6 +120,10 @@ begin
     or new.approved_at  is distinct from old.approved_at
     or new.approved_by  is distinct from old.approved_by
     or new.rejected_at  is distinct from old.rejected_at
+    -- The reason belongs to whoever wrote it. A rejected owner rewriting it
+    -- would be editing the office's note about them, in the one place the
+    -- office looks to remember why.
+    or new.rejection_reason is distinct from old.rejection_reason
     or new.owner_id     is distinct from old.owner_id then
       raise exception 'shop_decision_forbidden'
         using errcode = '42501',

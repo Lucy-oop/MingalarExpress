@@ -46,7 +46,7 @@ export function ShopManager({
   const [detailRow, setDetailRow] = useState<ShopListRow | null>(null)
   const [statusTarget, setStatusTarget] = useState<{
     row: ShopListRow
-    action: 'activate' | 'suspend'
+    action: 'activate' | 'suspend' | 'approve' | 'reject'
   } | null>(null)
   const [onboarding, setOnboarding] = useState(false)
   const [presetOwnerId, setPresetOwnerId] = useState<string | null>(null)
@@ -92,7 +92,15 @@ export function ShopManager({
       {/* ---------------------------------------------------------------- */}
       {/* Summary                                                           */}
       {/* ---------------------------------------------------------------- */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+        {/* First, because it is the only tile that is a QUEUE: shops that have
+            described themselves and are waiting on the office to say yes. */}
+        <Kpi
+          label="Awaiting approval"
+          value={summary.awaiting}
+          hint="waiting on the office"
+          tone={summary.awaiting > 0 ? 'warn' : 'default'}
+        />
         <Kpi label="Active shops" value={summary.active} tone="good" />
         <Kpi
           label="Suspended"

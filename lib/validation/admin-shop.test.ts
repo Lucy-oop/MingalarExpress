@@ -38,9 +38,34 @@ describe('shopStatusSchema', () => {
       detail: '',
     })
     assert.equal(r.success, false)
-    assert.deepEqual(r.error?.flatten().fieldErrors.reason, [
-      'Choose why this shop is being suspended',
-    ])
+    assert.deepEqual(r.error?.flatten().fieldErrors.reason, ['Choose a reason'])
+  })
+
+  /**
+   * Rejecting a signup is as final as suspending a trading shop -- the shop is
+   * told no and leaves the queue -- so it owes the same explanation. Approving
+   * owes nothing: the shop typed its own details and the office only says yes.
+   */
+  test('rejecting without a reason is rejected too', () => {
+    const r = shopStatusSchema.safeParse({
+      shopId: SHOP_ID,
+      action: 'reject',
+      reason: '',
+      detail: '',
+    })
+    assert.equal(r.success, false)
+    assert.deepEqual(r.error?.flatten().fieldErrors.reason, ['Choose a reason'])
+  })
+
+  test('approving needs no reason at all — that is the point of one click', () => {
+    const r = shopStatusSchema.safeParse({
+      shopId: SHOP_ID,
+      action: 'approve',
+      reason: '',
+      detail: '',
+    })
+    assert.equal(r.success, true)
+    assert.equal(r.data?.reason, null)
   })
 
   test('suspending with a listed reason is accepted', () => {

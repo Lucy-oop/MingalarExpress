@@ -82,7 +82,14 @@ export type OrderLabelRow = {
 }
 
 export type ShopDashboard = {
-  shop: { id: string; name: string; pickup_address: string } | null
+  shop: {
+    id: string
+    name: string
+    pickup_address: string
+    is_active: boolean
+    approved_at: string | null
+    rejected_at: string | null
+  } | null
   counts: Record<
     'open' | 'pending' | 'inFlight' | 'delivered' | 'failed' | 'needsDecision' | 'total',
     number
@@ -123,7 +130,11 @@ export async function getShopDashboard(): Promise<ShopDashboard> {
     { count: failed },
     { count: needsDecision },
   ] = await Promise.all([
-    supabase.from('shops').select('id, name, pickup_address').limit(1).maybeSingle(),
+    supabase
+      .from('shops')
+      .select('id, name, pickup_address, is_active, approved_at, rejected_at')
+      .limit(1)
+      .maybeSingle(),
     supabase
       .from('orders')
       .select(ORDER_LIST_COLUMNS)

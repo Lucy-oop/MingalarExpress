@@ -8,6 +8,7 @@ import { orderCreateSchema, shopSettingsSchema } from '@/lib/validation/schemas'
 import { explainResolutionError } from '@/lib/orders/errors'
 import { haversineKm } from '@/lib/geo/haversine'
 import { codCollectable } from '@/lib/pricing'
+import { shopBlockedMessage } from '@/lib/shops/approval'
 import { resolveAreaRoute } from '@/lib/orders/queries'
 import { MAX_MMK } from '@/lib/validation/limits'
 import { formatMmk } from '@/lib/utils'
@@ -72,12 +73,18 @@ export async function createOrder(
 
   const supabase = await createClient()
 
-  // The shop is resolved server-side from ownership, never taken from the form.
+  /*
+    The shop is resolved server-side from ownership, never taken from the form.
+
+    Fetched WITHOUT filtering on is_active, unlike before: a shop that cannot
+    book needs to be told which of the three reasons applies -- waiting for the
+    office, rejected, or suspended -- and a filtered-away row reads as "you have
+    no shop", which is a fourth thing that is not true. See lib/shops/approval.
+  */
   const { data: shop } = await supabase
     .from('shops')
-    .select('id, pickup_address, pickup_lat, pickup_lng, phone, is_active')
+    .select('id, pickup_address, pickup_lat, pickup_lng, phone, is_active, approved_at, rejected_at')
     .eq('owner_id', ctx.userId)
-    .eq('is_active', true)
     .order('created_at', { ascending: true })
     .limit(1)
     .maybeSingle()
@@ -85,6 +92,13 @@ export async function createOrder(
   if (!shop) {
     return { error: 'Set up your shop and pickup point before creating orders.' }
   }
+
+  const blocked = shopBlockedMessage({
+    isActive: shop.is_active,
+    approvedAt: shop.approved_at,
+    rejectedAt: shop.rejected_at,
+  })
+  if (blocked) return { error: blocked }
 
   const num = (value: FormDataEntryValue | null): number | undefined => {
     const s = typeof value === 'string' ? value.trim() : ''
@@ -260,7 +274,7 @@ export async function createOrder(
       }
     }
     if (error.message.includes('row-level security') || error.code === '42501') {
-      return { error: 'This shop is not active, so it cannot take new orders. Contact the office.' }
+      return { error: 'This shop cannot take new orders right now. Contact the office.' }
     }
     return { error: 'Could not create the order. Check the details and try again.' }
   }

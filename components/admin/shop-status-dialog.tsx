@@ -1,6 +1,8 @@
 'use client'
 
 import { useActionState, useEffect } from 'react'
+
+export type StatusAction = 'activate' | 'suspend' | 'approve' | 'reject'
 import { useFormStatus } from 'react-dom'
 import { Ban, CheckCircle2 } from 'lucide-react'
 import { setShopStatus, type ShopActionResult } from '@/lib/admin/shop-actions'
@@ -13,7 +15,36 @@ import { Textarea } from '@/components/ui/textarea'
 import { Field } from '@/components/ui/field'
 import { Alert } from '@/components/ui/alert'
 
-function Actions({ suspending, onCancel }: { suspending: boolean; onCancel: () => void }) {
+/**
+ * The name is nullable because a row can be an owner with no shop attached yet.
+ * That row never reaches here — the `shopId` guard below drops it — but a title
+ * reading "Suspend null" is not worth risking on a type assertion.
+ */
+const TITLE: Record<StatusAction, (name: string) => string> = {
+  suspend: (n) => `Suspend ${n}`,
+  activate: (n) => `Activate ${n}`,
+  approve: (n) => `Confirm ${n}`,
+  reject: (n) => `Reject ${n}`,
+}
+
+const DESCRIPTION: Record<StatusAction, string> = {
+  suspend: 'The shop stops accepting new orders immediately.',
+  activate: 'The shop can create orders again, and its owner can sign in.',
+  // Nothing to type: the shop supplied its own name, goods, phone and address
+  // at setup. This is only the office saying yes.
+  approve: 'The shop can start booking parcels straight away.',
+  reject: 'The shop is told no and leaves the queue. The reason is kept.',
+}
+
+const SUBMIT: Record<StatusAction, string> = {
+  suspend: 'Suspend shop',
+  activate: 'Activate shop',
+  approve: 'Confirm shop',
+  reject: 'Reject shop',
+}
+
+function Actions({ action, onCancel }: { action: StatusAction; onCancel: () => void }) {
+  const suspending = action === 'suspend' || action === 'reject'
   const { pending } = useFormStatus()
   return (
     <div className="flex justify-end gap-2 pt-2">
@@ -22,7 +53,7 @@ function Actions({ suspending, onCancel }: { suspending: boolean; onCancel: () =
       </Button>
       <Button type="submit" variant={suspending ? 'destructive' : 'default'} disabled={pending}>
         {suspending ? <Ban /> : <CheckCircle2 />}
-        {pending ? 'Saving…' : suspending ? 'Suspend shop' : 'Activate shop'}
+        {pending ? 'Saving…' : SUBMIT[action]}
       </Button>
     </div>
   )
@@ -43,7 +74,7 @@ export function ShopStatusDialog({
   onDone,
 }: {
   row: ShopListRow | null
-  action: 'activate' | 'suspend'
+  action: StatusAction
   onClose: () => void
   onDone: (result: ShopActionResult) => void
 }) {
@@ -52,7 +83,8 @@ export function ShopStatusDialog({
     message: '',
   })
   const err = (k: string) => (state.ok ? undefined : state.fieldErrors?.[k]?.[0])
-  const suspending = action === 'suspend'
+  // Reject stops a shop as surely as suspend does, and owes the same reason.
+  const stopping = action === 'suspend' || action === 'reject'
 
   useEffect(() => {
     if (!state.ok) return
@@ -70,12 +102,8 @@ export function ShopStatusDialog({
       open
       onClose={onClose}
       side="center"
-      title={suspending ? `Suspend ${row.name}` : `Activate ${row.name}`}
-      description={
-        suspending
-          ? 'The shop stops accepting new orders immediately.'
-          : 'The shop can create orders again, and its owner can sign in.'
-      }
+      title={TITLE[action](row.name ?? 'this shop')}
+      description={DESCRIPTION[action]}
     >
       <form action={formAction} className="space-y-4" noValidate>
         <input type="hidden" name="shopId" value={row.shopId} />
@@ -83,7 +111,7 @@ export function ShopStatusDialog({
 
         {!state.ok && state.message ? <Alert tone="error">{state.message}</Alert> : null}
 
-        {suspending ? (
+        {stopping ? (
           <>
             <Alert tone="error" title="This also blocks the owner's login">
               {row.ownerName} will be unable to sign in — unless they own another shop that stays
@@ -128,7 +156,7 @@ export function ShopStatusDialog({
           </>
         )}
 
-        <Actions suspending={suspending} onCancel={onClose} />
+        <Actions action={action} onCancel={onClose} />
       </form>
     </Overlay>
   )

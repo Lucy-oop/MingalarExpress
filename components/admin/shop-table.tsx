@@ -11,6 +11,10 @@ const STATUS_TONE = {
   active: 'green',
   suspended: 'red',
   pending: 'amber',
+  // Blue, not amber: awaiting is work for the OFFICE, pending is work for the
+  // shop. Two ambers would hide that difference at a glance, which is the whole
+  // reason the states were split.
+  awaiting: 'blue',
 } as const
 
 export function ShopTable({
@@ -21,7 +25,7 @@ export function ShopTable({
 }: {
   rows: ShopListRow[]
   onOpen: (row: ShopListRow) => void
-  onStatus: (row: ShopListRow, action: 'activate' | 'suspend') => void
+  onStatus: (row: ShopListRow, action: 'activate' | 'suspend' | 'approve' | 'reject') => void
   onRegisterFor: (row: ShopListRow) => void
 }) {
   if (rows.length === 0) {
@@ -129,6 +133,23 @@ export function ShopTable({
                       <Button size="sm" onClick={() => onRegisterFor(r)}>
                         Confirm shop
                       </Button>
+                    ) : r.status === 'awaiting' ? (
+                      /* The shop described itself; this is the office's yes or
+                         no. Confirm takes no typing at all -- that is the whole
+                         point of the setup step. */
+                      <>
+                        <Button size="sm" variant="outline" onClick={() => onOpen(r)}>
+                          Details
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => onStatus(r, 'reject')}>
+                          <Ban />
+                          Reject
+                        </Button>
+                        <Button size="sm" onClick={() => onStatus(r, 'approve')}>
+                          <CheckCircle2 />
+                          Confirm
+                        </Button>
+                      </>
                     ) : (
                       <>
                         <Button size="sm" variant="outline" onClick={() => onOpen(r)}>

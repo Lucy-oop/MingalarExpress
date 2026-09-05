@@ -639,6 +639,12 @@ begin
     raise notice 'PASS: a shop cannot write its own rejection';
   end;
   begin
+    update public.shops set rejection_reason = 'nothing to see here' where id = v_shop;
+    raise exception 'FAIL: a shop rewrote the office''s note about it';
+  exception when insufficient_privilege then
+    raise notice 'PASS: a shop cannot edit its own rejection reason';
+  end;
+  begin
     update public.shops set owner_id = '22222222-2222-2222-2222-222222222222'
      where id = v_shop;
     raise exception 'FAIL: a shop handed itself to another owner';

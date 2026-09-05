@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { Store } from 'lucide-react'
 import type { Metadata } from 'next'
 import { requireShop } from '@/lib/auth/guards'
 import { getLocale } from '@/lib/i18n/locale'
@@ -10,6 +11,9 @@ import { Alert } from '@/components/ui/alert'
 import { formatMmk } from '@/lib/utils'
 import { ContactSupport } from '@/components/shared/contact-support'
 import { getPublicSettings } from '@/lib/settings/public'
+import { shopBlockedMessage } from '@/lib/shops/approval'
+import { buttonVariants } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 
 export const metadata: Metadata = { title: 'Dashboard' }
 
@@ -25,6 +29,13 @@ export default async function ShopDashboardPage() {
   const t = translator(locale)
   const { shop, counts, codInTransit, recent } = await getShopDashboard()
   const { supportPhone } = await getPublicSettings()
+  const blocked = shop
+    ? shopBlockedMessage({
+        isActive: shop.is_active,
+        approvedAt: shop.approved_at,
+        rejectedAt: shop.rejected_at,
+      })
+    : null
 
   return (
     <div className="space-y-6">
@@ -36,13 +47,28 @@ export default async function ShopDashboardPage() {
         </p>
       </div>
 
+      {/*
+        Three different reasons a shop cannot trade, and they used to be one
+        message. "No shop yet" now has something to DO about it -- the owner
+        knows their own address better than the office does -- while waiting,
+        rejected and suspended each say their own thing. See lib/shops/approval.
+      */}
       {!shop ? (
-        <Alert tone="error" title={t('sd.notSetUp')}>
+        <Alert tone="warning" title={t('sd.notSetUp')}>
           <span className="block">
-            Your account has no shop yet. Ask the Mingalar Express office to add your pickup point.
+            Tell us your shop name, what you sell and where riders collect from. It takes a minute.
           </span>
-          {/* The message that sends every new shop looking for a number that
-              was nowhere in the product. */}
+          <Link href="/shop/setup" className={cn(buttonVariants({ size: 'sm' }), 'mt-3')}>
+            <Store className="size-4" />
+            Set up my shop
+          </Link>
+          {/* The button is the answer for most owners; the number is for the
+              one whose address the map cannot find. */}
+          <ContactSupport phone={supportPhone} className="mt-3 text-sm" />
+        </Alert>
+      ) : blocked ? (
+        <Alert tone="warning" title={t('sd.awaiting')}>
+          <span className="block">{blocked}</span>
           <ContactSupport phone={supportPhone} className="mt-2 text-sm" />
         </Alert>
       ) : null}

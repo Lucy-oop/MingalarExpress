@@ -351,7 +351,8 @@ export const DICTIONARY = {
   'sd.delivered': { en: 'Delivered', my: 'ပို့ပြီး' },
   'sd.needsYou': { en: 'Needs your decision', my: 'သင် ဆုံးဖြတ်ရန်' },
   'sd.recent': { en: 'Recent parcels', my: 'လတ်တလော ပါဆယ်များ' },
-  'sd.notSetUp': { en: 'Shop not set up', my: 'ဆိုင် မပြင်ဆင်ရသေး' },
+  'sd.notSetUp': { en: 'Set up your shop', my: 'သင့်ဆိုင်ကို ပြင်ဆင်ပါ' },
+  'sd.awaiting': { en: 'Not able to book yet', my: 'ယခုအချိန် မတင်နိုင်သေးပါ' },
 
   // ---- shop orders list -----------------------------------------------------
   'so.title': { en: 'My parcels', my: 'ကျွန်ုပ်၏ ပါဆယ်များ' },
@@ -384,6 +385,8 @@ export const DICTIONARY = {
   'ss.language': { en: 'Language', my: 'ဘာသာစကား' },
   'ss.ward': { en: 'Ward', my: 'ရပ်ကွက်' },
   'ss.suspended': { en: 'This shop is suspended', my: 'ဆိုင် ရပ်ဆိုင်းထားပါသည်' },
+  'ss.awaiting': { en: 'Waiting for confirmation', my: 'အတည်ပြုချက် စောင့်ဆိုင်းနေသည်' },
+  'ss.rejected': { en: 'Shop not approved', my: 'ဆိုင်ကို အတည်မပြုပါ' },
   'ss.help': { en: 'Need help?', my: 'အကူအညီ လိုပါသလား' },
   'ss.helpHint': {
     en: 'Call the Mingalar Express office during working hours.',

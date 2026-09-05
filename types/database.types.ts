@@ -1053,8 +1053,11 @@ export type Database = {
       }
       shops: {
         Row: {
+          approved_at: string | null
+          approved_by: string | null
           area_id: string | null
           created_at: string
+          goods_type: string | null
           id: string
           is_active: boolean
           name: string
@@ -1065,11 +1068,16 @@ export type Database = {
           pickup_lat: number
           pickup_lng: number
           pickup_note: string | null
+          rejected_at: string | null
+          rejection_reason: string | null
           updated_at: string
         }
         Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
           area_id?: string | null
           created_at?: string
+          goods_type?: string | null
           id?: string
           is_active?: boolean
           name: string
@@ -1080,11 +1088,16 @@ export type Database = {
           pickup_lat: number
           pickup_lng: number
           pickup_note?: string | null
+          rejected_at?: string | null
+          rejection_reason?: string | null
           updated_at?: string
         }
         Update: {
+          approved_at?: string | null
+          approved_by?: string | null
           area_id?: string | null
           created_at?: string
+          goods_type?: string | null
           id?: string
           is_active?: boolean
           name?: string
@@ -1095,6 +1108,8 @@ export type Database = {
           pickup_lat?: number
           pickup_lng?: number
           pickup_note?: string | null
+          rejected_at?: string | null
+          rejection_reason?: string | null
           updated_at?: string
         }
         Relationships: [

@@ -6,7 +6,11 @@ import Link from 'next/link'
 import { Ban, CheckCircle2, ClipboardList, History, Pencil, Save } from 'lucide-react'
 import { updateShop, type ShopActionResult } from '@/lib/admin/shop-actions'
 import type { ShopDetail, ShopListRow } from '@/lib/admin/shop-queries'
-import { SUSPEND_REASON_LABEL, type SuspendReason } from '@/lib/validation/admin-shop'
+import {
+  SHOP_STATUS_LABEL,
+  SUSPEND_REASON_LABEL,
+  type SuspendReason,
+} from '@/lib/validation/admin-shop'
 import type { LatLng, ServiceArea } from '@/types/domain'
 import { LocationPicker } from '@/components/map/location-picker'
 import { StatusBadge } from '@/components/orders/status-badge'
@@ -24,8 +28,17 @@ import { formatDateTimeYangon, formatMmk, formatMyanmarPhone } from '@/lib/utils
 const ACTION_LABEL: Record<string, string> = {
   'shop.suspend': 'Suspended',
   'shop.activate': 'Activated',
+  'shop.approve': 'Confirmed',
+  'shop.reject': 'Rejected',
   'shop.onboard': 'Registered',
 }
+
+const STATUS_TONE = {
+  active: 'green',
+  suspended: 'red',
+  awaiting: 'blue',
+  pending: 'amber',
+} as const
 
 export function ShopDetailModal({
   row,
@@ -37,7 +50,7 @@ export function ShopDetailModal({
   row: ShopListRow | null
   areas: ServiceArea[]
   onClose: () => void
-  onStatus: (row: ShopListRow, action: 'activate' | 'suspend') => void
+  onStatus: (row: ShopListRow, action: 'activate' | 'suspend' | 'approve' | 'reject') => void
   onSaved: (result: ShopActionResult) => void
 }) {
   const [detail, setDetail] = useState<ShopDetail | null>(null)
@@ -82,6 +95,9 @@ export function ShopDetailModal({
   if (!row || !shopId) return null
 
   const suspended = row.status === 'suspended'
+  // The office has not looked at this shop yet, so the decision it is owed is
+  // yes-or-no, not on-or-off.
+  const awaiting = row.status === 'awaiting'
 
   return (
     <Overlay
@@ -95,13 +111,26 @@ export function ShopDetailModal({
             <Pencil />
             {editing ? 'Stop editing' : 'Edit details'}
           </Button>
-          <Button
-            variant={suspended ? 'default' : 'destructive'}
-            onClick={() => onStatus(row, suspended ? 'activate' : 'suspend')}
-          >
-            {suspended ? <CheckCircle2 /> : <Ban />}
-            {suspended ? 'Activate shop' : 'Suspend shop'}
-          </Button>
+          {awaiting ? (
+            <div className="flex gap-2">
+              <Button variant="ghost" onClick={() => onStatus(row, 'reject')}>
+                <Ban />
+                Reject
+              </Button>
+              <Button onClick={() => onStatus(row, 'approve')}>
+                <CheckCircle2 />
+                Confirm shop
+              </Button>
+            </div>
+          ) : (
+            <Button
+              variant={suspended ? 'default' : 'destructive'}
+              onClick={() => onStatus(row, suspended ? 'activate' : 'suspend')}
+            >
+              {suspended ? <CheckCircle2 /> : <Ban />}
+              {suspended ? 'Activate shop' : 'Suspend shop'}
+            </Button>
+          )}
         </div>
       }
     >
@@ -109,7 +138,7 @@ export function ShopDetailModal({
         {/* ---------------------------------------------------------------- */}
         <section className="space-y-3">
           <div className="flex flex-wrap items-center gap-2">
-            <Badge tone={suspended ? 'red' : 'green'}>{suspended ? 'Suspended' : 'Active'}</Badge>
+            <Badge tone={STATUS_TONE[row.status]}>{SHOP_STATUS_LABEL[row.status]}</Badge>
             {!row.ownerActive ? <Badge tone="red">Owner login blocked</Badge> : null}
           </div>
 
@@ -153,6 +182,9 @@ export function ShopDetailModal({
             <Row label="Owner" value={row.ownerName} />
             <Row label="Owner phone" value={formatMyanmarPhone(row.ownerPhone)} />
             <Row label="Shop phone" value={formatMyanmarPhone(row.phone)} />
+            {/* Typed by the shop at setup. For an awaiting row this is most of
+                what the office is deciding on. */}
+            <Row label="Sells" value={row.goodsType ?? '—'} />
             <Row label="Ward" value={row.area ?? '—'} />
             <Row label="Pickup address" value={row.pickupAddress ?? '—'} wide />
             {detail?.shop.pickupNote ? (

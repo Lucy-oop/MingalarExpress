@@ -46,6 +46,10 @@ export type ShopListRow = {
   pickupNote: string | null
   /** `shops.is_active`. False alone means the shop is suspended. */
   shopActive: boolean
+  /** What the shop sells, from its own setup step. */
+  goodsType: string | null
+  /** When the office let it start trading; null means it is still waiting. */
+  approvedAt: string | null
   /** `profiles.is_active` on the owner — this is what actually blocks login. */
   ownerActive: boolean
   status: ShopStatus
@@ -73,6 +77,7 @@ export type ShopListResult = {
     active: number
     suspended: number
     pending: number
+    awaiting: number
     /** Sum of `owed_to_shop` over active + suspended shops. Derived, not a ledger. */
     codPendingClearance: number
     codInFlight: number
@@ -112,7 +117,7 @@ export async function getShopList(): Promise<ShopListResult> {
         .from('shops')
         .select(
           `id, owner_id, name, phone, area_id, pickup_address, pickup_lat, pickup_lng,
-           pickup_note, is_active, created_at,
+           pickup_note, is_active, created_at, goods_type, approved_at, rejected_at,
            profiles!shops_owner_id_fkey (full_name, phone, is_active),
            service_areas!shops_area_id_fkey (name)`,
         )
@@ -185,7 +190,23 @@ export async function getShopList(): Promise<ShopListResult> {
       ownerActive,
       // A locked-out owner is a suspended shop in every way that matters, even
       // if nobody flipped `shops.is_active` — they cannot sign in to use it.
-      status: s.is_active && ownerActive ? 'active' : 'suspended',
+      /*
+        Four states since 0026. `awaiting` and `suspended` used to be the same
+        row -- "not active" -- and the office queue could not tell a shop it had
+        never looked at from one it had switched off.
+
+        A locked-out owner is a suspended shop in every way that matters, even
+        if nobody flipped `shops.is_active`: they cannot sign in to use it.
+      */
+      status: s.rejected_at
+        ? 'suspended'
+        : !s.approved_at
+          ? 'awaiting'
+          : s.is_active && ownerActive
+            ? 'active'
+            : 'suspended',
+      goodsType: s.goods_type ?? null,
+      approvedAt: s.approved_at ?? null,
       joinedAt: s.created_at,
       ownerId: s.owner_id,
       ownerName: owner?.full_name ?? 'Unknown owner',
@@ -225,6 +246,8 @@ export async function getShopList(): Promise<ShopListResult> {
       shopActive: false,
       ownerActive: o.is_active,
       status: 'pending',
+      goodsType: null,
+      approvedAt: null,
       joinedAt: o.created_at,
       ownerId: o.id,
       ownerName: o.full_name,
@@ -248,6 +271,7 @@ export async function getShopList(): Promise<ShopListResult> {
     summary: {
       active: rows.filter((r) => r.status === 'active').length,
       suspended: rows.filter((r) => r.status === 'suspended').length,
+      awaiting: rows.filter((r) => r.status === 'awaiting').length,
       pending: rows.filter((r) => r.status === 'pending').length,
       codPendingClearance: rows.reduce((n, r) => n + r.owedToShop, 0),
       codInFlight: rows.reduce((n, r) => n + r.codInFlight, 0),

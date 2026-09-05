@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
+import type { TablesUpdate } from '@/types/database.types'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { assertRole } from '@/lib/auth/guards'
 import { explainAdminError } from '@/lib/admin/errors'
@@ -89,13 +90,24 @@ export async function setShopStatus(
     return { ok: false, message: 'Check the fields below.', fieldErrors: fieldErrorsOf(parsed.error) }
   }
   const { shopId, action, reason, detail } = parsed.data
-  const suspending = action === 'suspend'
+
+  /*
+    APPROVE AND REJECT ARE THE OFFICE'S FIRST DECISION; activate and suspend are
+    later ones. They share this action because they share everything that
+    matters -- the audit row, the owner's login, the auth-metadata stamp -- and
+    splitting them would mean two places to keep those in step.
+
+    A shop is trading after approve or activate, and not after reject or
+    suspend.
+  */
+  const stopping = action === 'suspend' || action === 'reject'
+  const suspending = stopping
 
   const supabase = await createClient()
 
   const { data: shop } = await supabase
     .from('shops')
-    .select('id, name, owner_id, is_active')
+    .select('id, name, owner_id, is_active, approved_at, rejected_at')
     .eq('id', shopId)
     .maybeSingle()
   if (!shop) return { ok: false, message: 'That shop no longer exists.' }
@@ -108,9 +120,33 @@ export async function setShopStatus(
     .eq('shop_id', shopId)
     .in('status', ['pending', 'assigned', 'picked_up'])
 
+  /*
+    The decision columns, which `tg_shops_guard` (0026) permits only for an
+    admin.
+
+    LETTING A SHOP TRADE ALWAYS CLEARS A REJECTION, and stamps the approval when
+    there was not one. Otherwise activating a rejected shop would leave
+    `rejected_at` set: the table would read Active while `shopApprovalState`
+    still said rejected and every booking stayed blocked, with nothing on either
+    screen to explain why.
+  */
+  const now = new Date().toISOString()
+  const decision: TablesUpdate<'shops'> = {}
+  if (!stopping) {
+    decision.rejected_at = null
+    decision.rejection_reason = null
+    if (!shop.approved_at) {
+      decision.approved_at = now
+      decision.approved_by = ctx.userId
+    }
+  } else if (action === 'reject') {
+    decision.rejected_at = now
+    decision.rejection_reason = [reason, detail].filter(Boolean).join(': ') || null
+  }
+
   const { error: shopError } = await supabase
     .from('shops')
-    .update({ is_active: !suspending })
+    .update({ is_active: !suspending, ...decision })
     .eq('id', shopId)
   if (shopError) return { ok: false, message: explainAdminError(shopError.message) }
 
@@ -141,10 +177,10 @@ export async function setShopStatus(
   // The reason exists to be findable later, so it goes to the audit log rather
   // than only into a toast the operator dismisses.
   await supabase.rpc('write_audit', {
-    p_action: suspending ? 'shop.suspend' : 'shop.activate',
+    p_action: `shop.${action}`,
     p_table: 'shops',
     p_entity_id: shopId,
-    p_before: { is_active: shop.is_active },
+    p_before: { is_active: shop.is_active, approved_at: shop.approved_at, rejected_at: shop.rejected_at },
     p_after: {
       is_active: !suspending,
       reason,
@@ -157,11 +193,15 @@ export async function setShopStatus(
 
   refresh()
 
-  const parts = [
-    suspending
-      ? `${shop.name} suspended${label ? ` — ${label.toLowerCase()}` : ''}.`
-      : `${shop.name} reactivated.`,
-  ]
+  // Four verbs, because "reactivated" is a lie to an owner who has never been
+  // active and "suspended" is a lie to one who was never approved.
+  const VERB: Record<typeof action, string> = {
+    approve: 'confirmed — it can book parcels now',
+    reject: 'rejected',
+    activate: 'reactivated',
+    suspend: 'suspended',
+  }
+  const parts = [`${shop.name} ${VERB[action]}${label ? ` — ${label.toLowerCase()}` : ''}.`]
   if (lockOwner) parts.push('The owner can no longer sign in.')
   else if (suspending) parts.push('The owner keeps access to their other shops.')
   if (suspending && (inFlight ?? 0) > 0) {
