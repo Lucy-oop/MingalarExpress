@@ -6,6 +6,7 @@ import {
   Coins,
   CornerUpLeft,
   Inbox,
+  Info,
   PackagePlus,
   Send,
   Truck,
@@ -14,6 +15,7 @@ import {
   X,
 } from 'lucide-react'
 import { TripVolumeBanner, TripVolumePill } from '@/components/routes/trip-volume-banner'
+import { departBlocker, DEPART_BLOCKER_MESSAGE } from '@/lib/routes/depart-gate'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Select } from '@/components/ui/select'
@@ -83,7 +85,13 @@ export function TripCard({
   const [expanded, setExpanded] = React.useState(trip.status !== 'planned')
 
   const canLoad = trip.status === 'planned' || trip.status === 'loading'
-  const canDepart = canLoad && trip.parcelCount + trip.pickupCount > 0
+  // One reason, mirroring depart_trip's own order. See lib/routes/depart-gate.
+  const blocker = departBlocker({
+    status: trip.status,
+    riderId: trip.riderId,
+    parcelCount: trip.parcelCount,
+    pickupCount: trip.pickupCount,
+  })
   const codHeadroom = route.maxCod - trip.codTotal
   const parcelHeadroom = route.maxParcels - trip.parcelCount
 
@@ -258,7 +266,7 @@ export function TripCard({
           <div className="flex flex-wrap gap-2 border-t pt-3">
             {canLoad ? (
               <>
-                <Button size="sm" disabled={busy || !canDepart} onClick={onDepart}>
+                <Button size="sm" disabled={busy || blocker !== null} onClick={onDepart}>
                   <Send />
                   Depart trip
                 </Button>
@@ -266,6 +274,20 @@ export function TripCard({
                   <X />
                   Cancel run
                 </Button>
+                {/*
+                  Beside the button, as TEXT, and always visible rather than on
+                  hover. A disabled control has `pointer-events-none`, so it can
+                  carry no tooltip and take no focus -- a `title` here would
+                  never fire, which is precisely how this became "the button
+                  does nothing". Stating it up front also means the dispatcher
+                  knows before reaching for it.
+                */}
+                {blocker ? (
+                  <p className="flex items-center gap-1.5 self-center text-xs text-muted-foreground">
+                    <Info className="size-3.5 shrink-0" aria-hidden="true" />
+                    {DEPART_BLOCKER_MESSAGE[blocker]}
+                  </p>
+                ) : null}
               </>
             ) : null}
 
