@@ -2,8 +2,9 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { ArrowLeft, CheckCircle2 } from 'lucide-react'
 import { requireShop } from '@/lib/auth/guards'
-import { getAcceptedPolicyVersion, getPolicyAcceptedAt } from '@/lib/legal/queries'
-import { COD_ADVANCE_POLICY, needsAcceptance } from '@/lib/legal/cod-advance'
+import { getPolicyAcceptedAt, readPolicyAcceptance } from '@/lib/legal/queries'
+import { COD_ADVANCE_POLICY } from '@/lib/legal/cod-advance'
+import { shouldBlock } from '@/lib/legal/gate'
 import { PolicyDocumentView } from '@/components/legal/policy-document'
 import { AcceptPolicyButton } from '@/components/legal/accept-policy-button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -29,11 +30,11 @@ export default async function CodAdvancePolicyPage() {
   const locale = await getLocale()
   const t = translator(locale)
 
-  const [accepted, acceptedAt] = await Promise.all([
-    getAcceptedPolicyVersion(COD_ADVANCE_POLICY.key),
+  const [acceptance, acceptedAt] = await Promise.all([
+    readPolicyAcceptance(COD_ADVANCE_POLICY.key),
     getPolicyAcceptedAt(COD_ADVANCE_POLICY.key),
   ])
-  const outstanding = needsAcceptance(accepted, COD_ADVANCE_POLICY.version)
+  const outstanding = shouldBlock(acceptance, COD_ADVANCE_POLICY.version)
 
   return (
     <div className="mx-auto max-w-3xl space-y-4">

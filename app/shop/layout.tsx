@@ -7,8 +7,9 @@ import { Button } from '@/components/ui/button'
 import { LanguageToggle } from '@/components/shared/language-toggle'
 import { ShopParcelAlert } from '@/components/orders/shop-parcel-alert'
 import { PolicyGate } from '@/components/legal/policy-gate'
-import { getAcceptedPolicyVersion } from '@/lib/legal/queries'
-import { COD_ADVANCE_POLICY, needsAcceptance } from '@/lib/legal/cod-advance'
+import { readPolicyAcceptance } from '@/lib/legal/queries'
+import { COD_ADVANCE_POLICY } from '@/lib/legal/cod-advance'
+import { shouldBlock } from '@/lib/legal/gate'
 import { NewOrderButton, NewOrderFab, ShopNavLinks, ShopTabs } from '@/components/shop/shop-nav'
 import { getLocale } from '@/lib/i18n/locale'
 import { translator } from '@/lib/i18n'
@@ -20,10 +21,15 @@ export default async function ShopLayout({ children }: { children: React.ReactNo
   const locale = await getLocale()
   const t = translator(locale)
 
-  // One indexed lookup per shop page. Cheap, and it has to be current: the
-  // whole point is that the terms stop appearing the moment they are accepted.
-  const acceptedPolicy = await getAcceptedPolicyVersion(COD_ADVANCE_POLICY.key)
-  const policyOutstanding = needsAcceptance(acceptedPolicy, COD_ADVANCE_POLICY.version)
+  /*
+    One indexed lookup per shop page. It has to be current -- the terms must
+    stop appearing the moment they are accepted -- and it FAILS OPEN: a read
+    that errors returns `unknown`, which shouldBlock() answers false to. That is
+    what stops a missing migration or a dropped connection locking every shop
+    out of every page at once. See lib/legal/gate.
+  */
+  const acceptance = await readPolicyAcceptance(COD_ADVANCE_POLICY.key)
+  const gated = shouldBlock(acceptance, COD_ADVANCE_POLICY.version)
 
   return (
     // The locale crosses the boundary as a STRING; every client component below
@@ -71,11 +77,17 @@ export default async function ShopLayout({ children }: { children: React.ReactNo
           {/* One mount for both desktop bands: `order-last w-full` gives it a
               line of its own until xl, where it joins the bar. A third copy in
               the DOM would be the alternative. */}
-          <ShopNavLinks className="order-last hidden min-w-0 w-full overflow-x-auto lg:flex xl:order-none xl:w-auto" />
+          {gated ? null : (
+            <ShopNavLinks className="order-last hidden min-w-0 w-full overflow-x-auto lg:flex xl:order-none xl:w-auto" />
+          )}
 
           <div className="ml-auto flex shrink-0 items-center gap-2">
-            <NewOrderButton className="hidden lg:inline-flex" />
-            <span aria-hidden="true" className="hidden h-6 w-px shrink-0 bg-border lg:block" />
+            {gated ? null : (
+              <>
+                <NewOrderButton className="hidden lg:inline-flex" />
+                <span aria-hidden="true" className="hidden h-6 w-px shrink-0 bg-border lg:block" />
+              </>
+            )}
             {/* Both scripts, both tappable — same reasoning as the rider shell. */}
             <LanguageToggle locale={locale} />
             <form action={signOut}>
@@ -102,13 +114,20 @@ export default async function ShopLayout({ children }: { children: React.ReactNo
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 pb-28 pt-6 lg:pb-6 print:max-w-none print:p-0">
         <ShopParcelAlert userId={profile.id} />
         {children}
-        {/* Shown once per session until accepted, and never blocking: see the
-            note in PolicyGate on why COD advance terms do not gate booking. */}
-        {policyOutstanding ? <PolicyGate doc={COD_ADVANCE_POLICY} /> : null}
       </main>
 
-      <ShopTabs />
-      <NewOrderFab />
+      {/* The gate is z-50 and these are z-20, so they are already covered --
+          this is about not rendering controls nobody can use, and about not
+          leaving the panel one z-index edit away from a tappable New Order
+          button floating over the terms. */}
+      {gated ? null : (
+        <>
+          <ShopTabs />
+          <NewOrderFab />
+        </>
+      )}
+
+      {gated ? <PolicyGate doc={COD_ADVANCE_POLICY} /> : null}
     </div>
     </I18nProvider>
   )

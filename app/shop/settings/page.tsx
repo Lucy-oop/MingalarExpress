@@ -9,8 +9,9 @@ import { Alert } from '@/components/ui/alert'
 import { formatDateTimeYangon, formatMyanmarPhone } from '@/lib/utils'
 import Link from 'next/link'
 import { CheckCircle2, FileText } from 'lucide-react'
-import { getAcceptedPolicyVersion, getPolicyAcceptedAt } from '@/lib/legal/queries'
-import { COD_ADVANCE_POLICY, needsAcceptance } from '@/lib/legal/cod-advance'
+import { getPolicyAcceptedAt, readPolicyAcceptance } from '@/lib/legal/queries'
+import { COD_ADVANCE_POLICY } from '@/lib/legal/cod-advance'
+import { shouldBlock } from '@/lib/legal/gate'
 
 export const metadata: Metadata = { title: 'Shop settings' }
 export const dynamic = 'force-dynamic'
@@ -29,11 +30,11 @@ export default async function ShopSettingsPage() {
     .limit(1)
     .maybeSingle()
 
-  const [acceptedPolicy, policyAcceptedAt] = await Promise.all([
-    getAcceptedPolicyVersion(COD_ADVANCE_POLICY.key),
+  const [acceptance, policyAcceptedAt] = await Promise.all([
+    readPolicyAcceptance(COD_ADVANCE_POLICY.key),
     getPolicyAcceptedAt(COD_ADVANCE_POLICY.key),
   ])
-  const policyOutstanding = needsAcceptance(acceptedPolicy, COD_ADVANCE_POLICY.version)
+  const policyOutstanding = shouldBlock(acceptance, COD_ADVANCE_POLICY.version)
 
   return (
     <div className="space-y-5">

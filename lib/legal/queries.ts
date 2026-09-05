@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import type { AcceptanceRead } from '@/lib/legal/gate'
 
 /**
  * Has this person accepted a policy, and which wording.
@@ -8,8 +9,15 @@ import { createClient } from '@/lib/supabase/server'
  * be — a filter in application code would imply it is the thing protecting the
  * data. Dispatch reads everyone's by the same policy, which is why the caller
  * passes no id at all.
+ *
+ * THE THREE OUTCOMES ARE NOT TWO. This used to answer with `string | null`,
+ * collapsing "no acceptance on file" and "the read itself failed" into the same
+ * value. That was harmless while the terms were a dismissible prompt and is
+ * fatal behind a gate: a missing table or a dropped connection would read as
+ * "has not accepted" and lock every shop out of every page, with a Continue
+ * button failing for the same reason. See shouldBlock() in ./gate.
  */
-export async function getAcceptedPolicyVersion(policyKey: string): Promise<string | null> {
+export async function readPolicyAcceptance(policyKey: string): Promise<AcceptanceRead> {
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('policy_acceptances')
@@ -19,11 +27,14 @@ export async function getAcceptedPolicyVersion(policyKey: string): Promise<strin
     .limit(1)
     .maybeSingle()
 
-  // A policy prompt is not worth taking a page down for. A failed read means we
-  // ask again, which is the safe direction: showing the terms twice is a
-  // nuisance, never showing them is the problem.
-  if (error) return null
-  return data?.version ?? null
+  if (error) {
+    // Loud, because this is the state that silently lets shops past the gate,
+    // and the migration not being pushed is the likeliest cause.
+    console.error(`[policy] could not read acceptance for ${policyKey}: ${error.message}`)
+    return { status: 'unknown' }
+  }
+  if (!data?.version) return { status: 'none' }
+  return { status: 'accepted', version: data.version }
 }
 
 /** When they accepted it, for the "Accepted on …" line on the settings page. */

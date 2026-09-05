@@ -217,17 +217,3 @@ export const COD_ADVANCE_POLICY: PolicyDocument = {
     },
   ],
 }
-
-/**
- * Whether this person still has to accept.
- *
- * Compares against the CURRENT version rather than merely asking "have they
- * ever accepted", because an acceptance of superseded terms is not an
- * acceptance of these ones — which is the whole reason the version is stored.
- */
-export function needsAcceptance(
-  acceptedVersion: string | null | undefined,
-  currentVersion: string = COD_ADVANCE_POLICY_VERSION,
-): boolean {
-  return acceptedVersion !== currentVersion
-}

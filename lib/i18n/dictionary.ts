@@ -321,7 +321,15 @@ export const DICTIONARY = {
   'policy.title': { en: 'COD advance terms', my: 'COD ငွေကြိုရှင်း စည်းကမ်းချက်များ' },
   'policy.accept': { en: 'I accept', my: 'သဘောတူပါသည်' },
   'policy.accepting': { en: 'Saving…', my: 'သိမ်းနေသည်…' },
-  'policy.later': { en: 'Read later', my: 'နောက်မှ ဖတ်မည်' },
+  'policy.continue': { en: 'Continue', my: 'ဆက်လက်ဆောင်ရွက်ရန်' },
+  'policy.readAll': {
+    en: 'I have read all the rules above and agree to them.',
+    my: 'အထက်ပါ စည်းကမ်းချက်အားလုံးကို ဖတ်ရှုပြီး သဘောတူပါသည်။',
+  },
+  'policy.scrollHint': {
+    en: 'Scroll to the end to continue',
+    my: 'ဆက်လုပ်ရန် အောက်ဆုံးအထိ ဖတ်ပါ',
+  },
   'policy.acceptedOn': { en: 'Accepted on {date}', my: '{date} တွင် သဘောတူခဲ့သည်' },
   'policy.notAccepted': { en: 'Not accepted yet', my: 'မသဘောတူရသေးပါ' },
   'policy.readFull': { en: 'Read the full terms', my: 'စည်းကမ်းအပြည့်အစုံ ဖတ်ရန်' },

@@ -4,34 +4,7 @@ import {
   COD_ADVANCE_POLICY,
   COD_ADVANCE_POLICY_KEY,
   COD_ADVANCE_POLICY_VERSION,
-  needsAcceptance,
 } from './cod-advance'
-
-describe('needsAcceptance', () => {
-  test('never accepted', () => {
-    assert.equal(needsAcceptance(null), true)
-    assert.equal(needsAcceptance(undefined), true)
-  })
-
-  test('accepted the current wording', () => {
-    assert.equal(needsAcceptance(COD_ADVANCE_POLICY_VERSION), false)
-  })
-
-  /**
-   * THE REASON THE VERSION COLUMN EXISTS. Agreeing to the September text is not
-   * agreeing to whatever replaces it, so a bump has to re-ask — otherwise
-   * changing terms that carry liability would happen silently behind an
-   * acceptance nobody gave.
-   */
-  test('accepted a superseded wording still needs asking', () => {
-    assert.equal(needsAcceptance('2026-01-01'), true)
-    assert.equal(needsAcceptance('2026-09-05', '2026-12-01'), true)
-  })
-
-  test('an empty string is not an acceptance', () => {
-    assert.equal(needsAcceptance(''), true)
-  })
-})
 
 describe('the document itself', () => {
   test('carries its own key and version, so nothing has to pair them by hand', () => {
