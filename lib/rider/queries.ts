@@ -79,11 +79,20 @@ function toJob(row: RawJob, extra?: Partial<RiderJob>): RiderJob {
     commission: row.rider_commission_amount,
     routeKm: row.route_distance_km,
     leg: row.trip_leg,
-    // A return travels BACK to the shop, so every address the rider is shown
-    // has to flip. The shop's pickup point is already on the order; nothing new
-    // is needed, but showing the customer's address here would send the rider
-    // to the wrong end of the city.
-    ...(row.trip_leg === 'return'
+    /*
+      BOTH LEGS THAT END AT THE SHOP FLIP, and until now only one of them did.
+
+        return : carried BACK to the shop after resolution='return'
+        pickup : collected FROM the shop and carried to the hub
+
+      Only 'return' was handled, so every pickup-leg parcel showed the
+      CUSTOMER's address, called the customer, and sent Directions to the
+      customer — for a job whose entire content is "go to the shop". It has gone
+      unnoticed because no pickup leg has been loaded in production yet.
+
+      The shop's pickup point is already on the order; nothing new is needed.
+    */
+    ...(row.trip_leg === 'return' || row.trip_leg === 'pickup'
       ? {
           dropoffAddress: row.pickup_address,
           dropoffArea: null,
@@ -218,8 +227,11 @@ export async function getRiderFeed(riderId: string): Promise<RiderFeed> {
     all.map((r) => ({
       ...toJob(r, { stopOrder: stopOrder[r.dropoff_area_id ?? ''] ?? null }),
       leg: r.trip_leg,
+      // Same rule as toJob above: a pickup leg is measured to the SHOP, not to
+      // a customer it never visits. Getting this wrong put collections in the
+      // drive order by an address the rider will never go to.
       destination:
-        r.trip_leg === 'return'
+        r.trip_leg === 'return' || r.trip_leg === 'pickup'
           ? { lat: r.pickup_lat, lng: r.pickup_lng }
           : { lat: r.dropoff_lat, lng: r.dropoff_lng },
     })),

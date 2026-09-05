@@ -1067,5 +1067,108 @@ end $$;
 reset role;
 select set_config('request.jwt.claims','',false);
 
+-- ----------------------------------------------------------------------------
+--  0025 — one visit to the shop
+--
+--  Three parcels from ONE shop, which is the ten-parcel case in miniature: the
+--  rider makes one stop at the counter, and recording it used to mean three
+--  separate advance_order calls.
+-- ----------------------------------------------------------------------------
+do $$
+declare
+  v_route uuid;
+  v_rider uuid;
+  t_id    uuid;
+  ids     uuid[];
+  n       int;
+begin
+  select id into v_route from public.routes where code = 'ROUTE_LOCAL';
+
+  -- Any rider not already out: trips_rider_open_uk allows one open run each,
+  -- and earlier blocks in this file leave runs behind.
+  select r.id into v_rider
+    from public.rider_profiles r
+   where not exists (
+     select 1 from public.trips t
+      where t.rider_id = r.id and t.status in ('planned','loading','departed'))
+   limit 1;
+  if v_rider is null then
+    raise notice 'SKIP: every rider is already out, cannot test collection';
+    return;
+  end if;
+
+  insert into public.orders (
+    shop_id, pickup_address, pickup_lat, pickup_lng, customer_name, customer_phone,
+    dropoff_address, dropoff_area_id, dropoff_lat, dropoff_lng, parcel_desc,
+    payment_method, cod_amount, delivery_fee, created_by)
+  select 'aaaaaaaa-0000-0000-0000-000000000001',
+    'No. 24, Thitsar Road, San Pya Ward, Thingangyun, Yangon', 16.8478, 96.1693,
+    'Armful Customer ' || g, '+95978' || lpad(g::text, 7, '0'),
+    'Stop ' || g || ', Thitsar Road, Thingangyun', null,
+    16.8500, 96.1700, 'Parcel', 'prepaid', 0, 2500,
+    '33333333-3333-3333-3333-333333333333'
+  from generate_series(1, 3) g;
+
+  select array_agg(o.id) into ids
+    from public.orders o
+   where o.customer_name like 'Armful Customer %';
+
+  t_id := (public.plan_trip(v_route)).id;
+  perform public.assign_trip_rider(t_id, v_rider);
+  perform public.load_trip(t_id, ids, 'delivery');
+  perform public.depart_trip(t_id, 'collection test, deliberately short');
+
+  -- 1. ALL OR NOTHING, tested BEFORE the good case so "nothing moved" is
+  --    observable. One bad id in the array must leave all three untouched: a
+  --    partly-applied armful is the failure the rider cannot see, because they
+  --    walk out of the shop believing they have ten.
+  begin
+    perform public.advance_orders(ids || '00000000-0000-0000-0000-0000000000ff'::uuid,
+                                  'picked_up');
+    raise exception 'FAIL: advance_orders accepted an unknown parcel';
+  exception when others then
+    if sqlerrm like 'FAIL:%' then raise; end if;
+    select count(*) into n from public.orders where id = any(ids) and status = 'assigned';
+    if n <> 3 then
+      raise exception 'FAIL: % of 3 parcels stayed put after a rollback, expected 3', n;
+    end if;
+    raise notice 'PASS: one bad parcel rolls the whole armful back';
+  end;
+
+  -- 2. THE ARMFUL. One call, three parcels, one transaction.
+  n := public.advance_orders(ids, 'picked_up');
+  if n <> 3 then raise exception 'FAIL: advance_orders reported %, expected 3', n; end if;
+  select count(*) into n from public.orders where id = any(ids) and status = 'picked_up';
+  if n <> 3 then raise exception 'FAIL: % of 3 parcels advanced', n; end if;
+  raise notice 'PASS: three parcels collected in one call';
+
+  -- 3. An empty array is refused, not silently reported as success.
+  begin
+    perform public.advance_orders(array[]::uuid[], 'picked_up');
+    raise exception 'FAIL: advance_orders accepted an empty array';
+  exception when others then
+    if sqlerrm like 'FAIL:%' then raise; end if;
+    raise notice 'PASS: an empty armful is refused';
+  end;
+
+  -- 4. THE PHANTOM STOP. A pickup leg is complete at picked_up, but close_trip
+  --    used to release only failures -- so it kept trip_id forever and came
+  --    back as a stop on every later run.
+  update public.orders set trip_leg = 'pickup' where id = ids[1];
+  perform public.advance_order(ids[2], 'delivered', 16.85, 96.17,
+                               ids[2]::text || '/p.webp', 'Received');
+  perform public.advance_order(ids[3], 'delivered', 16.85, 96.17,
+                               ids[3]::text || '/p.webp', 'Received');
+  perform public.return_trip(t_id);
+  perform public.close_trip(t_id);
+
+  select count(*) into n from public.orders
+   where id = ids[1] and trip_id is null and trip_leg is null;
+  if n <> 1 then
+    raise exception 'FAIL: a collected pickup leg is still attached to its trip';
+  end if;
+  raise notice 'PASS: a finished collection lets go of the run';
+end $$;
+
 \echo ''
 \echo '####  ALL ROUTE / TRIP CHECKS PASSED  ####'
