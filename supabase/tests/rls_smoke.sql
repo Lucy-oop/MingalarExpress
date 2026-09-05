@@ -26,7 +26,7 @@ begin
   -- trip_status enum; 0016 removed notification_outbox again and 0017 added
   -- order_notes. A bare count is a blunt instrument, but it is the one assertion
   -- that notices a table shipped without RLS being considered at all.
-  if t <> 16 then raise exception 'FAIL: expected 16 public tables, found %', t; end if;
+  if t <> 17 then raise exception 'FAIL: expected 17 public tables, found %', t; end if;
   if e <> 9  then raise exception 'FAIL: expected 9 enums, found %', e; end if;
 
   -- And the count is only useful because of this: a new table with RLS left off
@@ -489,6 +489,66 @@ begin
 
   delete from public.orders where shop_id = v_second;
   delete from public.shops where id = v_second;
+end $$;
+
+-- ----------------------------------------------------------------------------
+--  policy_acceptances (0023) -- the record has to be forgery-proof and
+--  edit-proof, because the whole reason it exists is to answer "did this shop
+--  agree to clause 6" after a parcel turned out to hold a rock.
+-- ----------------------------------------------------------------------------
+do $$
+declare
+  v_shop uuid := '33333333-3333-3333-3333-333333333333';
+  v_rival uuid := '77777777-7777-7777-7777-777777777777';
+  n int;
+begin
+  -- Two acceptances on file, one per person, written as the service role.
+  insert into public.policy_acceptances (profile_id, policy_key, version)
+  values (v_shop, 'cod_advance', '2026-09-05'), (v_rival, 'cod_advance', '2026-09-05')
+  on conflict do nothing;
+
+  perform set_config('request.jwt.claims',
+    format('{"sub":"%s","role":"authenticated"}', v_shop), false);
+  execute 'set role authenticated';
+
+  -- 1. own row, and only own
+  select count(*) into n from public.policy_acceptances;
+  if n <> 1 then
+    raise exception 'FAIL: shop sees % acceptance rows, expected only its own', n;
+  end if;
+  select count(*) into n from public.policy_acceptances where profile_id = v_rival;
+  if n <> 0 then raise exception 'FAIL: shop can read the rival''s acceptance'; end if;
+  raise notice 'PASS: a shop reads its own acceptance and none of the rival''s';
+
+  -- 2. cannot sign in somebody else's name
+  begin
+    insert into public.policy_acceptances (profile_id, policy_key, version)
+    values (v_rival, 'cod_advance', 'forged');
+    raise exception 'FAIL: a shop filed an acceptance under another profile_id';
+  exception when insufficient_privilege then
+    raise notice 'PASS: an acceptance cannot be filed in someone else''s name';
+  end;
+
+  -- 3. APPEND-ONLY. No update policy and no delete policy exist, so neither is
+  --    permitted for anyone -- including the person who wrote the row.
+  update public.policy_acceptances set version = 'tampered' where profile_id = v_shop;
+  if found then raise exception 'FAIL: an acceptance was edited'; end if;
+  delete from public.policy_acceptances where profile_id = v_shop;
+  if found then raise exception 'FAIL: an acceptance was deleted'; end if;
+  select count(*) into n from public.policy_acceptances where profile_id = v_shop;
+  if n <> 1 then raise exception 'FAIL: the shop''s own acceptance did not survive'; end if;
+  raise notice 'PASS: an acceptance cannot be edited or deleted, by anyone';
+
+  -- 4. the office can read every row, which is who needs it in a dispute
+  perform set_config('request.jwt.claims',
+    '{"sub":"22222222-2222-2222-2222-222222222222","role":"authenticated"}', false);
+  select count(*) into n from public.policy_acceptances;
+  if n < 2 then raise exception 'FAIL: dispatch sees % acceptance rows, expected all', n; end if;
+  raise notice 'PASS: dispatch reads every acceptance';
+
+  reset role;
+  perform set_config('request.jwt.claims','',false);
+  delete from public.policy_acceptances;
 end $$;
 
 \echo ''

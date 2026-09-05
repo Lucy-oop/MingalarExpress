@@ -311,6 +311,38 @@ export type Database = {
           },
         ]
       }
+      policy_acceptances: {
+        Row: {
+          accepted_at: string
+          id: string
+          policy_key: string
+          profile_id: string
+          version: string
+        }
+        Insert: {
+          accepted_at?: string
+          id?: string
+          policy_key: string
+          profile_id: string
+          version: string
+        }
+        Update: {
+          accepted_at?: string
+          id?: string
+          policy_key?: string
+          profile_id?: string
+          version?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "policy_acceptances_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       order_notes: {
         Row: {
           author_id: string | null

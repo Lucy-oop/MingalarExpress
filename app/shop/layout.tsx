@@ -6,6 +6,9 @@ import { BrandMark } from '@/components/shared/brand-mark'
 import { Button } from '@/components/ui/button'
 import { LanguageToggle } from '@/components/shared/language-toggle'
 import { ShopParcelAlert } from '@/components/orders/shop-parcel-alert'
+import { PolicyGate } from '@/components/legal/policy-gate'
+import { getAcceptedPolicyVersion } from '@/lib/legal/queries'
+import { COD_ADVANCE_POLICY, needsAcceptance } from '@/lib/legal/cod-advance'
 import { NewOrderButton, NewOrderFab, ShopNavLinks, ShopTabs } from '@/components/shop/shop-nav'
 import { getLocale } from '@/lib/i18n/locale'
 import { translator } from '@/lib/i18n'
@@ -16,6 +19,11 @@ export default async function ShopLayout({ children }: { children: React.ReactNo
   const { profile } = await requireShop()
   const locale = await getLocale()
   const t = translator(locale)
+
+  // One indexed lookup per shop page. Cheap, and it has to be current: the
+  // whole point is that the terms stop appearing the moment they are accepted.
+  const acceptedPolicy = await getAcceptedPolicyVersion(COD_ADVANCE_POLICY.key)
+  const policyOutstanding = needsAcceptance(acceptedPolicy, COD_ADVANCE_POLICY.version)
 
   return (
     // The locale crosses the boundary as a STRING; every client component below
@@ -94,6 +102,9 @@ export default async function ShopLayout({ children }: { children: React.ReactNo
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 pb-28 pt-6 lg:pb-6 print:max-w-none print:p-0">
         <ShopParcelAlert userId={profile.id} />
         {children}
+        {/* Shown once per session until accepted, and never blocking: see the
+            note in PolicyGate on why COD advance terms do not gate booking. */}
+        {policyOutstanding ? <PolicyGate doc={COD_ADVANCE_POLICY} /> : null}
       </main>
 
       <ShopTabs />

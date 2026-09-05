@@ -314,6 +314,26 @@ export const DICTIONARY = {
     my: 'ပထမ {n} ခုသာ ပြသည် — ရက်စွဲ ကျဉ်းအောင်ချုံ့ပြီး ကျန်ကို ထပ်ပရင့်ထုတ်ပါ။',
   },
 
+  // ---- policy ---------------------------------------------------------------
+  // The DOCUMENT itself is Burmese only under both toggles and lives in
+  // lib/legal/ -- a machine translation of a liability clause is a different
+  // contract. These are only the controls around it.
+  'policy.title': { en: 'COD advance terms', my: 'COD ငွေကြိုရှင်း စည်းကမ်းချက်များ' },
+  'policy.accept': { en: 'I accept', my: 'သဘောတူပါသည်' },
+  'policy.accepting': { en: 'Saving…', my: 'သိမ်းနေသည်…' },
+  'policy.later': { en: 'Read later', my: 'နောက်မှ ဖတ်မည်' },
+  'policy.acceptedOn': { en: 'Accepted on {date}', my: '{date} တွင် သဘောတူခဲ့သည်' },
+  'policy.notAccepted': { en: 'Not accepted yet', my: 'မသဘောတူရသေးပါ' },
+  'policy.readFull': { en: 'Read the full terms', my: 'စည်းကမ်းအပြည့်အစုံ ဖတ်ရန်' },
+  'policy.settingsCard': {
+    en: 'COD advance settlement',
+    my: 'COD ငွေကြိုရှင်းဝန်ဆောင်မှု',
+  },
+  'policy.settingsHint': {
+    en: 'The terms for advancing COD before the customer pays.',
+    my: 'ဝယ်သူထံမှ ငွေမရမီ COD ကြိုရှင်းပေးခြင်းဆိုင်ရာ စည်းကမ်းချက်များ။',
+  },
+
   // ---- shop dashboard -------------------------------------------------------
   'sd.waiting': { en: 'Waiting for a rider', my: 'ရိုက်ဒါ စောင့်နေ' },
   'sd.onTheWay': { en: 'On the way', my: 'လမ်းပေါ်' },

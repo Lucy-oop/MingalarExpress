@@ -6,7 +6,11 @@ import { createClient } from '@/lib/supabase/server'
 import { ShopSettingsForm } from '@/components/orders/shop-settings-form'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert } from '@/components/ui/alert'
-import { formatMyanmarPhone } from '@/lib/utils'
+import { formatDateTimeYangon, formatMyanmarPhone } from '@/lib/utils'
+import Link from 'next/link'
+import { CheckCircle2, FileText } from 'lucide-react'
+import { getAcceptedPolicyVersion, getPolicyAcceptedAt } from '@/lib/legal/queries'
+import { COD_ADVANCE_POLICY, needsAcceptance } from '@/lib/legal/cod-advance'
 
 export const metadata: Metadata = { title: 'Shop settings' }
 export const dynamic = 'force-dynamic'
@@ -24,6 +28,12 @@ export default async function ShopSettingsPage() {
     )
     .limit(1)
     .maybeSingle()
+
+  const [acceptedPolicy, policyAcceptedAt] = await Promise.all([
+    getAcceptedPolicyVersion(COD_ADVANCE_POLICY.key),
+    getPolicyAcceptedAt(COD_ADVANCE_POLICY.key),
+  ])
+  const policyOutstanding = needsAcceptance(acceptedPolicy, COD_ADVANCE_POLICY.version)
 
   return (
     <div className="space-y-5">
@@ -62,6 +72,33 @@ export default async function ShopSettingsPage() {
           Ask the Mingalar Express office to register your shop and pickup point.
         </Alert>
       )}
+
+      {/* The permanent home for the terms. The interstitial in the shell is
+          dismissible, so this is where a shop comes back to read what they
+          agreed to -- or to accept, if they pressed "Read later". */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">{t('policy.settingsCard')}</CardTitle>
+          <CardDescription>{t('policy.settingsHint')}</CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-wrap items-center justify-between gap-3 text-sm">
+          {policyOutstanding || !policyAcceptedAt ? (
+            <span className="font-medium text-amber-700">{t('policy.notAccepted')}</span>
+          ) : (
+            <span className="flex items-center gap-1.5 text-emerald-800">
+              <CheckCircle2 className="size-4 shrink-0" aria-hidden="true" />
+              {t('policy.acceptedOn').replace('{date}', formatDateTimeYangon(policyAcceptedAt))}
+            </span>
+          )}
+          <Link
+            href="/shop/policy/cod-advance"
+            className="flex items-center gap-1.5 font-medium text-primary hover:underline"
+          >
+            <FileText className="size-4" />
+            {t('policy.readFull')}
+          </Link>
+        </CardContent>
+      </Card>
     </div>
   )
 }
