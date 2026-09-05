@@ -7,7 +7,6 @@ import { translator } from '@/lib/i18n'
 import { searchShopOrders } from '@/lib/orders/queries'
 import { OrderTable } from '@/components/orders/order-table'
 import { OrderFilters } from '@/components/orders/order-filters'
-import { ShopLiveRefresh } from '@/components/orders/shop-live-refresh'
 import { buttonVariants } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
 import { cn } from '@/lib/utils'
@@ -74,7 +73,6 @@ export default async function ShopOrdersPage({
 
   return (
     <div className="space-y-4">
-      <ShopLiveRefresh />
 
       <h1 className="text-xl font-semibold">{t('so.title')}</h1>
 

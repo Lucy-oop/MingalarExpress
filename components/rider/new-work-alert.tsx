@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { PackagePlus, X } from 'lucide-react'
-import { alertNewWork, arm } from '@/lib/rider/chime'
+import { alertNewWork, arm } from '@/lib/notify/chime'
 import { localeNumber } from '@/lib/i18n'
 import { useLocale, useT } from '@/components/shared/i18n-provider'
 import { Button } from '@/components/ui/button'

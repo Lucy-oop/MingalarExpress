@@ -1,7 +1,11 @@
 'use client'
 
 /**
- * The "new parcel" sound.
+ * The "something happened" sound, shared by the rider and shop apps.
+ *
+ * Lives outside lib/rider because there is nothing rider-specific in it — it was
+ * written for the rider's new-work banner and the shop's pickup banner wants the
+ * identical behaviour, including the gesture-arming below.
  *
  * SYNTHESISED, NOT A FILE. Two reasons: an mp3 is a network request a rider on
  * two bars in a stairwell may not get, and a bundled asset is one more thing to

@@ -5,6 +5,7 @@ import { signOut } from '@/lib/auth/actions'
 import { BrandMark } from '@/components/shared/brand-mark'
 import { Button } from '@/components/ui/button'
 import { LanguageToggle } from '@/components/shared/language-toggle'
+import { ShopParcelAlert } from '@/components/orders/shop-parcel-alert'
 import { getLocale } from '@/lib/i18n/locale'
 import { translator } from '@/lib/i18n'
 import { I18nProvider } from '@/components/shared/i18n-provider'
@@ -69,6 +70,14 @@ export default async function ShopLayout({ children }: { children: React.ReactNo
           })}
         </nav>
       </header>
+      {/* In the layout, not on individual pages: a shop should hear that a rider
+          has taken a parcel while they are on the booking form adding the next
+          one. It also carries the debounced refresh that ShopLiveRefresh used to
+          do, so there is one socket rather than one per page. */}
+      <div className="px-4 pt-4">
+        <ShopParcelAlert userId={profile.id} />
+      </div>
+
       <main className="mx-auto max-w-6xl px-4 py-6">{children}</main>
     </div>
     </I18nProvider>

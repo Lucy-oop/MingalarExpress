@@ -154,6 +154,34 @@ export const DICTIONARY = {
   'shop.nav.money': { en: 'Money', my: 'ငွေစာရင်း' },
   'shop.nav.settings': { en: 'Shop settings', my: 'ဆိုင် အပြင်အဆင်' },
 
+  // ---- a parcel moved -------------------------------------------------------
+  //
+  // `picked_up` means two different things and the shop is told which: on a
+  // pickup leg the rider took it off the shop's own counter, on a delivery leg
+  // it left the hub for the customer. See lib/orders/parcel-alert.
+  'shop.alert.collectedOne': {
+    en: 'A rider has collected 1 parcel from your shop',
+    my: 'ရိုက်ဒါက သင့်ဆိုင်မှ ပါဆယ် ၁ ခု ယူသွားပါပြီ',
+  },
+  'shop.alert.collectedMany': {
+    en: 'A rider has collected {n} parcels from your shop',
+    my: 'ရိုက်ဒါက သင့်ဆိုင်မှ ပါဆယ် {n} ခု ယူသွားပါပြီ',
+  },
+  'shop.alert.onTheWayOne': {
+    en: '1 parcel is on its way to the customer',
+    my: 'ပါဆယ် ၁ ခု ဝယ်သူဆီ ထွက်သွားပါပြီ',
+  },
+  'shop.alert.onTheWayMany': {
+    en: '{n} parcels are on their way to customers',
+    my: 'ပါဆယ် {n} ခု ဝယ်သူများဆီ ထွက်သွားပါပြီ',
+  },
+  'shop.alert.movedMany': {
+    en: '{n} of your parcels have just moved',
+    my: 'သင့်ပါဆယ် {n} ခု လှုပ်ရှားသွားပါပြီ',
+  },
+  'shop.alert.whileAway': { en: 'while you were away', my: 'သင်မရှိစဉ်' },
+  'shop.alert.dismiss': { en: 'Dismiss', my: 'ပိတ်မည်' },
+
   // ---- booking form ---------------------------------------------------------
   'book.title': { en: 'Book a parcel', my: 'ပါဆယ် တင်ရန်' },
   'book.subtitle': {

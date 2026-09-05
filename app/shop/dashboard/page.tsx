@@ -6,7 +6,6 @@ import { getLocale } from '@/lib/i18n/locale'
 import { translator } from '@/lib/i18n'
 import { getShopDashboard } from '@/lib/orders/queries'
 import { OrderTable } from '@/components/orders/order-table'
-import { ShopLiveRefresh } from '@/components/orders/shop-live-refresh'
 import { Kpi } from '@/components/admin/kpi'
 import { buttonVariants } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
@@ -28,7 +27,6 @@ export default async function ShopDashboardPage() {
 
   return (
     <div className="space-y-6">
-      <ShopLiveRefresh />
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
