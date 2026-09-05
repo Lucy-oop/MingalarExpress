@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
 import { PolicyDocumentView } from '@/components/legal/policy-document'
 import { acceptPolicy } from '@/lib/legal/actions'
+import { POLICY_BTN } from '@/components/legal/accept-policy-button'
 import { useT } from '@/components/shared/i18n-provider'
 import type { PolicyDocument } from '@/lib/legal/cod-advance'
 
@@ -80,11 +81,11 @@ export function PolicyGate({ doc }: { doc: PolicyDocument }) {
       title={t('policy.title')}
       onClose={later}
       footer={
-        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-          <Button variant="ghost" size="touch" onClick={later} disabled={busy}>
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
+          <Button variant="ghost" className={POLICY_BTN} onClick={later} disabled={busy}>
             {t('policy.later')}
           </Button>
-          <Button size="touch" onClick={() => void accept()} disabled={busy}>
+          <Button className={POLICY_BTN} onClick={() => void accept()} disabled={busy}>
             {busy ? t('policy.accepting') : t('policy.accept')}
           </Button>
         </div>

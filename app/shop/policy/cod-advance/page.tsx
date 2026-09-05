@@ -64,12 +64,10 @@ export default async function CodAdvancePolicyPage() {
         suggest the record was in doubt.
       */}
       {outstanding ? (
-        <div className="flex justify-end">
-          <AcceptPolicyButton
-            policyKey={COD_ADVANCE_POLICY.key}
-            version={COD_ADVANCE_POLICY.version}
-          />
-        </div>
+        <AcceptPolicyButton
+          policyKey={COD_ADVANCE_POLICY.key}
+          version={COD_ADVANCE_POLICY.version}
+        />
       ) : null}
     </div>
   )
