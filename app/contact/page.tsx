@@ -7,6 +7,9 @@ import { OFFICE_HOURS, contactChannels } from '@/lib/contact/channels'
 import { getPublicSettings } from '@/lib/settings/public'
 import { getLocale } from '@/lib/i18n/locale'
 import { translator } from '@/lib/i18n'
+import type { MessageKey } from '@/lib/i18n/dictionary'
+import { ROLE_HOME, optionalUser } from '@/lib/auth/guards'
+import type { UserRole } from '@/types/domain'
 import { buttonVariants } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 
@@ -28,10 +31,25 @@ export const metadata: Metadata = { title: 'Contact us' }
  * `:lang(my) { line-height: 1.9 }` rule in globals.css never fires and the
  * Burmese diacritics collide.
  */
+/**
+ * Where the way out points, and what it is called.
+ *
+ * A shop owner gets the specific label because they are who actually arrives
+ * here signed in — the help card on their settings page is the way in. A rider
+ * or an admin would be told "Back to my shop", which is simply false, so they
+ * get the neutral one.
+ */
+function backLink(role: UserRole | null): { href: string; label: MessageKey } {
+  if (!role) return { href: '/auth/login', label: 'contact.backToSignIn' }
+  if (role === 'shop_owner') return { href: ROLE_HOME[role], label: 'contact.backToShop' }
+  return { href: ROLE_HOME[role], label: 'contact.back' }
+}
+
 export default async function ContactPage() {
   const locale = await getLocale()
   const t = translator(locale)
-  const { supportPhone } = await getPublicSettings()
+  const [{ supportPhone }, viewer] = await Promise.all([getPublicSettings(), optionalUser()])
+  const back = backLink(viewer?.profile.role ?? null)
 
   const channels = contactChannels(supportPhone)
   const call = channels.find((c) => c.id === 'phone')
@@ -85,14 +103,18 @@ export default async function ContactPage() {
         </section>
       ) : null}
 
-      {/* Everyone who lands here came from the sign-in footer. Without this the
-          page is a dead end and the only way back is the browser button. */}
-      <Link
-        href="/auth/login"
-        className={buttonVariants({ variant: 'ghost', block: true, size: 'sm' })}
-      >
+      {/* Without this the page is a dead end and the only way out is the
+          browser's back button.
+
+          IT HAS TO KNOW WHO IS READING IT. This started as a fixed "Back to
+          sign in", written when the sign-in footer was the only way in. The
+          help card on /shop/settings broke that assumption: a signed-in owner
+          following it was offered a lone button that reads like a way to log
+          themselves out. `optionalUser` never redirects, so a public page can
+          ask. */}
+      <Link href={back.href} className={buttonVariants({ variant: 'ghost', block: true, size: 'sm' })}>
         <ArrowLeft />
-        {t('contact.backToSignIn')}
+        {t(back.label)}
       </Link>
 
       <p className="text-center text-xs text-muted-foreground">Serving Greater Yangon</p>

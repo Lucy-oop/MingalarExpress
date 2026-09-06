@@ -388,9 +388,12 @@ export const DICTIONARY = {
   'ss.awaiting': { en: 'Waiting for confirmation', my: 'အတည်ပြုချက် စောင့်ဆိုင်းနေသည်' },
   'ss.rejected': { en: 'Shop not approved', my: 'ဆိုင်ကို အတည်မပြုပါ' },
   'ss.help': { en: 'Need help?', my: 'အကူအညီ လိုပါသလား' },
+  // Said "call ... during working hours" until the card grew Viber and Telegram
+  // rows and an hours line of its own. It named no hours, and "call" stopped
+  // being true the moment there was more than one way to get through.
   'ss.helpHint': {
-    en: 'Call the Mingalar Express office during working hours.',
-    my: 'ရုံးချိန်အတွင်း Mingalar Express ရုံးသို့ ဖုန်းဆက်ပါ။',
+    en: 'The office can help with a parcel, a payment or your account.',
+    my: 'ပါဆယ်၊ ငွေပေးချေမှု သို့မဟုတ် အကောင့်ကိစ္စများအတွက် ရုံးမှ ကူညီပေးပါမည်။',
   },
   'ss.noShop': { en: 'No shop registered', my: 'ဆိုင် မမှတ်ပုံတင်ရသေး' },
 
@@ -418,6 +421,12 @@ export const DICTIONARY = {
   },
   'contact.follow': { en: 'Follow us', my: 'ကျွန်ုပ်တို့ကို စောင့်ကြည့်ရန်' },
   'contact.backToSignIn': { en: 'Back to sign in', my: 'အကောင့်ဝင်ရန် ပြန်သွားရန်' },
+  // For somebody who arrived already signed in. Offering THEM "Back to sign in"
+  // reads as a way to log out, which is the opposite of what the link does.
+  // Shop owners get the specific label because they are who actually gets here
+  // signed in -- the help card on their settings page is the way in.
+  'contact.backToShop': { en: 'Back to my shop', my: 'ကျွန်ုပ်၏ ဆိုင်သို့ ပြန်သွားရန်' },
+  'contact.back': { en: 'Go back', my: 'ပြန်သွားရန်' },
   'contact.more': { en: 'More ways to reach us', my: 'အခြား ဆက်သွယ်နည်းများ' },
 
   // ---- offline --------------------------------------------------------------

@@ -9,10 +9,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Alert } from '@/components/ui/alert'
 import { formatDateTimeYangon, formatMyanmarPhone } from '@/lib/utils'
 import Link from 'next/link'
-import { CheckCircle2, FileText, LifeBuoy } from 'lucide-react'
+import { ArrowRight, CheckCircle2, Clock, FileText, LifeBuoy } from 'lucide-react'
 import { getPolicyAcceptedAt, readPolicyAcceptance } from '@/lib/legal/queries'
 import { COD_ADVANCE_POLICY } from '@/lib/legal/cod-advance'
 import { ContactSupport } from '@/components/shared/contact-support'
+import { ContactChannelList } from '@/components/shared/contact-channels'
+import { OFFICE_HOURS, contactChannels } from '@/lib/contact/channels'
 import { getPublicSettings } from '@/lib/settings/public'
 import { shouldBlock } from '@/lib/legal/gate'
 import {
@@ -60,6 +62,12 @@ export default async function ShopSettingsPage() {
       })
     : null
   const blocked = state && state !== 'active' ? SHOP_BLOCKED_MESSAGE[state] : null
+
+  // Phone, both Viber numbers and Telegram, straight on the card. Facebook and
+  // TikTok are left to /contact: a settings page is not where somebody goes to
+  // watch a video, and burying the fastest channel one page deeper was the
+  // whole problem with the old card.
+  const support = contactChannels(supportPhone).filter((c) => c.kind === 'support')
 
   return (
     <div className="space-y-5">
@@ -125,12 +133,26 @@ export default async function ShopSettingsPage() {
           </CardTitle>
           <CardDescription>{t('ss.helpHint')}</CardDescription>
         </CardHeader>
-        <CardContent>
-          <ContactSupport
-            phone={supportPhone}
-            moreLabel={t('contact.more')}
-            className="text-base"
-          />
+        <CardContent className="space-y-3">
+          {/* Hours WITH the channels, not in a footnote. Same reason /contact
+              puts them under the call button: a number with no hours is a
+              promise the office breaks at ten at night. */}
+          <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
+            <Clock className="size-3.5 shrink-0" aria-hidden="true" />
+            {t('contact.hours')} · {OFFICE_HOURS[locale]}
+          </p>
+
+          <ContactChannelList channels={support} />
+
+          {/* Facebook and TikTok live one tap away, for the shop that wants
+              them. Quiet, because nobody opens settings to find TikTok. */}
+          <Link
+            href="/contact"
+            className="inline-flex items-center gap-1 rounded text-sm text-muted-foreground hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            {t('contact.more')}
+            <ArrowRight className="size-3 shrink-0" aria-hidden="true" />
+          </Link>
         </CardContent>
       </Card>
 

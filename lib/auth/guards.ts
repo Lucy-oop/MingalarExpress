@@ -49,6 +49,48 @@ export async function requireUser(): Promise<AuthContext> {
 }
 
 /**
+ * Who is reading this, if anyone. NEVER redirects.
+ *
+ * Every other guard in this file is a gate: no session means a redirect to
+ * login. A PUBLIC page cannot do that -- being signed out is the normal case
+ * there, not a failure -- but it may still want to know, so `/contact` can
+ * offer a shop owner the way back to their shop instead of a button reading
+ * "Back to sign in", which on a signed-in screen looks like a way to log out.
+ *
+ * NOT AN AUTHORISATION CHECK, and nothing may be granted on the strength of it.
+ * It answers a presentation question. `requireRole` and RLS remain the gates.
+ *
+ * Cheap where it matters: with no session cookie `getUser()` returns null
+ * without a network call, so an anonymous visitor pays nothing.
+ */
+export async function optionalUser(): Promise<AuthContext | null> {
+  try {
+    const supabase = await createClient()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+    if (!user) return null
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', user.id)
+      .single()
+
+    // A disabled account is treated as signed out here. It is about to be
+    // signed out for real by the next gate it meets, and pointing it at a
+    // role home it cannot open would be a worse dead end than the login page.
+    if (!profile || !profile.is_active) return null
+
+    return { userId: user.id, email: user.email ?? null, profile }
+  } catch {
+    // A public page must render whatever auth is doing. Same rule
+    // `getPublicSettings` follows for the same reason.
+    return null
+  }
+}
+
+/**
  * Require one of `allowed`. A signed-in user with the wrong role is sent to
  * their own home, not to login -- bouncing a logged-in rider to a login form
  * reads as "you are logged out" and produces support calls.
