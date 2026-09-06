@@ -64,12 +64,12 @@ export default async function ShopDashboardPage() {
           </Link>
           {/* The button is the answer for most owners; the number is for the
               one whose address the map cannot find. */}
-          <ContactSupport phone={supportPhone} className="mt-3 text-sm" />
+          <ContactSupport phone={supportPhone} moreLabel={t('contact.more')} className="mt-3 text-sm" />
         </Alert>
       ) : blocked ? (
         <Alert tone="warning" title={t('sd.awaiting')}>
           <span className="block">{blocked}</span>
-          <ContactSupport phone={supportPhone} className="mt-2 text-sm" />
+          <ContactSupport phone={supportPhone} moreLabel={t('contact.more')} className="mt-2 text-sm" />
         </Alert>
       ) : null}
 

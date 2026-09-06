@@ -394,6 +394,32 @@ export const DICTIONARY = {
   },
   'ss.noShop': { en: 'No shop registered', my: 'ဆိုင် မမှတ်ပုံတင်ရသေး' },
 
+  // ---- contact us -----------------------------------------------------------
+  //
+  //  The first PUBLIC page with two languages. The landing, tracking and
+  //  offline pages are still English-only hardcoded strings -- but this is the
+  //  page somebody reads when a parcel has gone quiet, and Burmese earns more
+  //  here than anywhere else on the open web side of the app.
+  //
+  //  Channel NAMES are deliberately absent: "Viber" is "Viber" in both, and
+  //  dictionary.test.ts rightly fails a key whose two languages match. They
+  //  live in lib/contact/channels.ts as the proper nouns they are.
+  'contact.title': { en: 'Contact us', my: 'ဆက်သွယ်ရန်' },
+  'contact.intro': {
+    en: 'Ask us about a parcel, a payment, or your shop account.',
+    my: 'ပါဆယ်၊ ငွေပေးချေမှု သို့မဟုတ် ဆိုင်အကောင့်အတွက် ဆက်သွယ်မေးမြန်းနိုင်ပါသည်။',
+  },
+  'contact.call': { en: 'Call the office', my: 'ရုံးကို ဖုန်းခေါ်ရန်' },
+  'contact.hours': { en: 'Office hours', my: 'ရုံးဖွင့်ချိန်' },
+  'contact.help': { en: 'Message us', my: 'စာပို့ရန်' },
+  'contact.helpHint': {
+    en: 'Viber is the fastest way to reach the office.',
+    my: 'ရုံးသို့ အမြန်ဆုံး ဆက်သွယ်နိုင်သည်မှာ Viber ဖြစ်ပါသည်။',
+  },
+  'contact.follow': { en: 'Follow us', my: 'ကျွန်ုပ်တို့ကို စောင့်ကြည့်ရန်' },
+  'contact.backToSignIn': { en: 'Back to sign in', my: 'အကောင့်ဝင်ရန် ပြန်သွားရန်' },
+  'contact.more': { en: 'More ways to reach us', my: 'အခြား ဆက်သွယ်နည်းများ' },
+
   // ---- offline --------------------------------------------------------------
   'offline.saved': {
     en: 'No signal — saved on your phone. It will send when you reconnect.',

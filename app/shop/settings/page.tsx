@@ -75,7 +75,7 @@ export default async function ShopSettingsPage() {
       {blocked && state && state !== 'active' ? (
         <Alert tone="warning" title={t(BLOCKED_TITLE[state])}>
           <span className="block">{blocked}</span>
-          <ContactSupport phone={supportPhone} className="mt-2 text-sm" />
+          <ContactSupport phone={supportPhone} moreLabel={t('contact.more')} className="mt-2 text-sm" />
         </Alert>
       ) : null}
 
@@ -109,26 +109,30 @@ export default async function ShopSettingsPage() {
           </Link>
           {/* The button is the answer for most owners; the number is for the
               one whose address the map cannot find. */}
-          <ContactSupport phone={supportPhone} className="mt-3 text-sm" />
+          <ContactSupport phone={supportPhone} moreLabel={t('contact.more')} className="mt-3 text-sm" />
         </Alert>
       )}
 
       {/* The permanent home for the number, so it is somewhere findable and not
-          only on the screens that happen to be broken. */}
-      {supportPhone ? (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <LifeBuoy className="size-4 shrink-0 text-brand-gold" aria-hidden="true" />
-              {t('ss.help')}
-            </CardTitle>
-            <CardDescription>{t('ss.helpHint')}</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <ContactSupport phone={supportPhone} className="text-base" />
-          </CardContent>
-        </Card>
-      ) : null}
+          only on the screens that happen to be broken. No longer gated on there
+          being a number: the card also carries the link to /contact, which
+          exists whether or not the office ever filled that field in. */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <LifeBuoy className="size-4 shrink-0 text-brand-gold" aria-hidden="true" />
+            {t('ss.help')}
+          </CardTitle>
+          <CardDescription>{t('ss.helpHint')}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ContactSupport
+            phone={supportPhone}
+            moreLabel={t('contact.more')}
+            className="text-base"
+          />
+        </CardContent>
+      </Card>
 
       {/* The permanent home for the terms. The interstitial in the shell is
           dismissible, so this is where a shop comes back to read what they
