@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { BadgeCheck, Banknote, ChevronDown, Pencil, ShieldOff, Wallet } from 'lucide-react'
 import { remitCod, setRiderActive, updateRider, type AdminResult } from '@/lib/admin/actions'
 import type { AdminRider } from '@/lib/admin/queries'
+import { RiderSetupButton } from '@/components/admin/rider-setup-dialog'
 import type { ServiceArea } from '@/types/domain'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -209,6 +210,10 @@ export function RiderRoster({
                           <Wallet className="size-3.5" />
                           Ledger
                         </Link>
+                        {/* First phone, replacement phone, wiped phone. Not a
+                            way to sign in day to day — the PWA holds the
+                            session once they are in. */}
+                        <RiderSetupButton riderId={r.id} riderName={r.fullName} />
                         <Button
                           size="sm"
                           variant="outline"
