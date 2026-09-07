@@ -122,6 +122,53 @@ export async function setUpShop(
   }
 
   /*
+    TELL THE OFFICE, and leave a record that this shop was self-registered.
+
+    Every other path that creates a shop writes one of these -- `shop.onboard`
+    when the office types it in, `shop.approve` / `shop.reject` when it decides
+    -- and self-registration was the one that wrote nothing. So a shop could
+    appear in the list with no trace of who created it or when, which is exactly
+    the question asked when something about it turns out to be wrong.
+    `audit_log` is append-only and its insert policy is revoked, so this is the
+    only way in.
+    
+    The actor is the OWNER, not the office: this runs under their session, so
+    `write_audit` records their uid and the shop_owner role, which is the truth
+    of what happened. Deliberately after the insert and deliberately not fatal --
+    a shop that exists but went unlogged is a gap in the trail; a registration
+    refused because the logging failed is a merchant turned away.
+  */
+  const { data: created } = await supabase
+    .from('shops')
+    .select('id')
+    .eq('owner_id', userId)
+    .limit(1)
+    .maybeSingle()
+
+  if (created) {
+    const { error: auditError } = await supabase.rpc('write_audit', {
+      p_action: 'shop.register',
+      p_table: 'shops',
+      p_entity_id: created.id,
+      p_before: null,
+      p_after: {
+        name: v.name,
+        phone: v.phone,
+        goods_type: v.goodsType,
+        pickup_address: v.pickupAddress,
+        // Recorded because it decides whether the shop can book at all, and a
+        // registration that produced no pin is the one the office may need to
+        // help with.
+        has_pin: point !== null,
+        source: 'self_service',
+      },
+    })
+    if (auditError) {
+      console.error(`[setUpShop] audit failed for shop ${created.id}: ${auditError.message}`)
+    }
+  }
+
+  /*
     Redirect from the action rather than returning ok and leaving the client to
     work it out: the dashboard is where the next thing to do lives -- including
     "add your pickup location" when this insert stored no pin -- and a form still
