@@ -56,8 +56,73 @@ export function OrderTable({
     )
   }
 
+  /*
+    Grouped once, rendered twice. Both layouts need the same day bands, and
+    computing them per presentation would let the two drift.
+  */
+  const groups = grouped
+    ? groupByDay(orders, (o) => o.created_at)
+    : [{ key: '', rows: orders }]
+  const today = yangonToday()
+
   return (
-    <div className="overflow-x-auto rounded-lg border">
+    <>
+      {/*
+        PHONE: A LIST, NOT A TABLE. Seven columns cannot fit 360px — the table
+        below carries `min-w-[720px]`, which is 2x overflow on the screen most
+        shop owners actually hold. There is no CSS that makes it fit, so below
+        `sm` the same rows render as one card each: code and status on the first
+        line, then the customer, the destination and the money.
+
+        Duplicated in the DOM rather than shuffled with CSS. Twenty-five rows
+        twice is cheap, and one grid trying to be both a table and a stack ends
+        up honest at neither width.
+      */}
+      <div className="space-y-3 sm:hidden">
+        {groups.map((group) => (
+          <section key={group.key || 'all'} className="space-y-2">
+            {group.key ? (
+              <h3 className="px-1 text-xs font-semibold text-muted-foreground">
+                {formatDayHeader(group.key, today, locale)}
+              </h3>
+            ) : null}
+            {group.rows.map((o) => (
+              <Link
+                key={o.id}
+                href={`/shop/orders/${o.id}`}
+                className="block rounded-lg border bg-card p-3 active:bg-muted/50"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <span className="font-mono text-xs font-semibold text-primary">{o.code}</span>
+                  <StatusBadge status={o.status} />
+                </div>
+                <p className="mt-1.5 font-medium">{o.customer_name}</p>
+                <p className="text-sm text-muted-foreground">
+                  {formatMyanmarPhone(o.customer_phone)}
+                </p>
+                <p className="mt-1 text-sm text-muted-foreground">{o.dropoff_address}</p>
+                <dl className="mt-2 flex flex-wrap gap-x-4 gap-y-1 border-t pt-2 text-sm">
+                  <div className="flex gap-1.5">
+                    <dt className="text-muted-foreground">COD</dt>
+                    <dd className="font-medium tabular-nums">
+                      {o.payment_method === 'cod' ? formatMmk(o.cod_amount) : '—'}
+                    </dd>
+                  </div>
+                  <div className="flex gap-1.5">
+                    <dt className="text-muted-foreground">Fee</dt>
+                    <dd className="tabular-nums">{formatMmk(o.delivery_fee)}</dd>
+                  </div>
+                  <div className="ml-auto text-xs tabular-nums text-muted-foreground">
+                    {formatDateTimeYangon(o.created_at)}
+                  </div>
+                </dl>
+              </Link>
+            ))}
+          </section>
+        ))}
+      </div>
+
+    <div className="hidden overflow-x-auto rounded-lg border sm:block">
       <table className="w-full min-w-[720px] text-sm">
         <thead className="bg-muted/60 text-left text-xs uppercase tracking-wide text-muted-foreground">
           <tr>
@@ -70,10 +135,7 @@ export function OrderTable({
             <th className="px-3 py-2 font-medium">Created</th>
           </tr>
         </thead>
-        {(grouped
-          ? groupByDay(orders, (o) => o.created_at)
-          : [{ key: '', rows: orders }]
-        ).map((group) => (
+        {groups.map((group) => (
           <tbody key={group.key || 'all'} className="divide-y">
             {group.key ? (
               <tr>
@@ -85,7 +147,7 @@ export function OrderTable({
                   scope="colgroup"
                   className="bg-muted/50 px-3 py-1.5 text-left text-xs font-semibold"
                 >
-                  {formatDayHeader(group.key, yangonToday(), locale)}
+                  {formatDayHeader(group.key, today, locale)}
                 </th>
               </tr>
             ) : null}
@@ -124,5 +186,6 @@ export function OrderTable({
         ))}
       </table>
     </div>
+    </>
   )
 }
