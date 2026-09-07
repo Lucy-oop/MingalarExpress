@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { PHONE_TAKEN_ADMIN, phoneTaken } from '@/lib/auth/phone'
 import { assertRole } from '@/lib/auth/guards'
 import { explainAdminError } from '@/lib/admin/errors'
 import {
@@ -85,6 +86,21 @@ export async function registerRider(
     }
   }
 
+  /*
+    THE NUMBER HAS TO BE FREE BEFORE GOTRUE IS ASKED TO CREATE THE USER.
+
+    `profiles.phone` carries a partial UNIQUE index and the profile row is
+    written by tg_on_auth_user_created INSIDE the auth.users insert, so a reused
+    number raises 23505 and rolls the whole thing back. What comes back is
+    "Database error creating new user" -- no code, no field, status 500 -- which
+    is what an operator was being shown for the ordinary mistake of reusing a
+    number. `myanmarPhone` has already normalised this to +959…, so it compares
+    against what the trigger will store.
+  */
+  if (await phoneTaken(v.phone)) {
+    return { ok: false, message: PHONE_TAKEN_ADMIN, fieldErrors: { phone: [PHONE_TAKEN_ADMIN] } }
+  }
+
   const { data: created, error } = await service.auth.admin.createUser({
     email: v.email,
     password: v.password,
@@ -98,6 +114,18 @@ export async function registerRider(
     if (/already been registered|already exists/i.test(message)) {
       return { ok: false, message: 'An account with that email already exists.', fieldErrors: { email: ['Already registered'] } }
     }
+    /*
+      The check above is not a lock, so two admins can claim one number in the
+      same instant. Asked again rather than matched on the message: the
+      constraint name is in the Postgres error but NOT in what supabase-js
+      returns -- verified against staging -- so there is nothing in the string
+      to match on. If the number was free a moment ago and is taken now, that is
+      the race, and saying so is better than "Database error creating new user".
+    */
+    if (await phoneTaken(v.phone)) {
+      return { ok: false, message: PHONE_TAKEN_ADMIN, fieldErrors: { phone: [PHONE_TAKEN_ADMIN] } }
+    }
+    console.error(`[registerRider] unhandled auth error status=${(error as { status?: number })?.status ?? 0}: ${message}`)
     return { ok: false, message }
   }
 

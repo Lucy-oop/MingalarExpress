@@ -6,7 +6,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getSupabaseEnv } from '@/lib/env'
 import { ROLE_HOME } from '@/lib/auth/guards'
 import { loginSchema, registerSchema } from '@/lib/validation/schemas'
-import { createAdminClient } from '@/lib/supabase/admin'
+import { PHONE_TAKEN, phoneTaken } from '@/lib/auth/phone'
 import { explainSignUpError } from '@/lib/auth/errors'
 import { toE164Myanmar } from '@/lib/utils'
 
@@ -108,40 +108,6 @@ export async function signIn(
 
   revalidatePath('/', 'layout')
   redirect(safeNext(formData.get('next')) ?? ROLE_HOME[profile.role])
-}
-
-const PHONE_TAKEN =
-  'This phone number is already registered. Sign in instead, or use another number.'
-
-/**
- * Is this number already on a profile?
- *
- * USES THE SERVICE ROLE, deliberately, and this is the one place in the app
- * where that is right for a read. Sign-up is unauthenticated: there is no
- * session for RLS to scope, and `profiles` is readable by nobody anonymous --
- * correctly, since it holds every rider's and every shop owner's phone number.
- * The alternative is a SECURITY DEFINER RPC granted to anon, which is the same
- * disclosure through more machinery and a migration.
- *
- * What crosses the boundary is one boolean about a number the caller already
- * typed. It does let someone probe whether a given number is registered -- the
- * same disclosure the form already makes for an email one line above.
- */
-async function phoneTaken(e164: string): Promise<boolean> {
-  try {
-    const admin = createAdminClient()
-    const { data } = await admin
-      .from('profiles')
-      .select('id')
-      .eq('phone', e164)
-      .limit(1)
-      .maybeSingle()
-    return !!data
-  } catch {
-    // Never block a signup because this check could not run. The unique index
-    // is still there; the worst case is the old opaque error, not a bad row.
-    return false
-  }
 }
 
 export async function signUpShop(

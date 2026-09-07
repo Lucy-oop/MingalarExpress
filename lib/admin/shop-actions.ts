@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/server'
 import type { TablesUpdate } from '@/types/database.types'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { setupLinkFor } from '@/lib/auth/setup-link'
+import { PHONE_TAKEN_ADMIN, phoneTaken } from '@/lib/auth/phone'
 import { assertRole } from '@/lib/auth/guards'
 import { explainAdminError } from '@/lib/admin/errors'
 import {
@@ -406,11 +407,17 @@ export async function onboardShop(
         fieldErrors: { ownerEmail: ['Already registered'] },
       }
     }
-    // profiles.phone is uniquely indexed, so the signup trigger rejects a reused number.
-    if (/duplicate key|profiles_phone_key/i.test(message)) {
+    /*
+      Asked of the database, not read off the message. This branch used to match
+      /duplicate key|profiles_phone_key/ and had therefore never once fired:
+      the constraint name is in the Postgres error but supabase-js returns only
+      "Database error creating new user", with no code and no field. Verified
+      against staging while fixing the same bug on the rider path.
+    */
+    if (v.ownerPhone && (await phoneTaken(v.ownerPhone))) {
       return {
         ok: false,
-        message: 'That mobile number is already on another account.',
+        message: PHONE_TAKEN_ADMIN,
         fieldErrors: { ownerPhone: ['Already in use'] },
       }
     }
