@@ -2,10 +2,18 @@ import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { activeHref } from './active'
 
-/** The shop shell's four destinations, plus the booking route. */
+/**
+ * The shop shell's five destinations, plus the booking route.
+ *
+ * Kept in step with `MATCHABLE` in components/shop/shop-nav.tsx by hand. The
+ * duplication is deliberate — this file tests the matcher, not the component —
+ * but a destination added there and not here is simply untested, which is how
+ * /shop/notifications nearly shipped uncovered.
+ */
 const SHOP = [
   '/shop/dashboard',
   '/shop/orders',
+  '/shop/notifications',
   '/shop/money',
   '/shop/settings',
   '/shop/orders/new',
@@ -17,6 +25,7 @@ describe('activeHref — the shop shell', () => {
     assert.equal(activeHref('/shop/money', SHOP), '/shop/money')
     assert.equal(activeHref('/shop/settings', SHOP), '/shop/settings')
     assert.equal(activeHref('/shop/orders', SHOP), '/shop/orders')
+    assert.equal(activeHref('/shop/notifications', SHOP), '/shop/notifications')
   })
 
   test('a parcel and the label sheet both keep Parcels lit', () => {

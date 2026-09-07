@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Coins, LayoutDashboard, PackagePlus, Store, Table2 } from 'lucide-react'
+import { Bell, Coins, LayoutDashboard, PackagePlus, Store, Table2 } from 'lucide-react'
 import { activeHref } from '@/lib/nav/active'
 import { useT } from '@/components/shared/i18n-provider'
 import { buttonVariants } from '@/components/ui/button'
@@ -25,12 +25,13 @@ import type { MessageKey } from '@/lib/i18n'
 const BOOKING_HREF = '/shop/orders/new'
 
 /**
- * Four destinations. Booking is not among them: it is an action, drawn as the
+ * Five destinations. Booking is not among them: it is an action, drawn as the
  * one filled control in the shell.
  */
 const NAV: Array<{ href: string; key: MessageKey; icon: typeof LayoutDashboard }> = [
   { href: '/shop/dashboard', key: 'shop.nav.dashboard', icon: LayoutDashboard },
   { href: '/shop/orders', key: 'shop.nav.orders', icon: Table2 },
+  { href: '/shop/notifications', key: 'shop.nav.notifications', icon: Bell },
   { href: '/shop/money', key: 'shop.nav.money', icon: Coins },
   { href: '/shop/settings', key: 'shop.nav.settings', icon: Store },
 ]

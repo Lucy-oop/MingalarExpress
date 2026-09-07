@@ -220,6 +220,7 @@ export const DICTIONARY = {
   // Burmese stays ပါဆယ် (parcel) rather than the အော်ဒါ loanword, matching every
   // other string in the shop panel.
   'shop.nav.new': { en: 'New Order', my: 'ပါဆယ် တင်ရန်' },
+  'shop.nav.notifications': { en: 'Updates', my: 'အသိပေးချက်' },
   'shop.nav.money': { en: 'Money', my: 'ငွေစာရင်း' },
   'shop.nav.settings': { en: 'Shop settings', my: 'ဆိုင် အပြင်အဆင်' },
 
@@ -419,6 +420,36 @@ export const DICTIONARY = {
   'sd.recent': { en: 'Recent parcels', my: 'လတ်တလော ပါဆယ်များ' },
   'sd.notSetUp': { en: 'Set up your shop', my: 'သင့်ဆိုင်ကို ပြင်ဆင်ပါ' },
   'sd.awaiting': { en: 'Not able to book yet', my: 'ယခုအချိန် မတင်နိုင်သေးပါ' },
+
+  // ---- updates --------------------------------------------------------------
+  //
+  //  What happened to a shop's parcels, read when they open the app. Derived
+  //  from order_status_events, so it cannot disagree with the parcels
+  //  themselves. NOT a messaging system: 0016 removed the SMS outbox and the
+  //  office still rings a shop when something needs deciding.
+  'sn.title': { en: 'Updates', my: 'အသိပေးချက်များ' },
+  'sn.hint': {
+    en: 'What has happened to your parcels. Newest first.',
+    my: 'သင့်ပါဆယ်များ၏ အခြေအနေ။ အသစ်ဆုံး အပေါ်တွင်။',
+  },
+  'sn.empty': { en: 'Nothing has happened yet', my: 'ဘာမှ မရှိသေးပါ' },
+  'sn.emptyHint': {
+    en: 'Once a rider collects or delivers a parcel, it shows here.',
+    my: 'ရိုက်ဒါမှ ပါဆယ် ယူပြီး သို့မဟုတ် ပို့ပြီးလျှင် ဒီတွင် ပေါ်ပါမည်။',
+  },
+  'sn.new': { en: '{n} new', my: 'အသစ် {n}' },
+  'sn.collected': { en: 'Collected from you', my: 'သင့်ဆီမှ ယူပြီး' },
+  'sn.notCollected': { en: 'Could not be collected', my: 'ယူမရပါ' },
+  'sn.deliveryFailed': { en: 'Delivery did not happen', my: 'ပို့မရပါ' },
+  'sn.returned': { en: 'Back with you', my: 'သင့်ဆီ ပြန်ရောက်' },
+  'sn.delivered': { en: 'Delivered', my: 'ပို့ပြီး' },
+  'sn.parcels': { en: '{n} parcels', my: 'ပါဆယ် {n}' },
+  'sn.parcelOne': { en: '1 parcel', my: 'ပါဆယ် ၁' },
+  'sn.reason': { en: 'Reason given', my: 'အကြောင်းအရင်း' },
+  'sn.needsYou': {
+    en: 'Some of these are waiting on your decision.',
+    my: 'အချို့သည် သင့်ဆုံးဖြတ်ချက်ကို စောင့်နေပါသည်။',
+  },
 
   // ---- shop orders list -----------------------------------------------------
   'so.title': { en: 'My parcels', my: 'ကျွန်ုပ်၏ ပါဆယ်များ' },

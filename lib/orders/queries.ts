@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { groupEvents, type NotificationGroup } from '@/lib/orders/notifications'
 import { isoDaysAgo, nextDay, yangonToday } from '@/lib/admin/day'
 import type { Order, OrderStatus } from '@/types/domain'
 import { MAX_LABELS } from '@/lib/orders/label'
@@ -112,6 +113,49 @@ export type ShopDashboard = {
  * column for the open COD orders and adds them up here. That is a handful of
  * kilobytes even for a busy shop, and it is exact.
  */
+/**
+ * What has happened to this shop's parcels, newest first.
+ *
+ * SCOPED BY RLS, not by a filter. `ose_read` already restricts
+ * `order_status_events` to the caller's own shop through `owns_shop`, and
+ * adding `.eq('shop_id', …)` here would imply the filter is what protects the
+ * data. It is not — same reasoning as `getRiderFeed`.
+ *
+ * The reason comes from the EVENT's `note`, not from `orders.fail_reason`: see
+ * the note on `EventRow`.
+ */
+export async function getShopNotifications(limit = 120): Promise<NotificationGroup[]> {
+  const supabase = await createClient()
+
+  const { data, error } = await supabase
+    .from('order_status_events')
+    .select('id, from_status, to_status, note, created_at, order_id, orders:order_id (code, customer_name)')
+    // The four a shop is told about. `assigned` is dispatch moving work around.
+    .in('to_status', ['picked_up', 'failed', 'returned', 'delivered'])
+    .order('created_at', { ascending: false })
+    .limit(limit)
+
+  // Chrome on a dashboard, not the dashboard: a feed that cannot load must not
+  // take the page down with it.
+  if (error || !data) return []
+
+  return groupEvents(
+    data.map((raw) => {
+      const order = raw.orders as unknown as { code: string; customer_name: string } | null
+      return {
+        id: Number(raw.id),
+        fromStatus: raw.from_status,
+        toStatus: raw.to_status as string,
+        createdAt: raw.created_at,
+        orderId: raw.order_id,
+        code: order?.code ?? '—',
+        customerName: order?.customer_name ?? '',
+        failReason: raw.note,
+      }
+    }),
+  )
+}
+
 export async function getShopDashboard(): Promise<ShopDashboard> {
   const supabase = await createClient()
 
