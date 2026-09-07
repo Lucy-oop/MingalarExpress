@@ -131,6 +131,22 @@ export function groupEvents(rows: readonly EventRow[]): NotificationGroup[] {
 }
 
 /**
+ * Whether ONE entry is newer than the reader's marker — the singular of
+ * `unseenCount`, and deliberately the same rule.
+ *
+ * It exists because the two disagreed. The shop feed marked a row new with
+ * `seen !== null && at > seen`, so a shop that had NEVER looked saw nothing
+ * highlighted, while `unseenCount` counted every group. One of them had to be
+ * wrong; a first visit should show what was missed, so no marker means new.
+ */
+export function isNewSince(at: string, since: string | null): boolean {
+  if (!since) return true
+  const mark = Date.parse(since)
+  if (Number.isNaN(mark)) return true
+  return Date.parse(at) > mark
+}
+
+/**
  * How many entries are newer than the reader's last visit. `null` means they
  * have never looked, which counts as "all of them" — a first shift should show
  * the backlog, not an empty bell.

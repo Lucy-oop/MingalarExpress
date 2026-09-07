@@ -25,7 +25,7 @@
  * database.
  */
 
-import { unseenCount } from '@/lib/orders/notifications'
+import { isNewSince, unseenCount } from '@/lib/orders/notifications'
 
 /**
  * One line in the feed.
@@ -110,4 +110,4 @@ export function officeNotices(shops: readonly ShopRegistration[]): OfficeNotice[
  * cases (never looked, unparseable marker), and a second copy would be a second
  * place to get them wrong.
  */
-export { unseenCount }
+export { unseenCount, isNewSince }

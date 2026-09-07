@@ -6,7 +6,7 @@ import { BrandMark } from '@/components/shared/brand-mark'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { AdminNav } from '@/components/admin/admin-nav'
-import { NoticeBell } from '@/components/admin/notice-bell'
+import { AdminNoticeBell } from '@/components/admin/notice-bell'
 import { getOfficeNotices } from '@/lib/admin/shop-queries'
 import { officeNotices } from '@/lib/admin/notices'
 import { createClient } from '@/lib/supabase/server'
@@ -43,7 +43,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
             <BrandMark tagline={false} className="text-left" />
           </Link>
           <div className="flex items-center gap-2 sm:gap-3">
-            <NoticeBell notices={notices} seenAt={me?.notices_seen_at ?? null} />
+            <AdminNoticeBell notices={notices} seenAt={me?.notices_seen_at ?? null} />
             <Badge tone={admin ? 'gold' : 'blue'}>
               {admin ? 'Super Admin' : 'Dispatcher'}
             </Badge>

@@ -14,6 +14,9 @@ import { NewOrderButton, NewOrderFab, ShopNavLinks, ShopTabs } from '@/component
 import { getLocale } from '@/lib/i18n/locale'
 import { translator } from '@/lib/i18n'
 import { I18nProvider } from '@/components/shared/i18n-provider'
+import { ShopNoticeBell } from '@/components/shop/shop-notice-bell'
+import { getShopNotifications } from '@/lib/orders/queries'
+import { createClient } from '@/lib/supabase/server'
 
 export default async function ShopLayout({ children }: { children: React.ReactNode }) {
   // Second of three checks (middleware → here → RLS). See lib/auth/guards.ts.
@@ -30,6 +33,20 @@ export default async function ShopLayout({ children }: { children: React.ReactNo
   */
   const acceptance = await readPolicyAcceptance(COD_ADVANCE_POLICY.key)
   const gated = shouldBlock(acceptance, COD_ADVANCE_POLICY.version)
+
+  /*
+    THE FEED IS HEADER CHROME, so neither half may break a page: the query
+    swallows its own error and returns [], and the marker falls back to null,
+    which `isNewSince` reads as "everything is new" rather than throwing.
+
+    A short slice, not the page's 120. `shop-parcel-alert` already refreshes
+    every shop page on a realtime event, so this count moves on its own.
+  */
+  const supabase = await createClient()
+  const [notices, { data: me }] = await Promise.all([
+    getShopNotifications(24),
+    supabase.from('profiles').select('notices_seen_at').eq('id', profile.id).maybeSingle(),
+  ])
 
   return (
     // The locale crosses the boundary as a STRING; every client component below
@@ -112,6 +129,11 @@ export default async function ShopLayout({ children }: { children: React.ReactNo
                 <NewOrderButton className="hidden lg:inline-flex" />
                 <span aria-hidden="true" className="hidden h-6 w-px shrink-0 bg-border lg:block" />
               </>
+            )}
+            {/* Left of the language toggle, matching the office header. Hidden
+                while the policy gate is up: nothing behind it is reachable. */}
+            {gated ? null : (
+              <ShopNoticeBell groups={notices} seenAt={me?.notices_seen_at ?? null} />
             )}
             {/* Both scripts, both tappable — same reasoning as the rider shell. */}
             <LanguageToggle locale={locale} />

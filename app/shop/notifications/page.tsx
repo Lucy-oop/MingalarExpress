@@ -3,6 +3,7 @@ import { requireShop } from '@/lib/auth/guards'
 import { getLocale } from '@/lib/i18n/locale'
 import { translator } from '@/lib/i18n'
 import { getShopNotifications } from '@/lib/orders/queries'
+import { createClient } from '@/lib/supabase/server'
 import { NotificationFeed } from '@/components/orders/notification-feed'
 
 export const metadata: Metadata = { title: 'Updates' }
@@ -28,7 +29,18 @@ export default async function ShopNotificationsPage() {
   const { userId } = await requireShop()
   const locale = await getLocale()
   const t = translator(locale)
-  const groups = await getShopNotifications()
+  const supabase = await createClient()
+
+  /*
+    The read marker comes from the server now, not localStorage, so the first
+    paint highlights the right rows. Falls back to null -- which `isNewSince`
+    reads as "everything is new" -- rather than throwing on a page whose whole
+    job is to show what happened.
+  */
+  const [groups, { data: me }] = await Promise.all([
+    getShopNotifications(),
+    supabase.from('profiles').select('notices_seen_at').eq('id', userId).maybeSingle(),
+  ])
 
   return (
     <div className="space-y-4" lang={locale}>
@@ -36,7 +48,7 @@ export default async function ShopNotificationsPage() {
         <h1 className="text-xl font-semibold">{t('sn.title')}</h1>
         <p className="text-sm text-muted-foreground">{t('sn.hint')}</p>
       </div>
-      <NotificationFeed groups={groups} userId={userId} />
+      <NotificationFeed groups={groups} seenAt={me?.notices_seen_at ?? null} />
     </div>
   )
 }

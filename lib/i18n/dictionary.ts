@@ -246,7 +246,6 @@ export const DICTIONARY = {
   // Burmese stays ပါဆယ် (parcel) rather than the အော်ဒါ loanword, matching every
   // other string in the shop panel.
   'shop.nav.new': { en: 'New Order', my: 'ပါဆယ် တင်ရန်' },
-  'shop.nav.notifications': { en: 'Updates', my: 'အသိပေးချက်' },
   'shop.nav.money': { en: 'Money', my: 'ငွေစာရင်း' },
   /*
     A SHORT LABEL FOR THE TAB, and the long one kept for prose. 'Shop settings'
@@ -540,6 +539,8 @@ export const DICTIONARY = {
     en: 'What has happened to your parcels. Newest first.',
     my: 'သင့်ပါဆယ်များ၏ အခြေအနေ။ အသစ်ဆုံး အပေါ်တွင်။',
   },
+  // The drawer shows the recent ones; 120 events belong on the page.
+  'sn.seeAll': { en: 'See all updates', my: 'အားလုံး ကြည့်ရန်' },
   'sn.empty': { en: 'Nothing has happened yet', my: 'ဘာမှ မရှိသေးပါ' },
   'sn.emptyHint': {
     en: 'Once a rider collects or delivers a parcel, it shows here.',

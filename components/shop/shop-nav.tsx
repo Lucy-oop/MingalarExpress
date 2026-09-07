@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Bell, Coins, LayoutDashboard, PackagePlus, Store, Table2 } from 'lucide-react'
+import { Coins, LayoutDashboard, PackagePlus, Store, Table2 } from 'lucide-react'
 import { activeHref } from '@/lib/nav/active'
 import { useT } from '@/components/shared/i18n-provider'
 import { buttonVariants } from '@/components/ui/button'
@@ -31,7 +31,6 @@ const BOOKING_HREF = '/shop/orders/new'
 const NAV: Array<{ href: string; key: MessageKey; icon: typeof LayoutDashboard }> = [
   { href: '/shop/dashboard', key: 'shop.nav.dashboard', icon: LayoutDashboard },
   { href: '/shop/orders', key: 'shop.nav.orders', icon: Table2 },
-  { href: '/shop/notifications', key: 'shop.nav.notifications', icon: Bell },
   { href: '/shop/money', key: 'shop.nav.money', icon: Coins },
   { href: '/shop/settings', key: 'shop.nav.settingsTab', icon: Store },
 ]
@@ -116,14 +115,18 @@ export function ShopTabs() {
       className="fixed inset-x-0 bottom-0 z-20 border-t bg-background pb-[env(safe-area-inset-bottom)] lg:hidden"
     >
       {/*
-        FIVE COLUMNS FOR FIVE DESTINATIONS. This was grid-cols-4 while NAV held
-        four; adding Updates in 01f63ce put a fifth child into a four-column
-        grid, so it wrapped onto a second row and doubled the height of a FIXED
-        bottom bar — covering the content above it on every phone. The count is
-        pinned by a test in shop-nav.test.ts, because a Tailwind class cannot be
-        derived from NAV.length without defeating the JIT.
+        ONE COLUMN PER DESTINATION, and the number has moved twice. It was
+        grid-cols-4, then Updates arrived in 01f63ce and put a fifth child in a
+        four-column grid: it wrapped, doubling the height of a FIXED bottom bar
+        and covering the content on every phone. That was fixed to five, and
+        Updates has now moved to a bell in the header — so it is four again.
+
+        The count is pinned by a test in shop-nav.test.ts, which derives BOTH
+        this number and NAV.length from source and compares them. A Tailwind
+        class cannot be computed from NAV.length without defeating the JIT,
+        which is why the test exists rather than an expression.
       */}
-      <div className="grid grid-cols-5">
+      <div className="grid grid-cols-4">
         {NAV.map(({ href, key, icon: Icon }) => {
           const current = href === active
           return (

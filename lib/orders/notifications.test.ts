@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import {
   classifyEvent,
   groupEvents,
+  isNewSince,
   unseenCount,
   type EventRow,
 } from './notifications'
@@ -155,5 +156,52 @@ describe('unseenCount', () => {
   test('a corrupt mark is treated as never having looked', () => {
     assert.equal(unseenCount(groups, 'not-a-date'), 2)
     assert.equal(unseenCount(groups, ''), 2)
+  })
+})
+
+describe('isNewSince — the singular of unseenCount', () => {
+  /**
+   * THE DISAGREEMENT THIS FUNCTION EXISTS TO END.
+   *
+   * The shop feed used to mark a row new with `seen !== null && at > seen`, so
+   * a shop that had NEVER looked saw nothing highlighted — while `unseenCount`
+   * counted every group and the bell showed a badge. A first visit should show
+   * what was missed, so no marker means new, and both now say so.
+   */
+  test('no marker means new, agreeing with unseenCount', () => {
+    assert.equal(isNewSince('2026-09-08T03:00:00.000Z', null), true)
+    assert.equal(unseenCount([{ at: '2026-09-08T03:00:00.000Z' }], null), 1)
+  })
+
+  test('older than the marker is not new', () => {
+    assert.equal(isNewSince('2026-09-07T00:00:00.000Z', '2026-09-08T00:00:00.000Z'), false)
+  })
+
+  test('newer than the marker is', () => {
+    assert.equal(isNewSince('2026-09-09T00:00:00.000Z', '2026-09-08T00:00:00.000Z'), true)
+  })
+
+  /** Exactly equal is NOT new: it is the instant they looked. */
+  test('the marker instant itself is already seen', () => {
+    const at = '2026-09-08T00:00:00.000Z'
+    assert.equal(isNewSince(at, at), false)
+  })
+
+  /** A corrupt marker over-reports rather than hiding the feed — as above. */
+  test('an unparseable marker treats everything as new', () => {
+    assert.equal(isNewSince('2026-09-08T03:00:00.000Z', 'not a date'), true)
+    assert.equal(unseenCount([{ at: '2026-09-08T03:00:00.000Z' }], 'not a date'), 1)
+  })
+
+  /** The two must never diverge again, so assert them against each other. */
+  test('it is exactly unseenCount for one entry, at every marker', () => {
+    const at = '2026-09-08T03:00:00.000Z'
+    for (const since of [null, 'not a date', at, '2026-09-07T00:00:00.000Z', '2026-09-09T00:00:00.000Z']) {
+      assert.equal(
+        isNewSince(at, since),
+        unseenCount([{ at }], since) === 1,
+        `disagreement at marker ${String(since)}`,
+      )
+    }
   })
 })
