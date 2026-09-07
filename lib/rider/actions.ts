@@ -65,6 +65,57 @@ export async function setRiderOnline(
  * only permits writes while the order is still `assigned` or `picked_up` —
  * uploading after the transition to `delivered` would be rejected.
  */
+/**
+ * One armful, one call.
+ *
+ * WHY A BULK RPC AND NOT A LOOP. `advance_orders` (0025) runs every parcel in
+ * ONE transaction with a deterministic lock order, so a shop handing over nine
+ * of ten either moves all nine or none — a partially-collected armful is the
+ * thing a rider cannot see and cannot correct. It also caps at 200 and refuses
+ * an empty array.
+ *
+ * ONLY `picked_up` IS USEFUL HERE. `advance_orders` deliberately passes no
+ * proof, receiver or coordinates, so a bulk `delivered` is refused by
+ * `advance_order`'s own `proof_required` guard — per-parcel evidence has to be
+ * captured per parcel. The type says so rather than leaving it to be discovered.
+ *
+ * OFFLINE IS N SEPARATE ENTRIES, not one. The caller queues per order, which is
+ * what `lib/rider/collection.ts` documents: each parcel then replays
+ * independently and idempotently, so one parcel that has moved on cannot
+ * discard the other nine. The all-or-nothing guarantee is an online one.
+ */
+export async function advanceOrders(input: {
+  orderIds: string[]
+  to: Extract<OrderStatus, 'picked_up'>
+  reason?: string
+}): Promise<RiderActionResult & { moved?: number }> {
+  if (input.orderIds.length === 0) {
+    return { ok: false, message: 'Nothing selected.', kind: 'empty', retryable: false }
+  }
+  try {
+    const { supabase } = await riderClient()
+    const { data, error } = await supabase.rpc('advance_orders', {
+      p_order_ids: input.orderIds,
+      p_to: input.to,
+      p_reason: input.reason,
+    })
+    if (error) {
+      const e = explainRiderError(error.message)
+      return { ok: false, message: e.message, kind: e.kind, retryable: e.retryable }
+    }
+    refresh()
+    const moved = Number(data ?? 0)
+    return { ok: true, message: `${moved} parcel${moved === 1 ? '' : 's'} collected.`, moved }
+  } catch {
+    return {
+      ok: false,
+      message: 'Sign in again to update these jobs.',
+      kind: 'forbidden',
+      retryable: false,
+    }
+  }
+}
+
 export async function advanceOrder(input: {
   orderId: string
   to: Extract<OrderStatus, 'picked_up' | 'delivered' | 'failed' | 'returned'>

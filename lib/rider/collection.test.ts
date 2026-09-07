@@ -24,7 +24,9 @@ function job(over: Partial<RiderJob> & { id: string }): RiderJob {
     codAmount: 0,
     commission: null,
     routeKm: null,
-    leg: 'delivery',
+    // A collection is a pickup leg — see the predicate in collection.ts. The
+    // factory defaulted to 'delivery' when a delivery leg was also collectable.
+    leg: 'pickup',
     ...over,
   }
 }
@@ -162,5 +164,36 @@ describe('planCollections — the Directions point', () => {
 describe('planCollections — nothing to do', () => {
   test('an empty run', () => {
     assert.deepEqual(planCollections([]), { groups: [], stops: [] })
+  })
+})
+
+describe('planCollections — what 0028 made collectable, and what it did not', () => {
+  /**
+   * THE BUG THIS CLOSES. Since 0028 a failed delivery that is being retried
+   * comes back as `leg = 'delivery'`, `status = 'assigned'` — and the old
+   * predicate was `leg !== 'return'`, so it grouped into a collection at the
+   * shop's address. The card would have sent a rider across Yangon to fetch a
+   * parcel already sitting on our own hub shelf.
+   */
+  test('a retried delivery is a stop, never a collection', () => {
+    const plan = planCollections([
+      job({ id: 'retry', leg: 'delivery', status: 'assigned' }),
+    ])
+    assert.equal(plan.groups.length, 0)
+    assert.deepEqual(plan.stops.map((s) => s.id), ['retry'])
+  })
+
+  /** A delivery leg already in hand was always a stop, and still is. */
+  test('a delivery in hand is a stop', () => {
+    const plan = planCollections([job({ id: 'd', leg: 'delivery', status: 'picked_up' })])
+    assert.equal(plan.groups.length, 0)
+    assert.equal(plan.stops.length, 1)
+  })
+
+  /** A leg the dispatcher has not set yet is not a collection either. */
+  test('a null leg is not collected', () => {
+    const plan = planCollections([job({ id: 'x', leg: null })])
+    assert.equal(plan.groups.length, 0)
+    assert.equal(plan.stops.length, 1)
   })
 })

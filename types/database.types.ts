@@ -1319,6 +1319,14 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      advance_orders: {
+        Args: {
+          p_order_ids: string[]
+          p_reason?: string
+          p_to: Database["public"]["Enums"]["order_status"]
+        }
+        Returns: number
+      }
       approve_settlement: {
         Args: { p_id: string }
         Returns: {

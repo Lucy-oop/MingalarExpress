@@ -124,6 +124,17 @@ export type RiderTrip = {
 
 export type RiderFeed = {
   active: RiderJob[]
+  /**
+   * The SHOP's coordinates, keyed by `collectionKey(job)`.
+   *
+   * `RiderJob` deliberately carries one coordinate pair, already flipped for
+   * the leg, so a collection group has no way to reach the shop's own point —
+   * which is why `planCollections` takes a `pickupPointFor` callback and gives
+   * a group NO Directions link rather than one to the customer. This is that
+   * callback's source. `JOB_COLUMNS` already selects pickup_lat/lng; they were
+   * being read and thrown away.
+   */
+  pickupPoints: Record<string, { lat: number; lng: number }>
   trip: RiderTrip | null
   profile: {
     isOnline: boolean
@@ -258,8 +269,20 @@ export async function getRiderFeed(riderId: string): Promise<RiderFeed> {
 
   const s = (summary ?? {}) as Record<string, number | string | null>
 
+  // Built off the raw rows, before toJob flips the coordinates for a leg.
+  // Same normalisation `collectionKey` uses, so the two agree by construction.
+  const pickupPoints: Record<string, { lat: number; lng: number }> = {}
+  for (const row of all) {
+    if (!Number.isFinite(row.pickup_lat) || !Number.isFinite(row.pickup_lng)) continue
+    pickupPoints[row.pickup_address.trim().toLowerCase()] ??= {
+      lat: row.pickup_lat,
+      lng: row.pickup_lng,
+    }
+  }
+
   return {
     active,
+    pickupPoints,
     trip:
       tripRow && route
         ? {

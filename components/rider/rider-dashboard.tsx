@@ -6,6 +6,8 @@ import Link from 'next/link'
 import { Coins, Navigation, PackageOpen, Phone, RefreshCw } from 'lucide-react'
 import { OnlineToggle } from '@/components/rider/online-toggle'
 import { JobCard } from '@/components/rider/job-card'
+import { CollectionCard } from '@/components/rider/collection-card'
+import { collectionKey, planCollections } from '@/lib/rider/collection'
 import { NewWorkAlert } from '@/components/rider/new-work-alert'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { createClient } from '@/lib/supabase/client'
@@ -50,6 +52,7 @@ export function RiderDashboard({
 
   useEffect(() => {
     const supabase = createClient()
+    let nudge: ReturnType<typeof setTimeout> | undefined
     const channel = supabase
       .channel(`rider:${riderId}`)
       .on(
@@ -57,12 +60,20 @@ export function RiderDashboard({
         { event: '*', schema: 'public', table: 'trips', filter: `rider_id=eq.${riderId}` },
         () => router.refresh(),
       )
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'orders' }, () =>
-        router.refresh(),
-      )
+      /*
+        DEBOUNCED, because a collection is now a bulk write. `advance_orders`
+        updates ten rows in one transaction and this listener is unfiltered, so
+        one tap on the collection card produced ten router.refresh() calls in a
+        burst. 400ms, matching route-board and shop-parcel-alert.
+      */
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'orders' }, () => {
+        clearTimeout(nudge)
+        nudge = setTimeout(() => router.refresh(), 400)
+      })
       .subscribe()
 
     return () => {
+      clearTimeout(nudge)
       void supabase.removeChannel(channel)
     }
   }, [riderId, router])
@@ -70,9 +81,23 @@ export function RiderDashboard({
   const deliveries = useMemo(() => feed.active.filter((j) => j.leg !== 'pickup'), [feed.active])
   const pickups = useMemo(() => feed.active.filter((j) => j.leg === 'pickup'), [feed.active])
 
+  /*
+    ONE CARD PER SHOP, then the stops. `planCollections` groups everything still
+    to be collected by pickup address — so ten parcels from one shop are one
+    visit — and hands back the rest in drive order. The shop's own coordinates
+    come from the feed because RiderJob carries only one pair, already flipped
+    for the leg; without a point the group shows no Directions link rather than
+    one to the customer.
+  */
+  const plan = useMemo(
+    () =>
+      planCollections(feed.active, (job) => feed.pickupPoints[collectionKey(job)] ?? null),
+    [feed.active, feed.pickupPoints],
+  )
+
   // Already in drive order, so "next" is simply the first one.
-  const next = feed.active[0]
-  const rest = feed.active.slice(1)
+  const next = plan.stops[0]
+  const rest = plan.stops.slice(1)
   const n = (v: number) => localeNumber(locale, v)
 
   return (
@@ -116,11 +141,21 @@ export function RiderDashboard({
         </div>
       ) : null}
 
+      {/* ---- shops to collect from ---------------------------------------- */}
+      {/*
+        ABOVE THE DELIVERIES, and biggest armful first — `planCollections`
+        sorts them. A collection is the one job where the run stalls if it is
+        skipped: the parcels are not aboard, so nothing downstream can happen.
+      */}
+      {plan.groups.map((group) => (
+        <CollectionCard key={group.key} group={group} />
+      ))}
+
       {/* ---- the next stop ------------------------------------------------ */}
       {next ? (
         <section className="space-y-2 rounded-xl border-2 border-primary bg-card p-4">
           <p className="text-xs font-bold uppercase tracking-wide text-primary">
-            {t('jobs.next')} · {n(1)}/{n(feed.active.length)}
+            {t('jobs.next')} · {n(1)}/{n(plan.stops.length)}
           </p>
 
           <p className="text-xl font-bold leading-tight">{next.dropoffAddress}</p>
@@ -177,6 +212,11 @@ export function RiderDashboard({
                 : t('action.markDelivered')}
           </Link>
         </section>
+      ) : plan.groups.length > 0 ? (
+        // Collections to make, nothing aboard yet. "Nothing to do right now"
+        // above a shop card telling them to collect ten parcels would be a
+        // straight contradiction.
+        null
       ) : (
         <div className="flex flex-col items-center gap-2 rounded-xl border-2 border-dashed p-10 text-center">
           <PackageOpen className="size-10 text-muted-foreground" aria-hidden="true" />

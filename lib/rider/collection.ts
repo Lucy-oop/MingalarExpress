@@ -71,9 +71,18 @@ export function planCollections(
   const stops: RiderJob[] = []
 
   for (const job of jobs) {
-    // A return leg travels TO the shop; it is a delivery of its own and must
-    // never be swept into a collection at the same address.
-    const collectable = job.status === 'assigned' && job.leg !== 'return'
+    /*
+      ONLY A PICKUP LEG, and this was `leg !== 'return'` until 0028 made that
+      wrong. A return travels TO the shop and is a delivery of its own -- that
+      part was always right. But a FAILED DELIVERY BEING RETRIED is now
+      `leg = 'delivery'`, `status = 'assigned'`, and the old predicate swept it
+      into a collection at the shop's address: the card would have sent a rider
+      across Yangon to fetch a parcel sitting on our own hub shelf.
+
+      `leg === 'pickup'` is what the name meant all along, and it is the same
+      predicate rider-dashboard.tsx already used for its `pickups` count.
+    */
+    const collectable = job.status === 'assigned' && job.leg === 'pickup'
     if (!collectable) {
       stops.push(job)
       continue

@@ -95,6 +95,25 @@ export const DICTIONARY = {
   'action.cancel': { en: 'Back', my: 'ပြန်' },
   'action.refresh': { en: 'Refresh', my: 'ပြန်ဖွင့်' },
 
+  // ---- one visit to a shop --------------------------------------------------
+  //
+  //  Ten parcels from one shop were ten stops in the feed, every one showing a
+  //  CUSTOMER's address, and twenty-odd taps at one counter to record what was
+  //  physically one armful.
+  'collection.title': { en: 'Collect from this shop', my: 'ဒီဆိုင်မှ ယူရန်' },
+  'collection.count': { en: '{n} parcels', my: 'ပါဆယ် {n}' },
+  'collection.countOne': { en: '1 parcel', my: 'ပါဆယ် ၁' },
+  'collection.callShop': { en: 'Call shop', my: 'ဆိုင်ကို ဖုန်းဆက်' },
+  'collection.tickHint': {
+    en: 'Untick anything the shop did not hand over.',
+    my: 'ဆိုင်မှ မပေးသည်များကို ဖြုတ်ပါ။',
+  },
+  'collection.cashAfter': { en: 'Cash aboard after this', my: 'ယူပြီးလျှင် ကိုင်မည့်ငွေ' },
+  'collection.nothingTicked': { en: 'Tick at least one parcel.', my: 'ပါဆယ် အနည်းဆုံး ၁ ခု ရွေးပါ။' },
+  // Not `action.*`: the count makes it too long for that namespace's 24-unit
+  // button rule, and it is the one label that must carry a number.
+  'collection.collectTicked': { en: 'PICKED UP · {n}', my: 'ယူပြီး · {n}' },
+
   // ---- proof ----------------------------------------------------------------
   'proof.title': { en: 'Photo of the delivery', my: 'ပို့ပြီးဓာတ်ပုံ' },
   'proof.required': { en: 'A photo is needed before you can finish.', my: 'ဓာတ်ပုံ ရိုက်ပြီးမှ ပြီးဆုံးနိုင်ပါမည်။' },
