@@ -10,7 +10,7 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "db:verify": "bash supabase/tests/reset_and_verify.sh",
-    "db:types": "supabase gen types typescript --local --schema public > types/database.types.ts",
+    "db:types": "bash scripts/db-types.sh",
     "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --import ./scripts/register-ts-resolve.mjs --test 'lib/**/*.test.ts' 'components/**/*.test.ts'",
     "test:watch": "npm run test -- --watch",
     "db:push": "bash scripts/db-push.sh"

@@ -23,6 +23,8 @@ for f in supabase/migrations/*.sql; do
   run < "$f"
 done
 echo "--- seed"; run < supabase/seed.sql
+PASSED=0
+ABORTED=""
 for t in rls_smoke lifecycle_edge storage_policies assign_flow settlement_flow route_flow failed_flow kpay_flow; do
   echo "--- test $t"
   # each suite assumes a clean DB, so reseed between them
@@ -47,9 +49,47 @@ for t in rls_smoke lifecycle_edge storage_policies assign_flow settlement_flow r
       delete from public.route_pay_tiers where route_id is not null;" >/dev/null
     run < supabase/seed.sql
   fi
-  docker exec -i "$C" psql -U postgres -d postgres < "supabase/tests/$t.sql" 2>&1 \
-    | grep -E "PASS|FAIL|ERROR|ALL " || true
+  # ----------------------------------------------------------------------------
+  #  WHY THE BANNER IS THE CHECK, and not ON_ERROR_STOP.
+  #
+  #  This used to be a bare pipe into `grep ... || true`, which swallowed
+  #  everything: when a suite hit a real error partway through, every assertion
+  #  after the abort silently never ran and the script still exited 0. It cost a
+  #  session of false confidence -- 206 assertions quietly became 132 while the
+  #  exit code stayed green.
+  #
+  #  `psql -v ON_ERROR_STOP=1` is the obvious fix and is wrong here:
+  #  failed_flow.sql deliberately provokes a top-level ERROR to prove a commit
+  #  is refused, so stopping on the first error would abort the suite that is
+  #  working correctly.
+  #
+  #  Every suite ends by echoing `####  ALL ... PASSED  ####`. A file that dies
+  #  partway never reaches it. That is an exact signal for "did this finish",
+  #  which is the actual question, and it tolerates a deliberate error.
+  # ----------------------------------------------------------------------------
+  # `|| true` so `set -e` does not kill the run at the substitution: psql can
+  # exit non-zero here, and when it does we want the diagnostic below and the
+  # remaining suites, not a script that vanishes mid-sentence.
+  OUT=$(docker exec -i "$C" psql -U postgres -d postgres < "supabase/tests/$t.sql" 2>&1 || true)
+  echo "$OUT" | grep -E "PASS|FAIL|ERROR|ALL " || true
+
+  if ! printf '%s' "$OUT" | grep -q '####  ALL '; then
+    echo "  !! $t ABORTED -- every assertion after the failure never ran" >&2
+    ABORTED="$ABORTED $t"
+  fi
+  # An assertion that raised inside an exception handler would not abort the
+  # file, so the explicit marker is checked too.
+  if printf '%s' "$OUT" | grep -q 'FAIL:'; then
+    echo "  !! $t reported a FAILED assertion" >&2
+    ABORTED="$ABORTED $t"
+  fi
+  PASSED=$((PASSED + $(printf '%s' "$OUT" | grep -c 'PASS:')))
 done
 
 echo "--- summary"
 docker exec -i "$C" psql -U postgres -d postgres -tAc "select 1" >/dev/null
+echo "  $PASSED assertions passed"
+if [ -n "$ABORTED" ]; then
+  echo "  SUITES THAT DID NOT COMPLETE:$ABORTED" >&2
+  exit 1
+fi
