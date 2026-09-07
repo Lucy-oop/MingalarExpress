@@ -180,6 +180,31 @@ if [[ "$APPLIED_ANY" -eq 0 ]]; then
   echo "  nothing to do -- this database is up to date"
 fi
 
+# ----------------------------------------------------------------------------
+#  TELL PostgREST, because the database is only half the story.
+#
+#  PostgREST keeps its own cached picture of the schema and will not notice a
+#  new table until it is reloaded. It polls, so this heals on its own within a
+#  minute or so -- long enough to look exactly like a migration that did not
+#  apply. That is what 0033 did on staging:
+#
+#      zones unavailable: Could not find the table 'public.delivery_zones'
+#                         in the schema cache
+#
+#  applied cleanly, invisible to the app. One NOTIFY closes the window. Only
+#  when something was actually applied, and never allowed to fail the push --
+#  the migrations are already committed by this point, so a failed cache hint is
+#  a wait, not an error.
+# ----------------------------------------------------------------------------
+if [[ "$APPLIED_ANY" -eq 1 ]]; then
+  echo "--- reload the PostgREST schema cache"
+  if psql "$DATABASE_URL" -q -c "notify pgrst, 'reload schema';" 2>/dev/null; then
+    echo "  notified"
+  else
+    echo "  could not notify — the API will pick the change up within a minute"
+  fi
+fi
+
 if [[ "$SEED" -eq 1 ]]; then
   echo "--- seed (development / staging only)"
   echo "  seed.sql writes directly into auth.users and is coupled to the GoTrue"
