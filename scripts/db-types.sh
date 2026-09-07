@@ -49,6 +49,8 @@ REQUIRE=(
   # reverts every fee lookup in lib/orders/queries.ts to a type error.
   "delivery_zones"
   "zone_id"
+  # 0035 — the office notice feed's only stored fact.
+  "notices_seen_at"
 )
 
 if ! command -v supabase >/dev/null 2>&1; then

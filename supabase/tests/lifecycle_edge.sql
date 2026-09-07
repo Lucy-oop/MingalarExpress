@@ -210,4 +210,51 @@ begin
   delete from public.shops where id = sid;
 end $$;
 
+\echo '=== E8. the notice marker is the reader own row, and only theirs ==='
+--  0035. The office header counts unseen notices against
+--  profiles.notices_seen_at, written by the READER through
+--  profiles_update_self -- the same path setLocale has used since the language
+--  switcher shipped.
+--
+--  Two things worth pinning. It must NOT need super_admin, or every dispatcher
+--  gets a badge they can never clear. And it must not become a way to write
+--  somebody else's profile row: RLS scopes the update to id = auth.uid(), so the
+--  id is never taken from the caller.
+select set_config('request.jwt.claims','{"sub":"55555555-5555-5555-5555-555555555555","role":"authenticated"}',false);
+set role authenticated;
+do $$
+declare seen timestamptz; n int;
+begin
+  -- A rider is the least privileged real session there is; if this works for
+  -- them it works for a dispatcher.
+  update public.profiles set notices_seen_at = now()
+   where id = '55555555-5555-5555-5555-555555555555';
+  select notices_seen_at into seen from public.profiles
+   where id = '55555555-5555-5555-5555-555555555555';
+  if seen is null then
+    raise exception 'FAIL: a non-admin could not mark their own notices seen';
+  end if;
+  raise notice 'PASS: a reader can mark their own notices seen';
+
+  -- Somebody else's row. RLS filters it away rather than raising, so the proof
+  -- is that NOTHING changed -- `found` would be true if the row were visible.
+  update public.profiles set notices_seen_at = now()
+   where id = '44444444-4444-4444-4444-444444444444';
+  if found then
+    raise exception 'FAIL: a rider marked another person''s notices seen';
+  end if;
+  raise notice 'PASS: and cannot touch anyone else''s';
+
+  -- And the guard still guards. The marker must not have opened a door to the
+  -- two columns tg_profiles_guard exists for.
+  begin
+    update public.profiles set notices_seen_at = now(), role = 'super_admin'
+     where id = '55555555-5555-5555-5555-555555555555';
+    raise exception 'FAIL: a rider escalated their role alongside the marker';
+  exception when insufficient_privilege then
+    raise notice 'PASS: role is still guarded on the same statement';
+  end;
+end $$;
+reset role;
+
 \echo '####  ALL EDGE CHECKS PASSED  ####'

@@ -130,10 +130,22 @@ export function groupEvents(rows: readonly EventRow[]): NotificationGroup[] {
   return out
 }
 
-/** Groups newer than the shop's last visit. `null` means they have never looked. */
-export function unseenCount(groups: readonly NotificationGroup[], since: string | null): number {
-  if (!since) return groups.length
+/**
+ * How many entries are newer than the reader's last visit. `null` means they
+ * have never looked, which counts as "all of them" — a first shift should show
+ * the backlog, not an empty bell.
+ *
+ * TAKES ANYTHING WITH AN `at`, because the office notice feed in the admin
+ * header needs exactly this arithmetic and a second copy of it would be a
+ * second place for the null and unparseable cases to be got wrong. It only ever
+ * read `.at`; the narrower `NotificationGroup` was incidental.
+ *
+ * An unparseable marker counts everything rather than nothing: a corrupt
+ * timestamp should over-report, not silently hide the feed.
+ */
+export function unseenCount(entries: readonly { at: string }[], since: string | null): number {
+  if (!since) return entries.length
   const mark = Date.parse(since)
-  if (Number.isNaN(mark)) return groups.length
-  return groups.filter((g) => Date.parse(g.at) > mark).length
+  if (Number.isNaN(mark)) return entries.length
+  return entries.filter((e) => Date.parse(e.at) > mark).length
 }

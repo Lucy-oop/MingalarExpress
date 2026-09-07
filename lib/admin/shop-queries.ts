@@ -160,6 +160,57 @@ export async function getNewShopNotices(limit = 8): Promise<NewShopNotice[]> {
   })
 }
 
+/**
+ * Every recent registration, for the bell in the admin header.
+ *
+ * THE DIFFERENCE FROM `getNewShopNotices` IS THE WHOLE POINT, and it is one
+ * missing filter. That function is a WORKLIST: `approved_at is null`, so it
+ * empties as the office works it, which is correct for a queue. This is a
+ * RECORD of what happened, so approving a shop must not erase the fact that it
+ * registered — otherwise the office loses the only trace of a sign-up the
+ * moment it acts on it.
+ *
+ * Both stay. Collapsing them would either put reviewed shops back in the
+ * worklist or drop registrations out of the feed.
+ *
+ * DESCENDING, unlike the worklist. A queue is worked oldest-first; a feed is
+ * read newest-first.
+ *
+ * Readable by dispatchers as well as Super Admins, through `shops_read_dispatch`
+ * — which is why this comes from `shops` and not from the `shop.register` rows
+ * in `audit_log`, where `audit_read_admin` would have shown a dispatcher an
+ * empty bell forever.
+ */
+export async function getOfficeNotices(limit = 10): Promise<NewShopNotice[]> {
+  const supabase = await createClient()
+
+  const { data, error } = await supabase
+    .from('shops')
+    .select(
+      `id, name, goods_type, pickup_address, created_at,
+       profiles!shops_owner_id_fkey (full_name, phone)`,
+    )
+    .order('created_at', { ascending: false })
+    .limit(limit)
+
+  // A notice is chrome, and this one is in the LAYOUT — a throw here would take
+  // down every admin page rather than one panel.
+  if (error || !data) return []
+
+  return data.map((raw) => {
+    const owner = raw.profiles as unknown as { full_name: string; phone: string | null } | null
+    return {
+      shopId: raw.id,
+      name: raw.name,
+      ownerName: owner?.full_name ?? 'Unknown owner',
+      ownerPhone: owner?.phone ?? null,
+      goodsType: raw.goods_type,
+      pickupAddress: raw.pickup_address,
+      createdAt: raw.created_at,
+    }
+  })
+}
+
 export async function getShopList(): Promise<ShopListResult> {
   const supabase = await createClient()
 

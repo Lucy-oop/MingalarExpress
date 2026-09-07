@@ -6,12 +6,33 @@ import { BrandMark } from '@/components/shared/brand-mark'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { AdminNav } from '@/components/admin/admin-nav'
+import { NoticeBell } from '@/components/admin/notice-bell'
+import { getOfficeNotices } from '@/lib/admin/shop-queries'
+import { officeNotices } from '@/lib/admin/notices'
+import { createClient } from '@/lib/supabase/server'
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   // Dispatchers and Super Admins share this shell; /admin/super is additionally
   // gated by middleware (longest-prefix) and by requireAdmin in its own layout.
   const { profile } = await requireDispatch()
   const admin = isAdmin(profile.role)
+
+  /*
+    THE FEED IS LAYOUT CHROME, so it must not be able to break a page. Both
+    halves fail soft: `getOfficeNotices` swallows its own query error and
+    returns [], and the marker read below falls back to null, which the count
+    treats as "everything is new" rather than throwing.
+
+    Fetched in the layout on purpose. A merchant can register and be trading in
+    the same minute; the office should learn about it wherever they happen to
+    be, not only on the one page that shows a worklist.
+  */
+  const supabase = await createClient()
+  const [registrations, { data: me }] = await Promise.all([
+    getOfficeNotices(),
+    supabase.from('profiles').select('notices_seen_at').eq('id', profile.id).maybeSingle(),
+  ])
+  const notices = officeNotices(registrations)
 
 
   return (
@@ -21,7 +42,8 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           <Link href="/admin/dispatcher">
             <BrandMark tagline={false} className="text-left" />
           </Link>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <NoticeBell notices={notices} seenAt={me?.notices_seen_at ?? null} />
             <Badge tone={admin ? 'gold' : 'blue'}>
               {admin ? 'Super Admin' : 'Dispatcher'}
             </Badge>
