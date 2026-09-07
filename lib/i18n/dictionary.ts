@@ -81,6 +81,10 @@ export const DICTIONARY = {
   'action.markPickedUp': { en: 'I HAVE THE PARCEL', my: 'ပါဆယ် ယူပြီးပါပြီ' },
   'action.markDelivered': { en: 'DONE — DELIVERED', my: 'ပို့ပြီးပါပြီ' },
   'action.markReturned': { en: 'RETURNED TO SHOP', my: 'ဆိုင်ကို ပြန်အပ်ပြီး' },
+  // 0029: a collection ends when the parcel is aboard, not when it is
+  // delivered. "I HAVE THE PARCEL" was reused for both, so the same words
+  // covered a shop counter and a hub loading bay.
+  'action.markCollected': { en: 'COLLECTED FROM SHOP', my: 'ဆိုင်မှ ယူပြီး' },
   'action.takePhoto': { en: 'TAKE PHOTO', my: 'ဓာတ်ပုံ ရိုက်ပါ' },
   'action.retakePhoto': { en: 'Retake', my: 'ပြန်ရိုက်' },
   'action.preparing': { en: 'Preparing photo…', my: 'ဓာတ်ပုံ ပြင်နေသည်…' },
@@ -97,6 +101,19 @@ export const DICTIONARY = {
   'proof.receiver': { en: 'Who received it?', my: 'ဘယ်သူ လက်ခံသလဲ' },
   'proof.receiverOptional': { en: 'optional', my: 'မထည့်လည်းရ' },
   'proof.returnReceiver': { en: 'Who at the shop took it back?', my: 'ဆိုင်မှ ဘယ်သူ လက်ခံသလဲ' },
+  /*
+    A COLLECTION HAS DIFFERENT EVIDENCE, and less of it. There is no customer
+    and no doorstep, so "Photo of the delivery" and "Who received it?" were
+    both false on a pickup leg.
+
+    NO PHOTO ON A COLLECTION, and not for want of asking. `advance_order` sets
+    proof_photo_path with coalesce on EVERY transition, so a photo stored at
+    collection time would satisfy both orders_delivered_needs_proof and the
+    proof_required guard for the later delivery -- quietly removing the
+    requirement to photograph the actual handover. A collection photo is worth
+    having, but it needs a column of its own, not this one.
+  */
+  'proof.shopContact': { en: 'Shop contact name', my: 'ဆိုင်မှ ဆက်သွယ်သူ' },
   'proof.returnReceiverRequired': { en: 'Write who at the shop took it back.', my: 'ဆိုင်မှ လက်ခံသူ နာမည် ထည့်ပါ။' },
 
   // ---- payment --------------------------------------------------------------
@@ -120,6 +137,17 @@ export const DICTIONARY = {
   'fail.title': { en: 'What went wrong?', my: 'ဘာဖြစ်သလဲ' },
   'fail.placeholder': { en: 'Customer not home, phone off, wrong address…', my: 'အိမ်မရှိ၊ ဖုန်းပိတ်၊ လိပ်စာမှား…' },
   'fail.required': { en: 'Say what went wrong.', my: 'ဘာဖြစ်သည် ရေးပါ။' },
+  // What a rider sees between the shop and the hub. There is no action here:
+  // the parcel is aboard and close_trip releases it when the run ends.
+  'pickup.aboard': {
+    en: 'Aboard. Hand these in at the hub.',
+    my: 'ကားပေါ် ရောက်ပြီး။ ဟပ်တွင် အပ်ပါ။',
+  },
+  // "Customer not home, phone off, wrong address" is nonsense at a counter.
+  'fail.pickupPlaceholder': {
+    en: 'Shop shut, parcel not ready, wrong label…',
+    my: 'ဆိုင်ပိတ်၊ ပါဆယ် အသင့်မရှိ၊ တံဆိပ်မှား…',
+  },
   'fail.photoFirst': { en: 'Take a photo of the delivery first.', my: 'ဓာတ်ပုံ အရင်ရိုက်ပါ။' },
 
   // ---- earnings -------------------------------------------------------------

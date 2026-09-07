@@ -124,6 +124,13 @@ export function JobActions({
           tone: 'info',
           message: t('offline.saved'),
         })
+        setBusy(null)
+        startTransition(() => router.refresh())
+        // Told to the caller so a panel that is finished with can close itself.
+        // The fail panel used to stay open after an offline save, leaving a red
+        // button reading "Saved" beside a live "Back", over the box the rider
+        // had just filled in.
+        return true
       } else {
         // A logical failure is genuinely retryable after the rider fixes
         // something, so `completed` stays false here on purpose.
@@ -131,6 +138,7 @@ export function JobActions({
       }
       setBusy(null)
       startTransition(() => router.refresh())
+      return false
     },
     [router],
   )
@@ -183,12 +191,16 @@ export function JobActions({
         to: 'picked_up',
         lat: position?.lat,
         lng: position?.lng,
+        // Only on a collection, and only if they typed one. On a delivery leg
+        // this field is the customer's receiver and is asked for later.
+        receiver: collecting ? receiver.trim() || undefined : undefined,
       })
       if (result.ok) return done(result.message)
       await handleFailure(`${result.message} ${result.kind}`, {
         kind: 'picked_up',
         orderId,
         orderCode,
+        receiver: collecting ? receiver.trim() || undefined : undefined,
         lat: position?.lat,
         lng: position?.lng,
       })
@@ -197,13 +209,24 @@ export function JobActions({
         kind: 'picked_up',
         orderId,
         orderCode,
+        receiver: collecting ? receiver.trim() || undefined : undefined,
         lat: position?.lat,
         lng: position?.lng,
       })
     }
   }
 
-  const needsPayment = codAmount > 0
+  /*
+    0029: THE LEG DECIDES THE SCREEN, and it used to decide almost nothing.
+    Every branch below asked `leg !== 'return'`, so a collection inherited the
+    whole door-step flow: a proof photo it cannot produce, "How did the customer
+    pay?" for a customer who is not there, and DONE - DELIVERED as the primary
+    button. `advance_order` now refuses that tap outright; this is the half that
+    stops offering it.
+  */
+  const collecting = leg === 'pickup'
+  // No customer at a shop counter, so nothing to pay and nobody to pay it.
+  const needsPayment = codAmount > 0 && !collecting
   const onDelivered = async () => {
     if (!proof) {
       setFeedback({ tone: 'error', message: t('fail.photoFirst') })
@@ -294,7 +317,7 @@ export function JobActions({
         setFailing(false)
         return done(result.message, 'info')
       }
-      await handleFailure(`${result.message} ${result.kind}`, {
+      const queued = await handleFailure(`${result.message} ${result.kind}`, {
         kind: 'failed',
         orderId,
         orderCode,
@@ -302,8 +325,9 @@ export function JobActions({
         lat: position?.lat,
         lng: position?.lng,
       })
+      if (queued) setFailing(false)
     } catch (error) {
-      await handleFailure(error instanceof Error ? error.message : 'network', {
+      const queued = await handleFailure(error instanceof Error ? error.message : 'network', {
         kind: 'failed',
         orderId,
         orderCode,
@@ -311,6 +335,7 @@ export function JobActions({
         lat: position?.lat,
         lng: position?.lng,
       })
+      if (queued) setFailing(false)
     }
   }
 
@@ -359,23 +384,58 @@ export function JobActions({
       ) : null}
 
       {leg !== 'return' && status === 'assigned' ? (
-        <Button
-          size="touch"
-          block
-          className="bg-emerald-600 text-lg font-bold hover:bg-emerald-700"
-          disabled={busy !== null || completed}
-          onClick={() => void onPickedUp()}
-        >
-          <Truck />
-          {busy === 'picked_up'
-            ? t('action.saving')
-            : completed
-              ? t('action.saved')
-              : t('action.markPickedUp')}
-        </Button>
+        <div className="space-y-3">
+          {/* Optional, and only on a collection: the shop's own name for
+              whoever handed the parcels over. Never required — a rider holding
+              ten parcels at a counter should not be blocked by a text field. */}
+          {collecting ? (
+            <div className="space-y-1.5">
+              <label htmlFor="shopContact" className="text-sm font-medium">
+                {t('proof.shopContact')}{' '}
+                <span className="font-normal text-muted-foreground">
+                  ({t('proof.receiverOptional')})
+                </span>
+              </label>
+              <Input
+                id="shopContact"
+                value={receiver}
+                onChange={(e) => setReceiver(e.target.value)}
+                disabled={busy !== null}
+                className="h-14 text-base"
+              />
+            </div>
+          ) : null}
+
+          <Button
+            size="touch"
+            block
+            className="bg-emerald-600 text-lg font-bold hover:bg-emerald-700"
+            disabled={busy !== null || completed}
+            onClick={() => void onPickedUp()}
+          >
+            <Truck />
+            {busy === 'picked_up'
+              ? t('action.saving')
+              : completed
+                ? t('action.saved')
+                : collecting
+                  ? t('action.markCollected')
+                  : t('action.markPickedUp')}
+          </Button>
+        </div>
       ) : null}
 
-      {leg !== 'return' && status === 'picked_up' ? (
+      {/* Aboard, between the shop and the hub. There is no action here: the
+          parcel is on the bike and close_trip releases it when the run ends.
+          This slot used to hold the entire delivery card. */}
+      {collecting && status === 'picked_up' ? (
+        <div className="flex items-center gap-2 rounded-lg border bg-muted/40 p-3">
+          <PackageCheck className="size-5 shrink-0 text-emerald-700" aria-hidden="true" />
+          <p className="text-base font-medium">{t('pickup.aboard')}</p>
+        </div>
+      ) : null}
+
+      {!collecting && leg !== 'return' && status === 'picked_up' ? (
         <div className="space-y-3 rounded-lg border bg-card p-3">
           <p className="text-base font-semibold">{t('proof.title')}</p>
           <ProofCapture onReady={setProof} disabled={busy !== null || completed} />
@@ -463,14 +523,24 @@ export function JobActions({
               value={failReason}
               onChange={(e) => setFailReason(e.target.value)}
               rows={2}
-              placeholder={t('fail.placeholder')}
+              // "Customer not home, phone off, wrong address" is nonsense at a
+              // shop counter, which is now half of a rider's stops.
+              placeholder={collecting ? t('fail.pickupPlaceholder') : t('fail.placeholder')}
               className="text-base"
             />
-            <div className="flex gap-2">
+            {/*
+              STACKED, not side by side. This was `flex gap-2` with the confirm
+              button at flex-1 and Back at its intrinsic width, so a wide red bar
+              sat beside a narrow ghost, both 56px tall, directly under the
+              textarea — two competing targets for one thumb, with no hierarchy
+              between them. Full width and in order of consequence instead.
+            */}
+            <div className="space-y-2">
               <Button
                 size="touch"
                 variant="destructive"
-                className="flex-1 font-bold"
+                block
+                className="font-bold"
                 disabled={busy !== null || completed}
                 onClick={() => void onFailed()}
               >
@@ -480,7 +550,13 @@ export function JobActions({
                     ? t('action.saved')
                     : t('action.confirmFailed')}
               </Button>
-              <Button size="touch" variant="ghost" onClick={() => setFailing(false)}>
+              <Button
+                size="touch"
+                variant="ghost"
+                block
+                disabled={busy !== null}
+                onClick={() => setFailing(false)}
+              >
                 {t('action.cancel')}
               </Button>
             </div>

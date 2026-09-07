@@ -1358,5 +1358,75 @@ begin
   perform public.cancel_trip(t_id, 'test cleanup');
 end $$;
 
+-- ----------------------------------------------------------------------------
+--  0029 — A COLLECTION CANNOT BE DELIVERED
+--
+--  The rider screen used to offer "DONE - DELIVERED" on a pickup leg, and
+--  nothing refused the tap: it stamped cod_status = 'collected' and booked the
+--  COD as cash the rider held, for a parcel on our own shelf.
+-- ----------------------------------------------------------------------------
+do $$
+declare
+  v_route uuid;
+  v_rider uuid;
+  t_id    uuid;
+  oid     uuid;
+  n       int;
+begin
+  select id into v_route from public.routes where code = 'ROUTE_LOCAL';
+  select r.id into v_rider
+    from public.rider_profiles r
+   where not exists (select 1 from public.trips t
+                      where t.rider_id = r.id and t.status in ('planned','loading','departed'))
+   limit 1;
+  if v_rider is null then
+    raise notice 'SKIP: every rider is already out, cannot test the collection guard';
+    return;
+  end if;
+
+  insert into public.orders (
+    shop_id, pickup_address, pickup_lat, pickup_lng, customer_name, customer_phone,
+    dropoff_address, dropoff_area_id, dropoff_lat, dropoff_lng, parcel_desc,
+    payment_method, cod_amount, delivery_fee, created_by)
+  values ('aaaaaaaa-0000-0000-0000-000000000001',
+    'No. 24, Thitsar Road, San Pya Ward, Thingangyun, Yangon', 16.8478, 96.1693,
+    'Guard Customer', '+959780000043', 'Somewhere, Thingangyun', null,
+    16.8500, 96.1700, 'Parcel', 'cod', 24500, 2500,
+    '33333333-3333-3333-3333-333333333333')
+  returning id into oid;
+
+  t_id := (public.plan_trip(v_route)).id;
+  perform public.assign_trip_rider(t_id, v_rider);
+  perform public.load_trip(t_id, array[oid], 'pickup');
+  perform public.depart_trip(t_id, 'Collection guard verification run.');
+  perform public.advance_order(oid, 'picked_up');
+
+  -- 1. THE MONEY BUG. Aboard, on a pickup leg, at the hub.
+  begin
+    perform public.advance_order(oid, 'delivered', 16.85, 96.17,
+                                 oid::text || '/p.webp', 'Someone');
+    raise exception 'FAIL: a parcel being collected was marked delivered';
+  exception when sqlstate '55000' then
+    raise notice 'PASS: a collection cannot be marked delivered';
+  end;
+
+  -- 2. And no COD was booked against the rider by the attempt.
+  select count(*) into n from public.cod_ledger
+   where order_id = oid and kind = 'cod_collected';
+  if n <> 0 then
+    raise exception 'FAIL: % COD line(s) booked for an undelivered parcel', n;
+  end if;
+  raise notice 'PASS: and no cash was booked against the rider';
+
+  -- 3. A collection can still FAIL -- the shop was shut, the parcel was not
+  --    ready. 0018 counts that separately as an uncollected attempt.
+  perform public.advance_order(oid, 'failed', p_reason => 'shop shut');
+  select count(*) into n from public.orders where id = oid and status = 'failed';
+  if n <> 1 then raise exception 'FAIL: a collection could not be failed'; end if;
+  raise notice 'PASS: a collection can still be reported failed';
+
+  perform public.cancel_trip(t_id, 'test cleanup');
+end $$;
+
 \echo ''
 \echo '####  ALL ROUTE / TRIP CHECKS PASSED  ####'
