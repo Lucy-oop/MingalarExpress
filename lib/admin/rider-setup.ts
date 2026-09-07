@@ -1,11 +1,11 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { headers } from 'next/headers'
 import { assertRole } from '@/lib/auth/guards'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { setupRefusal } from '@/lib/admin/rider-setup-rules'
+import { setupLinkFor } from '@/lib/auth/setup-link'
 
 /**
  * Getting a rider's phone signed in, once.
@@ -108,25 +108,12 @@ export async function createRiderSetupLink(riderId: string): Promise<RiderSetupR
     }
   }
 
-  /*
-    THE LINK IS BUILT HERE, not taken from `link.properties.action_link`.
-
-    That field points at GoTrue's own /auth/v1/verify, which redirects to the
-    project's Site URL carrying the session in the URL FRAGMENT
-    (`#access_token=...`). A fragment never reaches a server, so our Route
-    Handler cannot read it -- verified against staging, where the link also
-    redirects to `http://localhost:3000` because that is what Site URL is set
-    to. A rider scanning that QR would be sent to their own phone's localhost.
-
-    Pointing at our own /auth/confirm with the token hash fixes all of it: the
-    QR encodes this app's domain, the session is exchanged server-side into
-    HttpOnly cookies, and it does not depend on a dashboard setting being right.
-  */
-  const h = await headers()
-  const host = h.get('x-forwarded-host') ?? h.get('host')
-  if (!host) return { ok: false, message: 'Could not determine this site’s address.' }
-  const proto = h.get('x-forwarded-proto') ?? (host.startsWith('localhost') ? 'http' : 'https')
-  const setupLink = `${proto}://${host}/auth/confirm?token_hash=${encodeURIComponent(tokenHash)}&type=magiclink&next=%2Frider%2Fdashboard`
+  // Built against our own origin rather than handed out as `action_link` —
+  // see `setupLinkFor` for why that field cannot sign anybody in.
+  const setupLink = await setupLinkFor(tokenHash)
+  if (!setupLink) {
+    return { ok: false, message: 'Could not determine this site’s address.' }
+  }
 
   /*
     Written through the REQUEST-scoped client, not the service client:

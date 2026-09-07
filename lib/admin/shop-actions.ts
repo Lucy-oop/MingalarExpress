@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import type { TablesUpdate } from '@/types/database.types'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { setupLinkFor } from '@/lib/auth/setup-link'
 import { assertRole } from '@/lib/auth/guards'
 import { explainAdminError } from '@/lib/admin/errors'
 import {
@@ -450,11 +451,28 @@ export async function onboardShop(
       type: 'magiclink',
       email: v.ownerEmail,
     })
-    if (linkError || !link.properties?.action_link) {
+    /*
+      `hashed_token`, not `action_link`.
+
+      This path has never been able to sign anybody in. `action_link` points at
+      GoTrue's /auth/v1/verify, which redirects with the session in the URL
+      FRAGMENT -- unreadable by a server -- so /auth/callback found no `code`
+      and sent the new owner to the login page. On staging it also redirected to
+      `http://localhost:3000`, the project's unchanged Site URL. Found while
+      building the rider setup QR, which had the identical defect.
+
+      `setupLinkFor` builds a link against this app's own origin instead, and
+      /auth/confirm exchanges it server-side. No `next`: the confirm route sends
+      them to their role's home, which for a brand-new owner is the shop
+      dashboard and its "set up my shop" prompt.
+    */
+    const tokenHash = link?.properties?.hashed_token
+    const built = tokenHash ? await setupLinkFor(tokenHash) : null
+    if (linkError || !built) {
       warning =
         'The account was created but a sign-in link could not be generated. Use "Send a password reset" from the login page instead.'
     } else {
-      inviteLink = link.properties.action_link
+      inviteLink = built
     }
   }
 
