@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { planningFeeByRoute } from '@/lib/routes/planning-fee'
 import {
   checkTripVolume,
   MIN_PARCELS_PER_TRIP,
@@ -173,7 +174,9 @@ export async function getPlanningBoard(serviceDate?: string): Promise<PlanningBo
       .order('sort_order', { ascending: true }),
     supabase
       .from('route_areas')
-      .select('route_id, area_id, stop_order, is_primary, service_areas:area_id (name, kind)')
+      .select(
+        'route_id, area_id, stop_order, is_primary, service_areas:area_id (name, kind, delivery_zones:zone_id (fee))',
+      )
       .order('stop_order', { ascending: true }),
     supabase
       .from('trips')
@@ -298,6 +301,9 @@ export async function getPlanningBoard(serviceDate?: string): Promise<PlanningBo
   const primaryRouteByArea = new Map<string, string>()
   const stopOrderByRouteArea = new Map<string, number>()
 
+  // route → the lowest zone fee among the areas it actually serves.
+  const minZoneFeeByRoute = planningFeeByRoute(areaRows ?? [])
+
   for (const row of areaRows ?? []) {
     const area = row.service_areas as unknown as { name: string; kind: string } | null
     const list = stopsByRoute.get(row.route_id) ?? []
@@ -326,7 +332,29 @@ export async function getPlanningBoard(serviceDate?: string): Promise<PlanningBo
     stops: (stopsByRoute.get(r.id) ?? []).sort((a, b) => a.stopOrder - b.stopOrder),
   }))
 
-  const feeByRoute = new Map(routes.map((r) => [r.id, r.perParcelFee]))
+  /*
+    WHAT A RUN EARNS US, for the profitability pill and the break-even banner.
+
+    From the ZONES the route serves, not from `routes.per_parcel_fee` — 0033
+    moved the customer price to the zone, and reading the route's own figure
+    left this understating a ROUTE_LOCAL run by 1,500 Ks a parcel: 50,000 Ks
+    shown against 80,000 actually billed on a 20-parcel run, with break-even
+    reported as 7 parcels instead of 5. A dispatcher would have held back runs
+    that were comfortably profitable.
+
+    THE LOWEST FEE, not the average. A route can span bands — Route C reaching
+    both a 4,000 Ks township and a 5,000 Ks industrial pocket is the case 0033
+    exists for — so no single number is exactly right, and the two directions of
+    error are not equal. Understating sends a profitable run out with a warning
+    on it; overstating sends an unprofitable one out with none. Take the
+    pessimistic one.
+
+    Falls back to the route's own fee only when the route serves no primary area
+    at all, which is a route nothing can be dispatched to anyway.
+  */
+  const feeByRoute = new Map(
+    routes.map((r) => [r.id, minZoneFeeByRoute.get(r.id) ?? r.perParcelFee]),
+  )
 
   // Parcels per trip, sequenced by the route's stop order so the list on screen
   // is the order the rider will actually drive.

@@ -268,8 +268,9 @@ export function PricingForm({
           <CardHeader className="pb-3">
             <CardTitle className="text-sm">What shops are charged</CardTitle>
             <p className="text-xs text-muted-foreground">
-              A flat fee per parcel, set by the destination&rsquo;s route. Edit these under
-              Routes &mdash; they are not part of the form on the left.
+              A flat fee per parcel, set by the destination&rsquo;s zone. Edit the rates under
+              Coverage &amp; rates &mdash; they are not part of the form on the left. A route
+              reaching two zones is costed at the lower of them.
             </p>
           </CardHeader>
           <CardContent className="p-0">
@@ -278,7 +279,7 @@ export function PricingForm({
                 <thead>
                   <tr className="border-y bg-muted/50 text-left text-[10px] uppercase tracking-wide text-muted-foreground">
                     <th className="px-3 py-2 font-medium">Route</th>
-                    <th className="px-3 py-2 text-right font-medium">Fee / parcel</th>
+                    <th className="px-3 py-2 text-right font-medium">Zone fee / parcel</th>
                     <th className="px-3 py-2 text-right font-medium">Rider @ {PREVIEW_PARCELS}</th>
                     <th className="px-3 py-2 text-right font-medium">Margin @ {PREVIEW_PARCELS}</th>
                   </tr>
