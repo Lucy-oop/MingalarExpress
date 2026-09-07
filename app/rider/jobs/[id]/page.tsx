@@ -37,8 +37,17 @@ export default async function RiderJobPage({ params }: { params: Promise<{ id: s
     raw.payment_method,
   )
 
-  // The rider is either going to the shop or coming from it, never both.
-  const showPickup = job.leg !== 'return' && job.status === 'assigned'
+  /*
+    THE SHOP CARD MUST NOT VANISH ON A COLLECTION. This was
+    `leg !== 'return' && status === 'assigned'`, so the moment a collection was
+    aboard the shop card disappeared and the only address left was the
+    customer's, labelled "Deliver to" — for a parcel whose journey ends at the
+    hub. On a pickup leg the shop is the whole job, at both statuses.
+  */
+  const collecting = job.leg === 'pickup'
+  const showPickup = collecting || (job.leg !== 'return' && job.status === 'assigned')
+  // And the customer is not a destination on a collection run.
+  const showDropoff = !collecting
 
   return (
     <div className="space-y-3">
@@ -68,8 +77,15 @@ export default async function RiderJobPage({ params }: { params: Promise<{ id: s
           A BREAKDOWN, NOT A SUM. cod_amount already contains the delivery fee
           when the customer pays it, so "delivery fee + COD" would tell the rider
           to collect it twice — see codBreakdown in lib/pricing. */}
+      {/* Nothing is paid at a shop counter. Showing "Collect from customer" and
+          a COD total as the largest figure on the screen was money the rider
+          will take from somebody else, on a later run. */}
       <div className="rounded-lg border bg-card p-3">
-        {money.total > 0 ? (
+        {collecting ? (
+          <p className="text-base font-medium text-muted-foreground">
+            {t('money.collectNothing')}
+          </p>
+        ) : money.total > 0 ? (
           <>
             <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
               {t('money.collect')}
@@ -128,17 +144,23 @@ export default async function RiderJobPage({ params }: { params: Promise<{ id: s
           lng={raw.pickup_lng}
         />
       ) : null}
-      <Leg
-        tone="dropoff"
-        label={t('parcel.deliverTo')}
-        address={raw.dropoff_address}
-        note={raw.dropoff_note}
-        subtitle={`${job.customerName}${job.dropoffArea ? ` · ${job.dropoffArea}` : ''}`}
-        phone={job.customerPhone}
-        altPhone={raw.customer_phone_alt}
-        lat={raw.dropoff_lat}
-        lng={raw.dropoff_lng}
-      />
+      {/* Not on a collection run. The customer's address, a Navigate link to
+          it and their phone number are all things a rider collecting for the
+          hub must not be pointed at — this parcel reaches them on a later
+          run. */}
+      {showDropoff ? (
+        <Leg
+          tone="dropoff"
+          label={t('parcel.deliverTo')}
+          address={raw.dropoff_address}
+          note={raw.dropoff_note}
+          subtitle={`${job.customerName}${job.dropoffArea ? ` · ${job.dropoffArea}` : ''}`}
+          phone={job.customerPhone}
+          altPhone={raw.customer_phone_alt}
+          lat={raw.dropoff_lat}
+          lng={raw.dropoff_lng}
+        />
+      ) : null}
 
       <div className="rounded-lg border bg-card p-3">
         <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">

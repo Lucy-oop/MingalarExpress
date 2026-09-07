@@ -4,6 +4,7 @@ import { requireRider } from '@/lib/auth/guards'
 import { signOut } from '@/lib/auth/actions'
 import { Button } from '@/components/ui/button'
 import { QueueBanner } from '@/components/rider/queue-banner'
+import { GpsBanner } from '@/components/rider/gps-banner'
 import { LanguageToggle } from '@/components/shared/language-toggle'
 import { getLocale } from '@/lib/i18n/locale'
 import { translator } from '@/lib/i18n'
@@ -49,6 +50,10 @@ export default async function RiderLayout({ children }: { children: React.ReactN
       </header>
 
       <main className="flex-1 space-y-3 px-3 pb-24 pt-3">
+        {/* In the shell, beside the queue banner, so it is on the job page too.
+            The job page used to swallow a denied permission in silence and let
+            the rider stamp checkpoints with no coordinates at all. */}
+        <GpsBanner />
         <QueueBanner />
         {children}
       </main>

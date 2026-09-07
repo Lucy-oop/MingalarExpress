@@ -51,9 +51,19 @@ export function JobSheet({
     )
   }, [])
 
-  // On a return the rider is heading to the shop, so the pickup point is the
-  // destination and the customer's address is irrelevant.
-  const focus = leg === 'return' ? pickup : status === 'picked_up' ? dropoff : pickup
+  /*
+    On a return the rider is heading to the shop, so the pickup point is the
+    destination and the customer's address is irrelevant. A COLLECTION is the
+    same shape: the shop is where the job happens, and once the parcel is
+    aboard the run ends at the hub — not at the customer. Without `pickup` here
+    the map jumped across the city to somebody the rider must not visit yet.
+  */
+  const focus =
+    leg === 'return' || leg === 'pickup'
+      ? pickup
+      : status === 'picked_up'
+        ? dropoff
+        : pickup
 
   return (
     <div className="space-y-3">
