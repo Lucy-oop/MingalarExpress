@@ -593,12 +593,15 @@ export const DICTIONARY = {
   'ss.suspended': { en: 'This shop is suspended', my: 'ဆိုင် ရပ်ဆိုင်းထားပါသည်' },
   'ss.awaiting': { en: 'Cash on delivery not unlocked yet', my: 'COD ကို မဖွင့်ရသေးပါ' },
   'ss.rejected': { en: 'Shop not approved', my: 'ဆိုင်ကို အတည်မပြုပါ' },
-  // The two states that stop Save on the settings form. Separate strings because
-  // they call for opposite actions: place a pin you never had, versus move one
-  // that landed outside Greater Yangon.
-  'ss.noPinWarn': {
-    en: 'No pickup point set yet. Tap “Use my location” while you are at the shop, or open the map and drop the pin. A rider needs it to collect.',
-    my: 'ယူရမည့် အမှတ် မသတ်မှတ်ရသေးပါ။ ဆိုင်တွင် ရှိစဉ် “ကျွန်ုပ်တည်နေရာ” ကို နှိပ်ပါ၊ သို့မဟုတ် မြေပုံဖွင့်၍ အမှတ်ချပါ။ ရိုက်ဒါ ယူရန် လိုအပ်ပါသည်။',
+  /*
+    NOT A WARNING. The old `ss.noPinWarn` was red and it blocked Save, so a shop
+    with no map pin could not change its phone number. Saving the address alone
+    is fine now; this line only tells them what a pin would add, because the
+    booking page links here to set one.
+  */
+  'ss.pinOptional': {
+    en: 'Optional: tap “Use my location” at the shop, or drop the pin on the map, and riders will find you first time. Your address alone saves fine.',
+    my: 'ရွေးချယ်နိုင်သည်: ဆိုင်တွင် ရှိစဉ် “ကျွန်ုပ်တည်နေရာ” ကို နှိပ်ပါ သို့မဟုတ် မြေပုံပေါ် အမှတ်ချပါ။ ရိုက်ဒါ ပထမအကြိမ်တွင် ရှာတွေ့ပါမည်။ လိပ်စာသာ သိမ်းလည်း ရပါသည်။',
   },
   'ss.outOfArea': {
     en: 'The pickup pin is outside our delivery area. Move it before saving.',

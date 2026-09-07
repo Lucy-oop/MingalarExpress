@@ -403,14 +403,25 @@ export async function updateShopSettings(
     return { error: 'Your session has expired. Sign in again and retry — nothing has been saved.' }
   }
 
+  /*
+    ABSENT MUST STAY ABSENT, and this used to be a live bug.
+
+    `LocationPicker` emits its hidden lat/lng as EMPTY STRINGS when no pin is
+    set, and `Number('')` is 0 — a real coordinate, in the Gulf of Guinea. So a
+    shop with no pin did not get "no pin"; it got a point off the coast of
+    Africa, which `servicePoint` then rejected as being outside our delivery
+    area. A merchant trying to save a phone number was told to move a pin they
+    had never placed.
+  */
+  const rawLat = formData.get('pickupLat')
+  const rawLng = formData.get('pickupLng')
+  const hasPin = typeof rawLat === 'string' && rawLat !== '' && typeof rawLng === 'string' && rawLng !== ''
+
   const parsed = shopSettingsSchema.safeParse({
     name: formData.get('name'),
     phone: formData.get('phone'),
     pickupAddress: formData.get('pickupAddress'),
-    pickupPoint: {
-      lat: Number(formData.get('pickupLat')),
-      lng: Number(formData.get('pickupLng')),
-    },
+    pickupPoint: hasPin ? { lat: Number(rawLat), lng: Number(rawLng) } : undefined,
     pickupNote: formData.get('pickupNote') ?? '',
   })
 
@@ -430,8 +441,10 @@ export async function updateShopSettings(
       name: v.name,
       phone: v.phone,
       pickup_address: v.pickupAddress,
-      pickup_lat: v.pickupPoint.lat,
-      pickup_lng: v.pickupPoint.lng,
+      // Both or neither: `shops_pickup_pin_complete` (0034) refuses half a pin,
+      // and half a pin is what writing one column without the other produces.
+      pickup_lat: v.pickupPoint?.lat ?? null,
+      pickup_lng: v.pickupPoint?.lng ?? null,
       pickup_note: v.pickupNote || null,
     })
     .eq('owner_id', ctx.userId)

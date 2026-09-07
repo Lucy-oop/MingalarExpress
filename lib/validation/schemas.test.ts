@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { dbId, orderCreateSchema,
   shopSetupSchema,
+  shopSettingsSchema,
 } from './schemas'
 import { MAX_MMK } from './limits'
 import { codCollectable } from '@/lib/pricing'
@@ -319,5 +320,79 @@ describe('shopSetupSchema', () => {
 
   test('what you sell is required, because COD review asks for it by name', () => {
     assert.equal(shopSetupSchema.safeParse({ ...BASE, goodsType: '' }).success, false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// shopSettingsSchema — a merchant must never be stuck on this screen
+// ---------------------------------------------------------------------------
+
+describe('shopSettingsSchema', () => {
+  const BASE = {
+    name: 'San Pya Mini Mart',
+    phone: '09761234567',
+    pickupAddress: 'No. 24, Thitsar Road, San Pya Ward, Thingangyun',
+    pickupNote: '',
+  }
+
+  /**
+   * THE POINT OF THE CHANGE. `pickupPoint` was `servicePoint` — required — so a
+   * shop with no map coordinates could not save its NAME, its PHONE or its
+   * pickup notes either, and the form said so in red. 0034 made the columns
+   * nullable so a merchant whose street the geocoder has never heard of is not
+   * turned away; this form was the last thing insisting.
+   */
+  test('saves with a text address and no map pin', () => {
+    const r = shopSettingsSchema.safeParse({ ...BASE, pickupPoint: undefined })
+    assert.equal(r.success, true)
+    assert.equal(r.data?.pickupPoint, undefined)
+    assert.equal(r.data?.pickupAddress, BASE.pickupAddress)
+  })
+
+  test('and the notes come through with it', () => {
+    const r = shopSettingsSchema.safeParse({
+      ...BASE,
+      pickupNote: 'Near the big mall, green shutter',
+      pickupPoint: undefined,
+    })
+    assert.equal(r.success, true)
+    assert.equal(r.data?.pickupNote, 'Near the big mall, green shutter')
+  })
+
+  test('a pin that IS given still has to be inside Greater Yangon', () => {
+    assert.equal(
+      shopSettingsSchema.safeParse({ ...BASE, pickupPoint: { lat: 16.8478, lng: 96.1693 } }).success,
+      true,
+    )
+    // Mandalay.
+    assert.equal(
+      shopSettingsSchema.safeParse({ ...BASE, pickupPoint: { lat: 21.9588, lng: 96.0891 } }).success,
+      false,
+    )
+  })
+
+  /**
+   * THE GULF OF GUINEA, and the bug this pins.
+   *
+   * `LocationPicker` emits its hidden lat/lng as EMPTY STRINGS when no pin is
+   * set, and the action used to build `{ lat: Number(''), lng: Number('') }` —
+   * which is `{ lat: 0, lng: 0 }`, a real coordinate off the coast of Africa.
+   * So "no pin" arrived as "a pin 8,000 km away" and the shop was told to move
+   * a pin it had never placed. The action now passes `undefined`; this asserts
+   * that 0,0 is still refused if anyone reintroduces the coercion.
+   */
+  test('0,0 is a location, not an absence', () => {
+    assert.equal(
+      shopSettingsSchema.safeParse({ ...BASE, pickupPoint: { lat: 0, lng: 0 } }).success,
+      false,
+      'lat 0 lng 0 must be refused — it is the Gulf of Guinea, not "unset"',
+    )
+  })
+
+  test('the address is still required — a rider reads it', () => {
+    assert.equal(
+      shopSettingsSchema.safeParse({ ...BASE, pickupAddress: '', pickupPoint: undefined }).success,
+      false,
+    )
   })
 })

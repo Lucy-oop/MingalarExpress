@@ -198,7 +198,14 @@ function PinButton({
         </>
       )}
 
-      {problem ? <p className="mt-2 text-xs text-destructive">{problem}</p> : null}
+      {/*
+        MUTED, NOT RED. They tapped a button and it did not work, so saying so
+        is right — but nothing is broken and nothing is blocked: the address
+        alone creates the shop. Red on a form that saves fine either way tells
+        the merchant they have a problem to solve before continuing, and they
+        do not.
+      */}
+      {problem ? <p className="mt-2 text-xs text-muted-foreground">{problem}</p> : null}
     </div>
   )
 }

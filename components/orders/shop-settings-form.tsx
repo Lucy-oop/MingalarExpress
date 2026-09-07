@@ -74,15 +74,21 @@ export function ShopSettingsForm({
   }, [state])
 
   /*
-    TWO DIFFERENT REASONS SAVE IS BLOCKED, and they must not share a message.
+    ONE REASON SAVE IS BLOCKED, not two.
 
-    `shopSettingsSchema.pickupPoint` is `servicePoint`, so the server requires a
-    pin either way -- but "you have not set one" and "the one you set is in
-    Mandalay" call for opposite actions from the owner, and a shop arriving here
-    from registration with no pin is the common case now rather than the strange
-    one.
+    HAVING NO PIN IS NO LONGER ONE OF THEM. It used to be: `pickupPoint` was
+    required, so a shop with no map coordinates could not save its name, its
+    phone or its pickup notes either, and the form said so in red. That is the
+    wrong place for that block -- 0034 made the columns nullable precisely so a
+    merchant whose street the geocoder cannot find is not turned away, and the
+    thing a pin is actually needed for is BOOKING, where `orders.pickup_lat` is
+    NOT NULL and the booking page explains it with the fix one tap away.
+
+    A pin that IS set and lands outside Greater Yangon is a different matter.
+    That is a mistake the owner just made and can immediately correct, and the
+    database will refuse it anyway (`shops_pickup_in_service_area`), so catching
+    it here turns a 23514 into a sentence.
   */
-  const noPin = point === null
   const outOfArea = point !== null && !isInServiceArea(point)
 
   return (
@@ -137,6 +143,17 @@ export function ShopSettingsForm({
             addressPlaceholder="Shop address"
           />
 
+          {/*
+            NEUTRAL, AND ONLY WHEN THERE IS NO PIN. Not a warning and not a
+            blocker -- the address alone saves fine. It is here because the
+            booking page sends people to this screen with "Set my pickup
+            location", and arriving to find nothing about a pin would leave
+            them looking for a control nobody named.
+          */}
+          {point === null ? (
+            <p className="text-xs text-muted-foreground">{t('ss.pinOptional')}</p>
+          ) : null}
+
           <Field
             label="Pickup note for riders"
             htmlFor="pickupNote"
@@ -155,10 +172,8 @@ export function ShopSettingsForm({
       </Card>
 
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
-        <SaveButton disabled={outOfArea || noPin} />
-        {noPin ? (
-          <p className="text-xs text-destructive">{t('ss.noPinWarn')}</p>
-        ) : outOfArea ? (
+        <SaveButton disabled={outOfArea} />
+        {outOfArea ? (
           <p className="text-xs text-destructive">{t('ss.outOfArea')}</p>
         ) : (
           <p className="text-xs text-muted-foreground">{t('ss.addressHint')}</p>
