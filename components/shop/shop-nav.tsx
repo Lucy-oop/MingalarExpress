@@ -99,7 +99,15 @@ export function ShopTabs() {
       aria-label="Shop sections"
       className="fixed inset-x-0 bottom-0 z-20 border-t bg-background pb-[env(safe-area-inset-bottom)] lg:hidden"
     >
-      <div className="grid grid-cols-4">
+      {/*
+        FIVE COLUMNS FOR FIVE DESTINATIONS. This was grid-cols-4 while NAV held
+        four; adding Updates in 01f63ce put a fifth child into a four-column
+        grid, so it wrapped onto a second row and doubled the height of a FIXED
+        bottom bar — covering the content above it on every phone. The count is
+        pinned by a test in shop-nav.test.ts, because a Tailwind class cannot be
+        derived from NAV.length without defeating the JIT.
+      */}
+      <div className="grid grid-cols-5">
         {NAV.map(({ href, key, icon: Icon }) => {
           const current = href === active
           return (
@@ -108,7 +116,9 @@ export function ShopTabs() {
               href={href}
               aria-current={current ? 'page' : undefined}
               className={cn(
-                'flex min-h-16 flex-col items-center justify-center gap-1 px-1 text-center text-[11px] leading-tight active:bg-muted',
+                // `break-words` because five across on a 360px screen is 72px
+                // a tab, and 'အသိပေးချက်' does not fit on one line there.
+                'flex min-h-16 flex-col items-center justify-center gap-1 px-0.5 text-center text-[11px] leading-tight break-words active:bg-muted',
                 FOCUS,
                 current ? 'font-semibold text-primary' : 'font-medium text-muted-foreground',
               )}

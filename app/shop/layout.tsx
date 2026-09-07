@@ -77,11 +77,31 @@ export default async function ShopLayout({ children }: { children: React.ReactNo
           {/* One mount for both desktop bands: `order-last w-full` gives it a
               line of its own until xl, where it joins the bar. A third copy in
               the DOM would be the alternative. */}
+          {/*
+            THE NAV ABSORBS THE SLACK, and this is the fix for the Burmese
+            header. It used to be `xl:w-auto` beside an `ml-auto` action group:
+            at xl all three sat on one flex line, the nav took only its content
+            width, and `ml-auto` shoved the actions to the far right — so the
+            leftover space appeared as a gap between them, whose size was
+            whatever the translated labels did not use. Five Burmese labels
+            plus `:lang(my) { line-height: 1.9 }` also pushed the row past the
+            container, and `flex-wrap` then dropped the action group onto a
+            second line where `ml-auto` right-aligned it against nothing.
+
+            `xl:flex-1` with `min-w-0` makes the nav take the slack instead, so
+            there is nothing left for `ml-auto` to distribute and nothing to
+            wrap. `overflow-x-auto` is the valve if the labels genuinely exceed
+            the bar: a scrolling nav rather than a broken header.
+          */}
           {gated ? null : (
-            <ShopNavLinks className="order-last hidden min-w-0 w-full overflow-x-auto lg:flex xl:order-none xl:w-auto" />
+            <ShopNavLinks className="order-last hidden min-w-0 w-full overflow-x-auto lg:flex xl:order-none xl:flex-1" />
           )}
 
-          <div className="ml-auto flex shrink-0 items-center gap-2">
+          {/* `ml-auto` only matters while the nav is on its own line — below xl
+              it is what holds the actions to the right of the brand. At xl the
+              nav is flex-1 and doing that job, so ml-auto becomes the thing
+              opening the gap. */}
+          <div className="ml-auto flex shrink-0 items-center gap-2 xl:ml-0">
             {gated ? null : (
               <>
                 <NewOrderButton className="hidden lg:inline-flex" />
