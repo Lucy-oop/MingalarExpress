@@ -1,7 +1,7 @@
 'use client'
 
-import { useMemo, useState, useTransition } from 'react'
-import { useRouter } from 'next/navigation'
+import { useEffect, useMemo, useState, useTransition } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Search, Store, X } from 'lucide-react'
 import type { ShopListResult, ShopListRow } from '@/lib/admin/shop-queries'
 import type { ShopActionResult } from '@/lib/admin/shop-actions'
@@ -44,6 +44,29 @@ export function ShopManager({
   const [, startTransition] = useTransition()
 
   const [detailRow, setDetailRow] = useState<ShopListRow | null>(null)
+
+  /*
+    OPENED BY URL, so a notice elsewhere can point AT a shop.
+    `/admin/shops?shop=<id>` lands here and opens that shop's detail view — the
+    review screen already existed and simply had no way in from outside this
+    component's own state.
+
+    The param is dropped once consumed: leaving it would re-open the drawer
+    every time this list re-rendered, including after a Confirm, so an admin
+    would have to close the same shop twice. Matched against the rows actually
+    loaded, so a stale or invented id opens nothing rather than an empty panel.
+  */
+  const params = useSearchParams()
+  const requested = params.get('shop')
+  useEffect(() => {
+    if (!requested) return
+    const row = data.rows.find((r) => r.shopId === requested)
+    if (row) setDetailRow(row)
+    router.replace('/admin/shops', { scroll: false })
+    // Deliberately not depending on `data.rows` by identity: a refresh would
+    // re-run this against a param that is already gone.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requested])
   const [statusTarget, setStatusTarget] = useState<{
     row: ShopListRow
     action: 'activate' | 'suspend' | 'approve' | 'reject'

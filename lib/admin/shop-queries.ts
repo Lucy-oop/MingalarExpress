@@ -104,6 +104,62 @@ const emptyAgg = (): OrderAgg => ({
   codInFlight: 0,
 })
 
+export type NewShopNotice = {
+  shopId: string
+  name: string | null
+  ownerName: string
+  ownerPhone: string | null
+  goodsType: string | null
+  pickupAddress: string | null
+  createdAt: string
+}
+
+/**
+ * Shops nobody in the office has looked at yet.
+ *
+ * SEPARATE FROM `getShopList` ON PURPOSE. That function is the shops PAGE: it
+ * scans up to 50,000 orders to derive COD positions per shop, which is the
+ * right cost for a working screen and the wrong one for a notice on a landing
+ * page that renders on every visit.
+ *
+ * The predicate is the one 0026 defined and 0031 reinterpreted: `approved_at`
+ * null with no rejection. It no longer means "cannot trade" — since 0031 these
+ * shops are booking prepaid parcels right now — it means "COD is still locked
+ * and a human has not seen them". That is precisely what makes the notice
+ * worth acting on: every hour it sits there is an hour a real merchant cannot
+ * take cash.
+ */
+export async function getNewShopNotices(limit = 8): Promise<NewShopNotice[]> {
+  const supabase = await createClient()
+
+  const { data, error } = await supabase
+    .from('shops')
+    .select(
+      `id, name, goods_type, pickup_address, created_at,
+       profiles!shops_owner_id_fkey (full_name, phone)`,
+    )
+    .is('approved_at', null)
+    .is('rejected_at', null)
+    .order('created_at', { ascending: true })
+    .limit(limit)
+
+  // A notice is chrome. If it cannot load, the page it sits on still has to.
+  if (error || !data) return []
+
+  return data.map((raw) => {
+    const owner = raw.profiles as unknown as { full_name: string; phone: string | null } | null
+    return {
+      shopId: raw.id,
+      name: raw.name,
+      ownerName: owner?.full_name ?? 'Unknown owner',
+      ownerPhone: owner?.phone ?? null,
+      goodsType: raw.goods_type,
+      pickupAddress: raw.pickup_address,
+      createdAt: raw.created_at,
+    }
+  })
+}
+
 export async function getShopList(): Promise<ShopListResult> {
   const supabase = await createClient()
 

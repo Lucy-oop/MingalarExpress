@@ -2,20 +2,22 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { AlertTriangle, ArrowRight, Banknote, MapPinned, Percent, UserCheck } from 'lucide-react'
 import { getAdminOverview, getCodPositions, getRiders } from '@/lib/admin/queries'
+import { getNewShopNotices } from '@/lib/admin/shop-queries'
 import { Kpi, PageHeader } from '@/components/admin/kpi'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Alert } from '@/components/ui/alert'
-import { formatMmk, formatMyanmarPhone } from '@/lib/utils'
+import { formatDateTimeYangon, formatMmk, formatMyanmarPhone } from '@/lib/utils'
 
 export const metadata: Metadata = { title: 'Super Admin' }
 export const dynamic = 'force-dynamic'
 
 export default async function SuperAdminOverviewPage() {
-  const [overview, riders, positions] = await Promise.all([
+  const [overview, riders, positions, newShops] = await Promise.all([
     getAdminOverview(),
     getRiders(),
     getCodPositions(),
+    getNewShopNotices(),
   ])
 
   const pending = riders.filter((r) => !r.isActive)
@@ -32,6 +34,47 @@ export default async function SuperAdminOverviewPage() {
 
       {/* Things that need a human today, before the numbers. */}
       <div className="space-y-2">
+        {/*
+          NEW SHOPS, FIRST IN THE LIST. Since 0031 these are already trading —
+          booking prepaid parcels right now — so this is not a queue holding
+          anyone up. It is the opposite: every hour a real merchant sits here is
+          an hour they cannot take cash, which is most of why they signed up.
+          That makes it the most time-sensitive thing on this page, so it goes
+          above the rider approvals and the float warnings.
+        */}
+        {newShops.length > 0 ? (
+          <Alert
+            tone="info"
+            title={`${newShops.length} new shop${newShops.length === 1 ? '' : 's'} to review`}
+          >
+            <p className="text-xs">
+              They can book prepaid parcels already. Reviewing one unlocks cash on delivery for
+              it.
+            </p>
+            <ul className="mt-2 space-y-1.5">
+              {newShops.map((s) => (
+                <li key={s.shopId}>
+                  {/* Straight into the detail view for THAT shop — the review
+                      screen already exists, it just had no way in from here. */}
+                  <Link
+                    href={`/admin/shops?shop=${s.shopId}`}
+                    className="flex flex-wrap items-baseline gap-x-2 rounded text-sm hover:underline"
+                  >
+                    <span className="font-medium">{s.name ?? 'Unnamed shop'}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {s.goodsType ? `${s.goodsType} · ` : ''}
+                      {s.ownerName}
+                      {s.ownerPhone ? ` · ${formatMyanmarPhone(s.ownerPhone)}` : ''}
+                    </span>
+                    <span className="ml-auto shrink-0 text-xs tabular-nums text-muted-foreground">
+                      {formatDateTimeYangon(s.createdAt)}
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </Alert>
+        ) : null}
         {pending.length > 0 ? (
           <Alert tone="info" title={`${pending.length} rider${pending.length === 1 ? '' : 's'} waiting for approval`}>
             <Link href="/admin/super/riders" className="underline underline-offset-2">
