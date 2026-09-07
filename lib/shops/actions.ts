@@ -25,19 +25,17 @@ export type ShopSetupResult =
  * an address, and a shop still cannot wave itself through. That pairing is the
  * whole design; using the service role here would throw away the second half.
  *
- * THE COORDINATES ARE NOT TYPED. `shops.pickup_lat/lng` are NOT NULL behind a
- * geofence CHECK and `createOrder` copies them onto every order, where they
- * become the rider's navigation target -- so they cannot be skipped, and they
- * cannot be invented either. Two honest sources, in order of trust:
+ * THE COORDINATES ARE NOT TYPED, AND NOT REQUIRED. Two honest sources -- the
+ * owner's device tapped in the shop, or a lookup of the address they typed --
+ * and when neither answers, null. 0034 made that legal precisely so this screen
+ * cannot turn anyone away.
  *
- *   1. the owner's own device, tapped while standing in the shop
- *   2. a lookup of the address they typed
- *
- * Nothing else. If both are absent, NO ROW IS WRITTEN and the owner is told to
- * tap the location button or ring the office. A guessed pin -- a ward centroid,
- * a hub default -- sends a rider to the wrong street while the screen shows the
- * right address, and the seeded ward centroids are flagged VERIFY-CENTROID for
- * exactly that reason: Bahan's is 2.2 km out.
+ * The pin is not optional forever, only at registration. `orders.pickup_lat/lng`
+ * are still NOT NULL, because they are the rider's navigation target and there
+ * is no honest default for those either -- so a pinless shop can sign in, be
+ * seen by the office and set its own pin in Shop settings, but cannot book a
+ * parcel until it has one. The block moved from the first screen a merchant ever
+ * sees to one they reach with an account and a fixable prompt.
  */
 export async function setUpShop(
   _prev: ShopSetupResult,
@@ -81,17 +79,26 @@ export async function setUpShop(
     redirect('/shop/dashboard')
   }
 
+  /*
+    NOTHING HERE CAN REFUSE THE SUBMISSION.
+
+    This used to be a wall: no pin, no shop. `resolvePoint` returning null meant
+    the merchant was sent back to a form they had filled in correctly, because
+    Nominatim had never heard of their street -- which, measured on six
+    realistic Yangon addresses, is the common case rather than the edge one. 0034
+    dropped NOT NULL on `shops.pickup_lat/lng` so a null pin is now a legal,
+    nameable state: "nobody has established this yet".
+
+    Best available answer, and no invention:
+
+      the owner's own device, tapped while standing in the shop   exact
+      a lookup of the address they typed                          approximate
+      null                                                        honest
+
+    A ward centroid or a hub default would be a fourth option and a worse one
+    than null: it looks like a location, so a rider drives to it.
+  */
   const point = await resolvePoint(v.pickupAddress, v.pickupLat, v.pickupLng)
-  if (!point) {
-    return {
-      ok: false,
-      fieldErrors: {
-        pickupAddress: [
-          'We could not find that address on the map. Tap "Use my current location" while you are at the shop, or contact the office and they will set it up for you.',
-        ],
-      },
-    }
-  }
 
   const { error } = await supabase.from('shops').insert({
     owner_id: userId,
@@ -100,8 +107,10 @@ export async function setUpShop(
     goods_type: v.goodsType,
     pickup_address: v.pickupAddress,
     pickup_note: v.pickupNote || null,
-    pickup_lat: point.lat,
-    pickup_lng: point.lng,
+    // Both or neither -- `shops_pickup_pin_complete` refuses half a pin, and
+    // half a pin is what a `point?.lat` without the matching guard produces.
+    pickup_lat: point?.lat ?? null,
+    pickup_lng: point?.lng ?? null,
   })
 
   if (error) {
@@ -114,20 +123,26 @@ export async function setUpShop(
 
   /*
     Redirect from the action rather than returning ok and leaving the client to
-    work it out: the dashboard is where the "waiting for the office" message
-    lives, and a form still on screen after a successful submit invites a second
-    one. `redirect` throws, so nothing below runs.
+    work it out: the dashboard is where the next thing to do lives -- including
+    "add your pickup location" when this insert stored no pin -- and a form still
+    on screen after a successful submit invites a second one. `redirect` throws,
+    so nothing below runs.
   */
   revalidatePath('/shop', 'layout')
   redirect('/shop/dashboard')
 }
 
 /**
- * A pin the owner placed, or the best in-area match for what they typed.
+ * A pin the owner placed, or the best in-area match for what they typed, or
+ * null when neither is available.
+ *
+ * NULL IS A RESULT, NOT A FAILURE, since 0034. Every `return null` below used
+ * to end a registration; now it ends only the attempt to locate one, and the
+ * shop is created with the address text alone.
  *
  * `servicePoint` is the same Zod rule the database CHECK mirrors, so a lookup
- * landing outside Greater Yangon is rejected here rather than becoming a 23514
- * the owner cannot act on.
+ * landing outside Greater Yangon comes back null here rather than becoming a
+ * 23514 the owner cannot act on.
  */
 async function resolvePoint(
   address: string,
@@ -137,8 +152,13 @@ async function resolvePoint(
   if (lat !== undefined && lng !== undefined) {
     const own = servicePoint.safeParse({ lat, lng })
     if (own.success) return own.data
-    // A pin outside the area is a mistake worth correcting, not worth silently
-    // replacing with a geocode of the same address.
+    /*
+      A pin outside Greater Yangon is not worth silently replacing with a
+      geocode of the same address -- if they tapped the button, the tap is what
+      they meant, and it was wrong. It comes back null, the shop registers on
+      its address alone, and the dashboard then asks for a pickup location. The
+      one thing not done is refusing the registration over it.
+    */
     return null
   }
 
@@ -149,8 +169,9 @@ async function resolvePoint(
     const checked = servicePoint.safeParse(inArea.point)
     return checked.success ? checked.data : null
   } catch {
-    // Nominatim is rate-limited and occasionally down. Failing to a "the office
-    // will call you" is honest; inventing a coordinate is not.
+    // Nominatim is rate-limited and occasionally down. Coming back empty is
+    // honest; inventing a coordinate is not. Since 0034 an outage costs the
+    // merchant a pin, not a registration.
     return null
   }
 }

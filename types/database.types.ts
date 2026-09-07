@@ -1115,8 +1115,8 @@ export type Database = {
           phone: string
           pickup_address: string
           pickup_geog: unknown
-          pickup_lat: number
-          pickup_lng: number
+          pickup_lat: number | null
+          pickup_lng: number | null
           pickup_note: string | null
           rejected_at: string | null
           rejection_reason: string | null
@@ -1135,8 +1135,8 @@ export type Database = {
           phone: string
           pickup_address: string
           pickup_geog?: unknown
-          pickup_lat: number
-          pickup_lng: number
+          pickup_lat?: number | null
+          pickup_lng?: number | null
           pickup_note?: string | null
           rejected_at?: string | null
           rejection_reason?: string | null
@@ -1155,8 +1155,8 @@ export type Database = {
           phone?: string
           pickup_address?: string
           pickup_geog?: unknown
-          pickup_lat?: number
-          pickup_lng?: number
+          pickup_lat?: number | null
+          pickup_lng?: number | null
           pickup_note?: string | null
           rejected_at?: string | null
           rejection_reason?: string | null

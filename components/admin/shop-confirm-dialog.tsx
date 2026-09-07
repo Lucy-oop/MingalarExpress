@@ -23,11 +23,16 @@ import type { ServiceArea, LatLng } from '@/types/domain'
  * The details were on screen and the office retyped them.
  *
  * WHY IT IS NOT ONE CLICK, which is worth stating rather than pretending:
- * `shops.pickup_address`, `pickup_lat` and `pickup_lng` are NOT NULL behind
- * `shops_pickup_in_service_area`, and signup collects only name, email, phone
- * and password. Nobody has ever asked the owner where to collect from, so
+ * `shops.pickup_address` is NOT NULL, and signup collects only name, email,
+ * phone and password. Nobody has ever asked the owner where to collect from, so
  * somebody has to supply it. One field is the honest floor, and the
  * address-first picker makes it one field and a tap.
+ *
+ * The PIN is no longer part of that floor -- 0034 made `pickup_lat/lng`
+ * nullable so a merchant registering themselves is never turned away by a
+ * geocoder that has not heard of their street. The office may leave it unset
+ * here too; the shop simply cannot book a parcel until somebody places it, and
+ * both the merchant's dashboard and the shop list say so.
  *
  * Name and phone are prefilled but stay editable behind a disclosure: a shop's
  * counter line is often not the owner's mobile, and the signup field is labelled

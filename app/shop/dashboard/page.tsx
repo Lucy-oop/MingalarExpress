@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { Store } from 'lucide-react'
+import { Store, MapPin } from 'lucide-react'
 import type { Metadata } from 'next'
 import { requireShop } from '@/lib/auth/guards'
 import { getLocale } from '@/lib/i18n/locale'
@@ -84,6 +84,31 @@ export default async function ShopDashboardPage() {
         <Alert tone={state === 'awaiting' ? 'info' : 'warning'} title={t('sd.awaiting')}>
           <span className="block">{blocked}</span>
           <ContactSupport phone={supportPhone} moreLabel={t('contact.more')} className="mt-2 text-sm" />
+        </Alert>
+      ) : null}
+
+      {/*
+        THE ONE THING A NEW SHOP STILL OWES US, and the reason registration no
+        longer refuses anyone. 0034 lets a shop be created on its address alone
+        -- two thirds of Yangon addresses do not geocode -- but a parcel needs a
+        coordinate for the rider to drive to, so booking waits for the pin.
+
+        Shown ALONGSIDE the approval notice rather than instead of it: an
+        unreviewed shop with no pin owes two different things and hiding one
+        behind the other means fixing this twice. Suppressed when there is no
+        shop at all, where "set up my shop" is already the ask.
+      */}
+      {shop && shop.pickup_lat === null ? (
+        <Alert tone="warning" title="Add your pickup location">
+          <span className="block">
+            We have your address but not the exact spot on the map. Riders need it to collect, so
+            your first parcel is waiting on this. Open Shop settings, tap the locate button while
+            you are at the shop, and save.
+          </span>
+          <Link href="/shop/settings" className={cn(buttonVariants({ size: 'sm' }), 'mt-3')}>
+            <MapPin className="size-4" />
+            Set my pickup location
+          </Link>
         </Alert>
       ) : null}
 

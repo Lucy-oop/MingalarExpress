@@ -41,15 +41,25 @@ export function ShopSettingsForm({
     name: string
     phone: string
     pickup_address: string
-    pickup_lat: number
-    pickup_lng: number
+    /**
+     * Null when nobody has established it yet (0034). A shop registers on its
+     * address alone when the geocoder cannot place it, and THIS FORM is the
+     * screen that fixes that -- so a null pin is the state it most needs to
+     * handle well, not an edge case.
+     */
+    pickup_lat: number | null
+    pickup_lng: number | null
     pickup_note: string | null
   }
 }) {
   const [state, action] = useActionState<ShopSettingsState, FormData>(updateShopSettings, {})
   const err = (k: string) => state.fieldErrors?.[k]?.[0]
 
-  const [point, setPoint] = useState<LatLng>({ lat: shop.pickup_lat, lng: shop.pickup_lng })
+  const [point, setPoint] = useState<LatLng | null>(
+    shop.pickup_lat === null || shop.pickup_lng === null
+      ? null
+      : { lat: shop.pickup_lat, lng: shop.pickup_lng },
+  )
   const [address, setAddress] = useState(shop.pickup_address)
   const [saved, setSaved] = useState(false)
 
@@ -61,7 +71,17 @@ export function ShopSettingsForm({
     return () => clearTimeout(id)
   }, [state])
 
-  const outOfArea = !isInServiceArea(point)
+  /*
+    TWO DIFFERENT REASONS SAVE IS BLOCKED, and they must not share a message.
+
+    `shopSettingsSchema.pickupPoint` is `servicePoint`, so the server requires a
+    pin either way -- but "you have not set one" and "the one you set is in
+    Mandalay" call for opposite actions from the owner, and a shop arriving here
+    from registration with no pin is the common case now rather than the strange
+    one.
+  */
+  const noPin = point === null
+  const outOfArea = point !== null && !isInServiceArea(point)
 
   return (
     <form action={action} className="space-y-4" noValidate>
@@ -132,9 +152,14 @@ export function ShopSettingsForm({
         </CardContent>
       </Card>
 
-      <div className="flex items-center gap-3">
-        <SaveButton disabled={outOfArea} />
-        {outOfArea ? (
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+        <SaveButton disabled={outOfArea || noPin} />
+        {noPin ? (
+          <p className="text-xs text-destructive">
+            No pickup point set yet. Tap &ldquo;Use my location&rdquo; while you are at the shop,
+            or open the map and drop the pin. A rider needs it to collect.
+          </p>
+        ) : outOfArea ? (
           <p className="text-xs text-destructive">
             The pickup pin is outside our delivery area. Move it before saving.
           </p>

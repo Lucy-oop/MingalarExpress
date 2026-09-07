@@ -187,6 +187,17 @@ export function ShopDetailModal({
             <Row label="Sells" value={row.goodsType ?? '—'} />
             <Row label="Ward" value={row.area ?? '—'} />
             <Row label="Pickup address" value={row.pickupAddress ?? '—'} wide />
+            {/* The one field whose absence stops the shop trading. Spelled out
+                rather than shown as an empty coordinate pair. */}
+            <Row
+              label="Map pin"
+              value={
+                row.pickupLat === null
+                  ? 'Not set — the shop cannot book until it is'
+                  : `${row.pickupLat?.toFixed(5)}, ${detail?.shop.pickupLng?.toFixed(5) ?? ''}`
+              }
+              wide
+            />
             {detail?.shop.pickupNote ? (
               <Row label="Pickup note" value={detail.shop.pickupNote} wide />
             ) : null}
@@ -314,10 +325,14 @@ function EditForm({
   })
   const err = (k: string) => (state.ok ? undefined : state.fieldErrors?.[k]?.[0])
 
-  const [point, setPoint] = useState<LatLng>({
-    lat: detail.shop.pickupLat,
-    lng: detail.shop.pickupLng,
-  })
+  // Null when the shop registered on its address alone and nobody has placed
+  // the pin yet (0034). `LocationPicker` takes null and shows an empty map; the
+  // office types the address to get suggestions, exactly as for any other shop.
+  const [point, setPoint] = useState<LatLng | null>(
+    detail.shop.pickupLat === null || detail.shop.pickupLng === null
+      ? null
+      : { lat: detail.shop.pickupLat, lng: detail.shop.pickupLng },
+  )
   const [address, setAddress] = useState(detail.shop.pickupAddress)
 
   const seen = useRef<ShopActionResult | null>(null)

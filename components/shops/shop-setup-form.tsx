@@ -24,21 +24,21 @@ import type { LatLng } from '@/types/domain'
  * the first screen a merchant ever sees. They know their own address. They type
  * it.
  *
- * WHICH LEAVES THE COORDINATES, and they are not optional -- `pickup_lat/lng`
- * are NOT NULL behind a geofence CHECK, and `createOrder` copies them onto
- * every order as the rider's navigation target. Geocoding the typed address
- * cannot carry that alone: of six realistic Yangon addresses, Nominatim found
- * two. "No. 24, Thitsar Road, San Pya Ward, Thingangyun" returns nothing at
- * all. So the button below matters more than it looks --
+ * NOTHING ON THIS FORM CAN REFUSE A SUBMISSION. It could, until 0034: the
+ * coordinates were NOT NULL behind a geofence CHECK, so a merchant whose street
+ * the geocoder has never heard of was turned away on the first screen. Of six
+ * realistic Yangon addresses Nominatim found two, so that was the common case.
+ * A missing pin is now a legal state and Save always works.
  *
- *   a merchant setting up their shop is STANDING IN IT.
+ * WHICH LEAVES THE BUTTON, and it still matters -- a merchant setting up their
+ * shop is STANDING IN IT. One tap gives a pin more accurate than any address
+ * lookup, with no map to pan and nothing to search. Skip it and the server
+ * geocodes the typed address; if that also comes back empty the shop is created
+ * with no pin, and the dashboard asks for one before the first parcel. Three
+ * outcomes, none of them a dead end.
  *
- * One tap gives a pin more accurate than any address lookup, with no map to
- * pan and nothing to search. The typed address is still what a rider reads; the
- * tap is only how we learn where to send them.
- *
- * If they are not at the shop, the server geocodes what they typed, exactly as
- * before. The tap is the reliable path, not the only one.
+ * So the button is presented as the good path rather than a required one, and
+ * nothing about it blocks Save.
  */
 export function ShopSetupForm({
   defaultName,
@@ -191,8 +191,9 @@ function PinButton({
             {busy ? 'Getting your location…' : 'Use my current location'}
           </Button>
           <p className="mt-2 text-xs text-muted-foreground">
-            Tap this while you are at the shop and riders will find it first time. Otherwise we
-            will look up the address you typed.
+            Tap this while you are at the shop and riders will find it first time. Skip it and we
+            will look up the address you typed &mdash; you can set the exact spot later in Shop
+            settings.
           </p>
         </>
       )}

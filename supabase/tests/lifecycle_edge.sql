@@ -159,4 +159,55 @@ begin
   n := 0;
 end $$;
 reset role;
+
+\echo '=== E7. a shop may register with no map pin, but not with half of one ==='
+--  0034. Registration used to fail closed: pickup_lat/lng were NOT NULL behind
+--  the geofence CHECK, so a merchant whose street Nominatim has never heard of
+--  could not create a shop at all -- and on six realistic Yangon addresses the
+--  lookup found two. The pin became optional so the first screen a merchant
+--  sees can never turn them away.
+--
+--  What must NOT have been relaxed along with it: the geofence itself, and the
+--  completeness of a pin that IS given. Half a point is not a location.
+do $$
+declare sid uuid; g text;
+begin
+  insert into public.shops (owner_id, name, phone, goods_type, pickup_address)
+  values ('22222222-2222-2222-2222-222222222222', 'Pinless Test Mart',
+          '+959770000091', 'Clothes', 'No 7, Thanlyin market road')
+  returning id into sid;
+
+  -- The generated geography must be NULL, not a point at (0, 0) in the Gulf of
+  -- Guinea. st_makepoint is strict, and this asserts it stays that way.
+  select coalesce(pickup_geog::text, '(null)') into g
+    from public.shops where id = sid;
+  if g <> '(null)' then
+    raise exception 'FAIL: a pinless shop got a geography of %', g;
+  end if;
+  raise notice 'PASS: a shop registers on its address alone, geog null';
+
+  begin
+    update public.shops set pickup_lat = 16.8478 where id = sid;
+    raise exception 'FAIL: stored a latitude with no longitude';
+  exception when check_violation then
+    raise notice 'PASS: half a pin is refused';
+  end;
+
+  update public.shops set pickup_lat = 16.8478, pickup_lng = 96.1693 where id = sid;
+  raise notice 'PASS: the pin can be filled in later';
+
+  -- THE GEOFENCE IS STILL THE GEOFENCE. Mandalay is 21.96 N, well outside.
+  begin
+    update public.shops set pickup_lat = 21.9588, pickup_lng = 96.0891 where id = sid;
+    raise exception 'FAIL: a Mandalay pin was accepted';
+  exception when check_violation then
+    raise notice 'PASS: an out-of-area pin is still refused';
+  end;
+
+  update public.shops set pickup_lat = null, pickup_lng = null where id = sid;
+  raise notice 'PASS: and a pin can be cleared back to unknown';
+
+  delete from public.shops where id = sid;
+end $$;
+
 \echo '####  ALL EDGE CHECKS PASSED  ####'

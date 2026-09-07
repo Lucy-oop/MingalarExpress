@@ -376,8 +376,9 @@ export type ShopDetail = {
     areaId: string | null
     area: string | null
     pickupAddress: string
-    pickupLat: number
-    pickupLng: number
+    /** Null when nobody has established the pin yet — see 0034. */
+    pickupLat: number | null
+    pickupLng: number | null
     pickupNote: string | null
     isActive: boolean
     createdAt: string

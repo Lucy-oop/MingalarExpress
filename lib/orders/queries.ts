@@ -87,6 +87,11 @@ export type ShopDashboard = {
     id: string
     name: string
     pickup_address: string
+    /**
+     * Null when nobody has placed the pin yet (0034). The dashboard nags for it,
+     * because a pinless shop can do everything except book a parcel.
+     */
+    pickup_lat: number | null
     is_active: boolean
     approved_at: string | null
     rejected_at: string | null
@@ -176,7 +181,10 @@ export async function getShopDashboard(): Promise<ShopDashboard> {
   ] = await Promise.all([
     supabase
       .from('shops')
-      .select('id, name, pickup_address, is_active, approved_at, rejected_at')
+      // `pickup_lat` for the one thing the dashboard has to nag about: a shop
+      // that registered on its address alone (0034) cannot book until the pin
+      // exists, and this screen is where it lands after setup.
+      .select('id, name, pickup_address, pickup_lat, is_active, approved_at, rejected_at')
       .limit(1)
       .maybeSingle(),
     supabase

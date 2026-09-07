@@ -93,7 +93,20 @@ export function ShopTable({
                   <span className="block truncate" title={r.pickupAddress ?? undefined}>
                     {r.pickupAddress ?? '—'}
                   </span>
-                  <span className="block text-xs text-muted-foreground">{r.area ?? '—'}</span>
+                  {/*
+                    NO PIN = CANNOT BOOK. A shop that registered on its address
+                    alone (0034) looks completely ordinary in this list, and the
+                    office would otherwise only find out when the merchant rang
+                    to ask why their first parcel would not save. Sits under the
+                    address because it is a fact about the address.
+                  */}
+                  {r.pickupLat === null ? (
+                    <span className="block text-xs font-medium text-amber-700 dark:text-amber-500">
+                      No map pin — cannot book yet
+                    </span>
+                  ) : (
+                    <span className="block text-xs text-muted-foreground">{r.area ?? '—'}</span>
+                  )}
                 </td>
 
                 <td className="whitespace-nowrap px-3 py-2 text-xs text-muted-foreground">
