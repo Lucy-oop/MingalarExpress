@@ -120,7 +120,7 @@ export default async function ShopDashboardPage() {
             View all {counts.total > 0 ? `(${counts.total})` : null}
           </Link>
         </div>
-        <OrderTable orders={recent} />
+        <OrderTable orders={recent} grouped={false} />
       </section>
     </div>
   )

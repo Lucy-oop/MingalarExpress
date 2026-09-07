@@ -173,6 +173,14 @@ export const DICTIONARY = {
   'earnings.title': { en: 'Earnings', my: 'ဝင်ငွေ' },
   'earnings.week': { en: 'This week', my: 'ဒီအပတ်' },
   'earnings.activeJobs': { en: 'On the bike now', my: 'လက်ရှိ ကိုင်ထား' },
+  // The ledger list was capped at 40 rows with no footnote at all, so a busy
+  // rider simply lost the rest without being told.
+  'earnings.days': { en: 'Last {n} days', my: 'ပြီးခဲ့သည့် {n} ရက်' },
+  'earnings.showing': { en: 'Showing {n} of {total}', my: '{total} ခုမှ {n} ခု' },
+  'earnings.narrow': {
+    en: 'Narrow the range to see further back.',
+    my: 'ပိုရှေးကို ကြည့်ရန် ကာလကို ချုံ့ပါ။',
+  },
   'earnings.empty': { en: 'Nothing yet. Completed deliveries appear here.', my: 'မရှိသေးပါ။ ပို့ပြီးသည်များ ဒီတွင် ပေါ်ပါမည်။' },
 
   // ---- online ---------------------------------------------------------------

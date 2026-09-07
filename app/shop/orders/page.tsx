@@ -95,7 +95,7 @@ export default async function ShopOrdersPage({
         />
       )}
 
-      <OrderTable orders={rows} />
+      <OrderTable orders={rows} locale={locale} />
 
       {pageCount > 1 ? (
         <nav className="flex items-center justify-between gap-3" aria-label={t('so.pagination')}>

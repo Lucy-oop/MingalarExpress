@@ -123,7 +123,7 @@ export default async function ShopMoneyPage({
             ({delivered.total.toLocaleString()})
           </span>
         </h2>
-        <OrderTable orders={delivered.rows} />
+        <OrderTable orders={delivered.rows} locale={locale} />
         {delivered.total > delivered.rows.length ? (
           <p className="text-xs text-muted-foreground">
             Showing the {delivered.rows.length} most recent. Use Orders for the full list and CSV
