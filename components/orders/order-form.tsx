@@ -31,6 +31,15 @@ export type OrderFormProps = {
   shop: { id: string; pickup_address: string; pickup_lat: number; pickup_lng: number }
   /** Deliverable areas WITH the route that prices each one. */
   areas: AreaRoute[]
+  /**
+   * The shop has not been reviewed yet, so it can book prepaid parcels only.
+   *
+   * Computed on the server with `shopCanUseCod` and passed in rather than
+   * derived here: the rule lives in one place, and `tg_orders_shop_gate` is
+   * what actually enforces it. This is only what stops a shop filling in an
+   * amount it is not allowed to collect and being refused after the work.
+   */
+  codLocked?: boolean
 }
 
 /**
@@ -110,7 +119,7 @@ const RENDERED_ERROR_KEYS = new Set([
   'codAmount',
 ])
 
-export function OrderForm({ shop, areas }: OrderFormProps) {
+export function OrderForm({ shop, areas, codLocked = false }: OrderFormProps) {
   const locale = useLocale()
   const t = useT()
   const [state, action] = useActionState<OrderFormState, FormData>(createOrder, {})
@@ -150,7 +159,9 @@ export function OrderForm({ shop, areas }: OrderFormProps) {
   const [feePayer, setFeePayer] = useState<'customer' | 'shop'>('customer')
   const [collect, setCollect] = useState('')
   /** Prepaid is this tick and only this tick — never an inferred empty field. */
-  const [prepaid, setPrepaid] = useState(false)
+  // Starts, and stays, prepaid while COD is locked. Not merely defaulted: the
+  // checkbox below is disabled, so there is no path back to COD on this form.
+  const [prepaid, setPrepaid] = useState(codLocked)
 
   /**
    * Bumped on "Book another", and used as the picker's `key`.
@@ -555,10 +566,16 @@ export function OrderForm({ shop, areas }: OrderFormProps) {
 
             {/* The ONLY way to book a parcel with nothing to collect. Leaving
                 the amount blank is now a blocked submit, not a silent prepaid. */}
-            <label className="flex min-h-11 items-center gap-3 rounded-lg border bg-muted/30 px-3 text-base font-medium">
+            <label
+              className={cn(
+                'flex min-h-11 items-center gap-3 rounded-lg border bg-muted/30 px-3 text-base font-medium',
+                codLocked && 'opacity-70',
+              )}
+            >
               <input
                 type="checkbox"
                 checked={prepaid}
+                disabled={codLocked}
                 onChange={(e) => {
                   setPrepaid(e.target.checked)
                   if (e.target.checked) setCollect('')
@@ -567,6 +584,14 @@ export function OrderForm({ shop, areas }: OrderFormProps) {
               />
               {t('book.alreadyPaid')}
             </label>
+
+            {/* Said before the amount field is filled in, not after the submit
+                is refused. The office unlocks it by reviewing the shop. */}
+            {codLocked ? (
+              <p className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+                {t('book.codLocked')}
+              </p>
+            ) : null}
 
             {prepaid ? (
               <p className="text-sm text-muted-foreground">{t('book.prepaidNote')}</p>

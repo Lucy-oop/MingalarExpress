@@ -198,13 +198,20 @@ export async function getShopList(): Promise<ShopListResult> {
         A locked-out owner is a suspended shop in every way that matters, even
         if nobody flipped `shops.is_active`: they cannot sign in to use it.
       */
+      /*
+        Same ordering as shopApprovalState, and for the same reason: a shop
+        suspended before anyone reviewed it is is_active = false with
+        approved_at still null, and listing it under "Awaiting approval" would
+        put it in the queue of shops to confirm rather than the list of shops
+        that are switched off.
+      */
       status: s.rejected_at
         ? 'suspended'
-        : !s.approved_at
-          ? 'awaiting'
-          : s.is_active && ownerActive
-            ? 'active'
-            : 'suspended',
+        : !(s.is_active && ownerActive)
+          ? 'suspended'
+          : !s.approved_at
+            ? 'awaiting'
+            : 'active',
       goodsType: s.goods_type ?? null,
       approvedAt: s.approved_at ?? null,
       joinedAt: s.created_at,

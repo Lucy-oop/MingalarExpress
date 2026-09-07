@@ -322,6 +322,10 @@ export const DICTIONARY = {
     en: 'Price of the goods. Leave 0 if the customer has already paid.',
     my: 'ကုန်ဖိုး။ ဝယ်သူ ငွေရှင်းပြီးလျှင် 0 ထားပါ။',
   },
+  'book.codLocked': {
+    en: 'This parcel must be prepaid. Cash on delivery unlocks once the office has reviewed your shop — you can keep booking in the meantime.',
+    my: 'ဒီပါဆယ်ကို ငွေရှင်းပြီးသား ဖြစ်ရပါမည်။ ရုံးမှ ဆိုင်ကို စစ်ပြီးလျှင် COD ဖွင့်ပါမည် — အခုအချိန်တွင် ဆက်တင်နိုင်ပါသည်။',
+  },
   'book.prepaidNote': { en: 'Already paid — the rider collects nothing.', my: 'ငွေရှင်းပြီး — ရိုက်ဒါ ငွေမကောက်ပါ။' },
   'book.more': { en: 'More details', my: 'အခြား အချက်အလက်' },
   'book.moreHint': { en: 'optional', my: 'မထည့်လည်းရ' },
@@ -453,7 +457,9 @@ export const DICTIONARY = {
   'sd.needsYou': { en: 'Needs your decision', my: 'သင် ဆုံးဖြတ်ရန်' },
   'sd.recent': { en: 'Recent parcels', my: 'လတ်တလော ပါဆယ်များ' },
   'sd.notSetUp': { en: 'Set up your shop', my: 'သင့်ဆိုင်ကို ပြင်ဆင်ပါ' },
-  'sd.awaiting': { en: 'Not able to book yet', my: 'ယခုအချိန် မတင်နိုင်သေးပါ' },
+  // Was 'Not able to book yet', which is now the opposite of the truth: an
+  // unreviewed shop books prepaid parcels from its first minute.
+  'sd.awaiting': { en: 'Cash on delivery not unlocked yet', my: 'COD ကို မဖွင့်ရသေးပါ' },
 
   // ---- updates --------------------------------------------------------------
   //
@@ -516,7 +522,7 @@ export const DICTIONARY = {
   'ss.language': { en: 'Language', my: 'ဘာသာစကား' },
   'ss.ward': { en: 'Ward', my: 'ရပ်ကွက်' },
   'ss.suspended': { en: 'This shop is suspended', my: 'ဆိုင် ရပ်ဆိုင်းထားပါသည်' },
-  'ss.awaiting': { en: 'Waiting for confirmation', my: 'အတည်ပြုချက် စောင့်ဆိုင်းနေသည်' },
+  'ss.awaiting': { en: 'Cash on delivery not unlocked yet', my: 'COD ကို မဖွင့်ရသေးပါ' },
   'ss.rejected': { en: 'Shop not approved', my: 'ဆိုင်ကို အတည်မပြုပါ' },
   'ss.help': { en: 'Need help?', my: 'အကူအညီ လိုပါသလား' },
   // Said "call ... during working hours" until the card grew Viber and Telegram

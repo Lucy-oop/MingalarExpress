@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { shopCanUseCod } from '@/lib/shops/approval'
 import Link from 'next/link'
 import { requireShop } from '@/lib/auth/guards'
 import { getLocale } from '@/lib/i18n/locale'
@@ -18,7 +19,7 @@ export default async function NewOrderPage() {
   const [{ data: shop }, areas] = await Promise.all([
     supabase
       .from('shops')
-      .select('id, name, pickup_address, pickup_lat, pickup_lng')
+      .select('id, name, pickup_address, pickup_lat, pickup_lng, is_active, approved_at, rejected_at')
       .eq('is_active', true)
       .order('created_at', { ascending: true })
       .limit(1)
@@ -29,7 +30,16 @@ export default async function NewOrderPage() {
     getAreaRoutes(),
   ])
 
-  if (!shop) {
+  /*
+    The approval state, for the COD lock. `shopCanUseCod` is the single home for
+    the rule; `tg_orders_shop_gate` enforces it in SQL. This only stops a shop
+    typing an amount it is not allowed to collect and being refused afterwards.
+  */
+  const shopState = shop
+    ? { isActive: shop.is_active, approvedAt: shop.approved_at, rejectedAt: shop.rejected_at }
+    : null
+
+  if (!shop || !shopState) {
     return (
       <Alert tone="error" title="No shop set up">
         Your account has no active shop yet, so orders cannot be created. Ask the Mingalar Express
@@ -60,7 +70,7 @@ export default async function NewOrderPage() {
         <h1 className="text-xl font-semibold">{t('book.title')}</h1>
         <p className="text-sm text-muted-foreground">{t('book.subtitle')}</p>
       </div>
-      <OrderForm shop={shop} areas={areas} />
+      <OrderForm shop={shop} areas={areas} codLocked={!shopCanUseCod(shopState)} />
     </div>
   )
 }

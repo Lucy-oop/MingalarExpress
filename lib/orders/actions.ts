@@ -8,7 +8,12 @@ import { orderCreateSchema, shopSettingsSchema } from '@/lib/validation/schemas'
 import { explainResolutionError } from '@/lib/orders/errors'
 import { haversineKm } from '@/lib/geo/haversine'
 import { codCollectable } from '@/lib/pricing'
-import { shopBlockedMessage } from '@/lib/shops/approval'
+import {
+  COD_NEEDS_REVIEW,
+  shopBlockedMessage,
+  shopCanUseCod,
+  shopUsable,
+} from '@/lib/shops/approval'
 import { resolveAreaRoute } from '@/lib/orders/queries'
 import { MAX_MMK } from '@/lib/validation/limits'
 import { formatMmk } from '@/lib/utils'
@@ -93,12 +98,21 @@ export async function createOrder(
     return { error: 'Set up your shop and pickup point before creating orders.' }
   }
 
-  const blocked = shopBlockedMessage({
+  /*
+    0031: A NOTICE IS NOT A REFUSAL. `shopBlockedMessage` still returns copy for
+    an `awaiting` shop, but that shop can now trade — so the gate is
+    `shopUsable`, which admits `awaiting` and refuses only rejected and
+    suspended. Treating any message as a block would put the old wall back on
+    the merchant's first day, which is what this change exists to remove.
+  */
+  const shopState = {
     isActive: shop.is_active,
     approvedAt: shop.approved_at,
     rejectedAt: shop.rejected_at,
-  })
-  if (blocked) return { error: blocked }
+  }
+  if (!shopUsable(shopState)) {
+    return { error: shopBlockedMessage(shopState) ?? 'This shop cannot take new orders.' }
+  }
 
   const num = (value: FormDataEntryValue | null): number | undefined => {
     const s = typeof value === 'string' ? value.trim() : ''
@@ -179,6 +193,17 @@ export async function createOrder(
   // Kept as information, not as a price. A shop still finds "how far is this"
   // useful, and dispatch uses it when ordering stops.
   const crowKm = haversineKm(v.pickupPoint, v.dropoffPoint)
+
+  /*
+    COD WAITS FOR A HUMAN. Checked after parsing so the shop gets this instead
+    of a validation error on a field they filled in correctly, and mirrored by
+    `tg_orders_shop_gate` in SQL — this one is for the message, that one is the
+    rule, because `orders_insert_shop` checks ownership alone and a shop owner
+    with a session can POST straight to PostgREST.
+  */
+  if (v.paymentMethod === 'cod' && !shopCanUseCod(shopState)) {
+    return { error: COD_NEEDS_REVIEW }
+  }
 
   const goodsValue = v.paymentMethod === 'cod' ? v.codAmount : 0
   const codTotal = v.paymentMethod === 'cod' ? codCollectable(goodsValue, fee, v.feePayer) : 0

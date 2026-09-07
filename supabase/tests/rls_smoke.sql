@@ -697,5 +697,103 @@ begin
    where id = v_shop;
 end $$;
 
+-- ----------------------------------------------------------------------------
+--  0031 — TRADE AT ONCE, COD AFTER A LOOK
+--
+--  orders_insert_shop checks ownership alone, so a shop owner with a session
+--  can POST an order straight to PostgREST. Everything below is therefore
+--  asserted as the SHOP, not through the app.
+-- ----------------------------------------------------------------------------
+do $$
+declare
+  v_owner uuid := '33333333-3333-3333-3333-333333333333';
+  v_shop  uuid := 'aaaaaaaa-0000-0000-0000-000000000001';
+  n int;
+begin
+  -- Put the seeded shop back to "never reviewed", which is how a shop that has
+  -- just registered itself arrives.
+  update public.shops set approved_at = null, approved_by = null where id = v_shop;
+
+  perform set_config('request.jwt.claims',
+    format('{"sub":"%s","role":"authenticated"}', v_owner), false);
+  execute 'set role authenticated';
+
+  -- 1. PREPAID WORKS FROM THE FIRST MINUTE. This is the whole point: no
+  --    waiting on the day a merchant is most likely to give up.
+  insert into public.orders (
+    shop_id, pickup_address, pickup_lat, pickup_lng, customer_name, customer_phone,
+    dropoff_address, dropoff_lat, dropoff_lng, parcel_desc,
+    payment_method, cod_amount, delivery_fee, created_by)
+  values (v_shop, 'No. 24, Thitsar Road, San Pya Ward, Thingangyun', 16.8478, 96.1693,
+    'Instant Prepaid', '+959791110001', 'Somewhere, Thingangyun', 16.85, 96.17,
+    'Parcel', 'prepaid', 0, 2500, v_owner);
+  raise notice 'PASS: an unreviewed shop books a prepaid parcel immediately';
+
+  -- 2. AND COD DOES NOT. Not by the app refusing to send it -- by the database
+  --    refusing to store it.
+  begin
+    insert into public.orders (
+      shop_id, pickup_address, pickup_lat, pickup_lng, customer_name, customer_phone,
+      dropoff_address, dropoff_lat, dropoff_lng, parcel_desc,
+      payment_method, cod_amount, delivery_fee, created_by)
+    values (v_shop, 'No. 24, Thitsar Road, San Pya Ward, Thingangyun', 16.8478, 96.1693,
+      'Instant COD', '+959791110002', 'Somewhere, Thingangyun', 16.85, 96.17,
+      'Parcel', 'cod', 20000, 2500, v_owner);
+    raise exception 'FAIL: an unreviewed shop booked a COD parcel';
+  exception when insufficient_privilege then
+    raise notice 'PASS: and COD is refused until the office has looked';
+  end;
+
+  -- 3. REVIEW UNLOCKS IT. Done as the superuser, since a shop cannot approve
+  --    itself -- tg_shops_guard sees to that.
+  reset role;
+  perform set_config('request.jwt.claims','',false);
+  update public.shops set approved_at = now() where id = v_shop;
+
+  perform set_config('request.jwt.claims',
+    format('{"sub":"%s","role":"authenticated"}', v_owner), false);
+  execute 'set role authenticated';
+
+  insert into public.orders (
+    shop_id, pickup_address, pickup_lat, pickup_lng, customer_name, customer_phone,
+    dropoff_address, dropoff_lat, dropoff_lng, parcel_desc,
+    payment_method, cod_amount, delivery_fee, created_by)
+  values (v_shop, 'No. 24, Thitsar Road, San Pya Ward, Thingangyun', 16.8478, 96.1693,
+    'Reviewed COD', '+959791110003', 'Somewhere, Thingangyun', 16.85, 96.17,
+    'Parcel', 'cod', 20000, 2500, v_owner);
+  raise notice 'PASS: review unlocks cash on delivery';
+
+  -- 4. AND A SUSPENDED SHOP CANNOT BOOK AT ALL. This closed a hole that
+  --    predates 0031: nothing below the application ever checked
+  --    shops.is_active, so a suspended shop whose owner still had another
+  --    active shop could insert.
+  reset role;
+  perform set_config('request.jwt.claims','',false);
+  update public.shops set is_active = false where id = v_shop;
+
+  perform set_config('request.jwt.claims',
+    format('{"sub":"%s","role":"authenticated"}', v_owner), false);
+  execute 'set role authenticated';
+
+  begin
+    insert into public.orders (
+      shop_id, pickup_address, pickup_lat, pickup_lng, customer_name, customer_phone,
+      dropoff_address, dropoff_lat, dropoff_lng, parcel_desc,
+      payment_method, cod_amount, delivery_fee, created_by)
+    values (v_shop, 'No. 24, Thitsar Road, San Pya Ward, Thingangyun', 16.8478, 96.1693,
+      'Suspended Shop', '+959791110004', 'Somewhere, Thingangyun', 16.85, 96.17,
+      'Parcel', 'prepaid', 0, 2500, v_owner);
+    raise exception 'FAIL: a suspended shop booked a parcel';
+  exception when insufficient_privilege then
+    raise notice 'PASS: a suspended shop cannot book, prepaid or otherwise';
+  end;
+
+  reset role;
+  perform set_config('request.jwt.claims','',false);
+  update public.shops set is_active = true, approved_at = now() where id = v_shop;
+  delete from public.orders where customer_name in
+    ('Instant Prepaid','Reviewed COD');
+end $$;
+
 \echo ''
 \echo '######  ALL PHASE 1 CHECKS PASSED  ######'

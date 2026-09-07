@@ -1,9 +1,11 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
+  COD_NEEDS_REVIEW,
   SHOP_BLOCKED_MESSAGE,
   shopApprovalState,
   shopBlockedMessage,
+  shopCanUseCod,
   shopUsable,
 } from './approval'
 
@@ -33,10 +35,34 @@ describe('shopApprovalState', () => {
     assert.equal(shopUsable({ isActive: false, approvedAt: APPROVED }), false)
   })
 
-  /** An unapproved shop cannot book however `is_active` happens to read. */
-  test('not approved is not usable, active flag notwithstanding', () => {
-    assert.equal(shopUsable({ isActive: true, approvedAt: null }), false)
+  /**
+   * 0031 INVERTED THIS, and the old assertion is worth remembering: an
+   * unapproved shop used to be unusable, so a merchant's first day was spent
+   * waiting. Approval now gates CASH, not trade.
+   */
+  test('an unreviewed shop CAN trade', () => {
+    assert.equal(shopUsable({ isActive: true, approvedAt: null }), true)
+  })
+
+  test('but a suspended one still cannot, reviewed or not', () => {
     assert.equal(shopUsable({ isActive: false, approvedAt: null }), false)
+    assert.equal(shopUsable({ isActive: false, approvedAt: APPROVED }), false)
+  })
+
+  /**
+   * THE HOLE 0031 NEARLY OPENED, caught by the test above failing. These two
+   * checks used to be the other way round, so a shop suspended BEFORE it was
+   * reviewed reported `awaiting` — and once awaiting could trade, suspending a
+   * suspicious new shop would have had no effect at all.
+   */
+  test('suspending an unreviewed shop actually stops it', () => {
+    assert.equal(shopApprovalState({ isActive: false, approvedAt: null }), 'suspended')
+    assert.equal(shopUsable({ isActive: false, approvedAt: null }), false)
+    assert.equal(shopCanUseCod({ isActive: false, approvedAt: null }), false)
+  })
+
+  test('and a rejected one cannot, whatever its active flag says', () => {
+    assert.equal(shopUsable({ isActive: true, approvedAt: null, rejectedAt: '2026-09-08' }), false)
   })
 
   /**
@@ -67,10 +93,54 @@ describe('shopBlockedMessage', () => {
     for (const m of msgs) assert.ok(m.trim().length > 0)
   })
 
-  /** The waiting shop is told to wait; the suspended one to ring the office. */
+  /**
+   * The awaiting copy is a NOTICE now, not a refusal, so it has to say what the
+   * shop can do rather than what it must wait for — the old wording ("as soon
+   * as it is approved") would read as a wall on a screen that is open for
+   * business.
+   */
   test('the copy points at the right next action', () => {
-    assert.match(SHOP_BLOCKED_MESSAGE.awaiting, /waiting|confirm/i)
+    assert.match(SHOP_BLOCKED_MESSAGE.awaiting, /prepaid/i)
+    assert.ok(
+      !/as soon as it is approved/i.test(SHOP_BLOCKED_MESSAGE.awaiting),
+      'the awaiting copy still reads as a refusal',
+    )
     assert.match(SHOP_BLOCKED_MESSAGE.suspended, /contact/i)
     assert.match(SHOP_BLOCKED_MESSAGE.rejected, /contact/i)
+  })
+})
+
+describe('shopCanUseCod — the bounded exposure', () => {
+  /**
+   * THE WHOLE POINT OF INSTANT ACCESS BEING SAFE. An unvetted shop booking COD
+   * means a rider collects a customer's cash, it lands in cod_ledger against
+   * that rider, and the office finds out the shop was fictitious while holding
+   * money it owes to nobody. Prepaid moves no money through us.
+   */
+  test('an unreviewed shop can trade but cannot take cash', () => {
+    const fresh = { isActive: true, approvedAt: null }
+    assert.equal(shopUsable(fresh), true, 'it must be able to book')
+    assert.equal(shopCanUseCod(fresh), false, 'and it must not be able to take cash')
+  })
+
+  test('review unlocks it', () => {
+    assert.equal(shopCanUseCod({ isActive: true, approvedAt: APPROVED }), true)
+  })
+
+  test('suspension takes it away again', () => {
+    assert.equal(shopCanUseCod({ isActive: false, approvedAt: APPROVED }), false)
+  })
+
+  test('and a rejected shop never had it', () => {
+    assert.equal(
+      shopCanUseCod({ isActive: true, approvedAt: APPROVED, rejectedAt: '2026-09-08' }),
+      false,
+    )
+  })
+
+  /** The refusal has to name the way forward, or it is just a wall. */
+  test('the refusal offers prepaid instead of only saying no', () => {
+    assert.match(COD_NEEDS_REVIEW, /prepaid/i)
+    assert.ok(COD_NEEDS_REVIEW.trim().length > 0)
   })
 })

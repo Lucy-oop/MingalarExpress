@@ -11,7 +11,7 @@ import { Alert } from '@/components/ui/alert'
 import { formatMmk } from '@/lib/utils'
 import { ContactSupport } from '@/components/shared/contact-support'
 import { getPublicSettings } from '@/lib/settings/public'
-import { shopBlockedMessage } from '@/lib/shops/approval'
+import { shopApprovalState, shopBlockedMessage } from '@/lib/shops/approval'
 import { buttonVariants } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
@@ -29,6 +29,13 @@ export default async function ShopDashboardPage() {
   const t = translator(locale)
   const { shop, counts, codInTransit, recent } = await getShopDashboard()
   const { supportPhone } = await getPublicSettings()
+  const state = shop
+    ? shopApprovalState({
+        isActive: shop.is_active,
+        approvedAt: shop.approved_at,
+        rejectedAt: shop.rejected_at,
+      })
+    : null
   const blocked = shop
     ? shopBlockedMessage({
         isActive: shop.is_active,
@@ -67,7 +74,14 @@ export default async function ShopDashboardPage() {
           <ContactSupport phone={supportPhone} moreLabel={t('contact.more')} className="mt-3 text-sm" />
         </Alert>
       ) : blocked ? (
-        <Alert tone="warning" title={t('sd.awaiting')}>
+        /*
+          INFO WHILE AWAITING, WARNING WHEN STOPPED. Since 0031 an unreviewed
+          shop is open for business — the notice tells them COD is still to
+          come, and an amber alert on a working dashboard reads as a fault.
+          A suspended or rejected shop genuinely cannot trade, and keeps the
+          warning.
+        */
+        <Alert tone={state === 'awaiting' ? 'info' : 'warning'} title={t('sd.awaiting')}>
           <span className="block">{blocked}</span>
           <ContactSupport phone={supportPhone} moreLabel={t('contact.more')} className="mt-2 text-sm" />
         </Alert>
