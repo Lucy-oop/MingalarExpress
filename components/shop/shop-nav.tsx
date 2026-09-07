@@ -33,7 +33,7 @@ const NAV: Array<{ href: string; key: MessageKey; icon: typeof LayoutDashboard }
   { href: '/shop/orders', key: 'shop.nav.orders', icon: Table2 },
   { href: '/shop/notifications', key: 'shop.nav.notifications', icon: Bell },
   { href: '/shop/money', key: 'shop.nav.money', icon: Coins },
-  { href: '/shop/settings', key: 'shop.nav.settings', icon: Store },
+  { href: '/shop/settings', key: 'shop.nav.settingsTab', icon: Store },
 ]
 
 /**
@@ -66,7 +66,23 @@ export function ShopNavLinks({ className }: { className?: string }) {
             href={href}
             aria-current={current ? 'page' : undefined}
             className={cn(
-              'flex shrink-0 items-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition-colors',
+              /*
+                NO SCROLLBAR, AND NO WRAPPING. A horizontal scrollbar under a
+                desktop primary nav hides tabs and reads as broken, so the
+                header's `overflow-x-auto` is gone -- which means these five
+                have to fit by construction rather than by valve.
+
+                Where the room came from: `px-2.5` and `gap-1` over `px-3` and
+                `gap-1.5` returns about 50px across five items, and the short
+                Settings label another 40. At the tightest case -- xl, where the
+                nav shares the bar rather than having its own row -- that leaves
+                the five Burmese labels inside roughly 570px of a 628px slot.
+
+                `whitespace-nowrap` because a label that wraps inside its own
+                flex item is the awkward second row by another route, and
+                `shrink-0` so a tab is never squeezed narrower than its text.
+              */
+              'flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md px-2.5 py-1.5 text-sm transition-colors',
               FOCUS,
               // Deliberately NOT SuperNav's `bg-primary` treatment: in this
               // shell that is the New Order button's styling, sitting inches

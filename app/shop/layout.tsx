@@ -90,11 +90,16 @@ export default async function ShopLayout({ children }: { children: React.ReactNo
 
             `xl:flex-1` with `min-w-0` makes the nav take the slack instead, so
             there is nothing left for `ml-auto` to distribute and nothing to
-            wrap. `overflow-x-auto` is the valve if the labels genuinely exceed
-            the bar: a scrolling nav rather than a broken header.
+            wrap.
+
+            AND NO OVERFLOW VALVE. This carried `overflow-x-auto` as a hedge,
+            which turned the Burmese case into a scrollbar under a desktop
+            primary nav -- hiding tabs and looking broken. The five tabs now fit
+            by construction instead: tighter padding, a one-word Settings label,
+            and nowrap. See the note on the links in shop-nav.tsx.
           */}
           {gated ? null : (
-            <ShopNavLinks className="order-last hidden min-w-0 w-full overflow-x-auto lg:flex xl:order-none xl:flex-1" />
+            <ShopNavLinks className="order-last hidden min-w-0 w-full lg:flex xl:order-none xl:flex-1" />
           )}
 
           {/* `ml-auto` only matters while the nav is on its own line — below xl

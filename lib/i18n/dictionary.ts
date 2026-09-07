@@ -248,6 +248,14 @@ export const DICTIONARY = {
   'shop.nav.new': { en: 'New Order', my: 'ပါဆယ် တင်ရန်' },
   'shop.nav.notifications': { en: 'Updates', my: 'အသိပေးချက်' },
   'shop.nav.money': { en: 'Money', my: 'ငွေစာရင်း' },
+  /*
+    A SHORT LABEL FOR THE TAB, and the long one kept for prose. 'Shop settings'
+    is the longest of the five by a wide margin and it is what pushed the
+    Burmese header past its container -- but the two inline uses
+    ("...change it in Shop settings") read wrongly as bare 'Settings', so they
+    keep the full form. A nav inside the shop app does not need the word shop.
+  */
+  'shop.nav.settingsTab': { en: 'Settings', my: 'အပြင်အဆင်' },
   'shop.nav.settings': { en: 'Shop settings', my: 'ဆိုင် အပြင်အဆင်' },
 
   // ---- a parcel moved -------------------------------------------------------

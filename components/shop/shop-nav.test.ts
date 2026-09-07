@@ -81,6 +81,30 @@ describe('the header nav cannot re-create the Burmese gap', () => {
     )
   })
 
+  /**
+   * A horizontal scrollbar under a desktop primary nav hides tabs and reads as
+   * broken. It was in here as a hedge against exactly the Burmese overflow —
+   * which is how a hedge becomes the bug. The five tabs fit by construction
+   * now, so the valve has to stay gone or the hedge returns.
+   */
+  test('the header nav does not scroll horizontally', () => {
+    assert.ok(
+      !/overflow-x-auto/.test(navClass),
+      'the desktop nav is scrolling again — make the tabs fit instead',
+    )
+  })
+
+  /**
+   * The room the tabs fit in. If a label grows back, or the padding does, the
+   * five stop fitting at xl and there is no valve left to hide it.
+   */
+  test('the tab labels and their chrome stay compact', () => {
+    const linkClass = /'flex shrink-0 items-center ([^']*)'/.exec(SRC)?.[1] ?? ''
+    assert.ok(linkClass.length > 0, 'could not find the nav link className')
+    assert.match(linkClass, /whitespace-nowrap/, 'a label that wraps is a second row by another name')
+    assert.ok(!/px-3\b/.test(linkClass), 'px-3 is back — that is 40px across five tabs')
+  })
+
   /** With the nav on flex-1, `ml-auto` at xl is what re-opens the gap. */
   test('and the action group stops right-aligning against it', () => {
     const actions = /<div className="(ml-auto[^"]+)"/.exec(HEADER)?.[1] ?? ''
