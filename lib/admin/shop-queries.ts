@@ -257,9 +257,9 @@ export async function getShopList(): Promise<ShopListResult> {
       /*
         Same ordering as shopApprovalState, and for the same reason: a shop
         suspended before anyone reviewed it is is_active = false with
-        approved_at still null, and listing it under "Awaiting approval" would
-        put it in the queue of shops to confirm rather than the list of shops
-        that are switched off.
+        approved_at still null, and reporting it as `awaiting` would put it in
+        the COD-review queue -- a list whose whole premise is that everything on
+        it is trading -- rather than the list of shops that are switched off.
       */
       status: s.rejected_at
         ? 'suspended'

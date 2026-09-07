@@ -141,8 +141,20 @@ export type ShopOnboardExistingOwnerValues = z.output<typeof shopOnboardExisting
 export const SHOP_STATUSES = ['awaiting', 'active', 'suspended', 'pending'] as const
 export type ShopStatus = (typeof SHOP_STATUSES)[number]
 
+/*
+  `awaiting` IS NOT WAITING TO TRADE, and the old label said it was.
+
+  Since 0031 a shop in this state is switched on and booking prepaid parcels
+  from its first minute -- what it is waiting for is the COD unlock, and calling
+  that "Awaiting approval" told the office a working shop was blocked and told
+  anyone reading over their shoulder that instant onboarding had not happened.
+  The label now states both halves, because both are true at once.
+
+  `pending` is the genuinely blocked one and keeps its name: an owner who signed
+  up and has no shop row at all.
+*/
 export const SHOP_STATUS_LABEL: Record<ShopStatus, string> = {
-  awaiting: 'Awaiting approval',
+  awaiting: 'Active · COD locked',
   active: 'Active',
   suspended: 'Suspended',
   pending: 'Pending setup',
