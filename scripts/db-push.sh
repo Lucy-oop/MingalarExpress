@@ -62,29 +62,123 @@ if ! psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -q -c "
 fi
 psql_q "select '  postgis ' || extversion from pg_extension where extname='postgis'"
 
-echo "--- preflight: is this database already migrated?"
-EXISTING=$(psql_q "select coalesce(to_regclass('public.profiles')::text, '')")
-if [[ -n "$EXISTING" && "$FORCE" -eq 0 ]]; then
-  cat >&2 <<'MSG'
-  public.profiles already exists, so this database has been migrated before.
-  These migrations are not idempotent -- re-running 0001 fails on `create type`.
+# ----------------------------------------------------------------------------
+#  PREFLIGHT — what does this database already have?
+#
+#  0030 introduced public.schema_migrations, so there are three states and they
+#  need different treatment. Before it existed this script could only ask "does
+#  public.profiles exist?", which answers "migrated at all" and not "migrated to
+#  where" -- so it refused against any live project and its own message told you
+#  to apply the newer files by hand, one psql call each, in the right order. That
+#  is fine for three files and is how the last push was done. It does not scale,
+#  and a half-applied function is invisible.
+# ----------------------------------------------------------------------------
+echo "--- preflight"
+HAS_PROFILES=$(psql_q "select coalesce(to_regclass('public.profiles')::text, '')")
+HAS_LEDGER=$(psql_q "select coalesce(to_regclass('public.schema_migrations')::text, '')")
 
-  Options:
-    * fresh Supabase project, then re-run this script
-    * or, if you are certain only LATER migrations are missing, apply those files
-      individually with: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f <file>
-    * --force to attempt it anyway (expect errors)
+LEDGER_MIGRATION="supabase/migrations/20260907110000_schema_migrations.sql"
+
+if [[ -z "$HAS_LEDGER" && -n "$HAS_PROFILES" && "$FORCE" -eq 0 ]]; then
+  cat >&2 <<MSG
+  This database was migrated before the ledger existed, so nothing here knows
+  which files it has. Apply the ledger migration once, by hand:
+
+    psql "\$DATABASE_URL" -v ON_ERROR_STOP=1 -f $LEDGER_MIGRATION
+
+  It records every migration up to and including itself as applied. Then re-run
+  this script and it will apply only what is genuinely missing.
+
+  Read that file before you run it if this database might be PARTIALLY
+  migrated -- it asserts the whole history, and a file it wrongly records as
+  applied is a file that will never be applied.
 MSG
   exit 1
 fi
-echo "  clean"
 
+if [[ -z "$HAS_LEDGER" ]]; then
+  echo "  fresh database"
+else
+  echo "  ledger present: $(psql_q "select count(*) from public.schema_migrations") migration(s) recorded"
+fi
+
+# ----------------------------------------------------------------------------
+#  MIGRATIONS — only what is missing, in filename order
+# ----------------------------------------------------------------------------
 echo "--- migrations"
+APPLIED_ANY=0
+PRE_LEDGER=""
 for f in supabase/migrations/*.sql; do
-  printf '  %-42s' "$(basename "$f")"
+  BASE="$(basename "$f")"
+  SUM=$(md5 -q "$f" 2>/dev/null || md5sum "$f" | cut -d' ' -f1)
+
+  if [[ -n "$HAS_LEDGER" ]]; then
+    ROW=$(psql_q "select coalesce(checksum, '-') from public.schema_migrations
+                   where filename = '$BASE'")
+    if [[ -n "$ROW" ]]; then
+      # Already applied. An applied migration is history: if the file has
+      # changed since, the database and the repo disagree about what ran and
+      # only a human can say which is right.
+      if [[ "$ROW" != "-" && "$ROW" != "$SUM" ]]; then
+        printf '  %-48s' "$BASE"
+        echo "CHANGED SINCE IT WAS APPLIED" >&2
+        cat >&2 <<MSG
+
+  $BASE was applied with a different checksum.
+
+    recorded  $ROW
+    on disk   $SUM
+
+  Migrations are forward-only, so an applied file should never be edited. Either
+  the edit belongs in a NEW migration, or this database ran something the repo
+  no longer contains. --force to ignore.
+MSG
+        [[ "$FORCE" -eq 0 ]] && exit 1
+      fi
+      printf '  %-48s skip\n' "$BASE"
+      continue
+    fi
+  fi
+
+  printf '  %-48s' "$BASE"
   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -q -f "$f"
+
+  # On a FRESH database the ledger does not exist until 0030 creates it, so
+  # there is nowhere to record 0001..0029 as they run. Their names are held
+  # here and their checksums written the moment the table appears.
+  if [[ -z "$HAS_LEDGER" ]]; then
+    HAS_LEDGER=$(psql_q "select coalesce(to_regclass('public.schema_migrations')::text, '')")
+    if [[ -n "$HAS_LEDGER" ]]; then
+      for pending in $PRE_LEDGER $BASE; do
+        PSUM=$(md5 -q "supabase/migrations/$pending" 2>/dev/null \
+               || md5sum "supabase/migrations/$pending" | cut -d' ' -f1)
+        psql_q "insert into public.schema_migrations (filename, checksum)
+                values ('$pending', '$PSUM')
+                on conflict (filename) do update set checksum = excluded.checksum" >/dev/null
+      done
+      PRE_LEDGER=""
+    else
+      PRE_LEDGER="$PRE_LEDGER $BASE"
+    fi
+  else
+    # Recorded only after it applied cleanly, and never before: a row for a
+    # file that failed halfway is worse than no row at all.
+    psql_q "insert into public.schema_migrations (filename, checksum)
+            values ('$BASE', '$SUM')
+            on conflict (filename) do update set checksum = excluded.checksum" >/dev/null
+  fi
+
+  APPLIED_ANY=1
   echo "OK"
 done
+
+if [[ -n "$PRE_LEDGER" ]]; then
+  echo "  note: applied before the ledger migration, so unrecorded:$PRE_LEDGER" >&2
+fi
+
+if [[ "$APPLIED_ANY" -eq 0 ]]; then
+  echo "  nothing to do -- this database is up to date"
+fi
 
 if [[ "$SEED" -eq 1 ]]; then
   echo "--- seed (development / staging only)"

@@ -24,9 +24,11 @@ begin
    where n.nspname = 'public' and ty.typtype = 'e';
   -- 0007 added routes, route_areas, route_pay_tiers, trips and the
   -- trip_status enum; 0016 removed notification_outbox again and 0017 added
-  -- order_notes. A bare count is a blunt instrument, but it is the one assertion
-  -- that notices a table shipped without RLS being considered at all.
-  if t <> 17 then raise exception 'FAIL: expected 17 public tables, found %', t; end if;
+  -- order_notes; 0030 added schema_migrations. A bare count is a blunt
+  -- instrument, but it is the one assertion that notices a table shipped
+  -- without RLS being considered at all -- and it did exactly that for
+  -- schema_migrations, which arrived with the grants revoked but RLS off.
+  if t <> 18 then raise exception 'FAIL: expected 18 public tables, found %', t; end if;
   if e <> 9  then raise exception 'FAIL: expected 9 enums, found %', e; end if;
 
   -- And the count is only useful because of this: a new table with RLS left off
