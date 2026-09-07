@@ -35,6 +35,11 @@ export type LoadParcel = {
   codAmount: number
   /** The shop asked for it back: `orders.resolution = 'return'`. */
   isReturn: boolean
+  /**
+   * Already collected and sitting at the hub: `status = 'picked_up'` with no
+   * trip. Outbound only.
+   */
+  isHubHeld: boolean
 }
 
 /** What the board knows about the run being loaded into. */
@@ -45,6 +50,8 @@ export type LoadTarget = {
   loaded: ReadonlyArray<{ leg: LoadLeg; codAmount: number }>
   maxParcels: number
   maxCod: number
+  /** A run with no rider cannot carry hub-held parcels — see loadPlan. */
+  hasRider: boolean
 }
 
 export type LoadBlocker =
@@ -54,6 +61,8 @@ export type LoadBlocker =
   | 'target_not_loadable'
   | 'over_parcel_cap'
   | 'over_cod_cap'
+  | 'held_not_collectable'
+  | 'held_needs_rider'
 
 export type LoadPlan = {
   leg: LoadLeg
@@ -80,7 +89,19 @@ export function loadPlan(
 ): LoadPlan {
   const returns = selection.filter((p) => p.isReturn).length
   const mixed = returns > 0 && returns < selection.length
-  const leg: LoadLeg = returns > 0 && !mixed ? 'return' : mode
+
+  /*
+    A parcel already on the hub shelf can only go OUT. 0027's load_trip accepts
+    `picked_up` for a delivery leg and refuses it for a pickup one -- fetching
+    what we are already holding sends a rider across Yangon for nothing -- so
+    the Collect choice must not even be offered for a selection containing one.
+    Mirrored here rather than left to the RPC so the dispatcher sees it before
+    pressing the button, not as a 55000 afterwards.
+  */
+  const held = selection.filter((p) => p.isHubHeld).length
+  const heldMixedWithPickup = held > 0 && mode === 'pickup'
+
+  const leg: LoadLeg = returns > 0 && !mixed ? 'return' : held > 0 ? 'delivery' : mode
 
   const loaded = target?.loaded ?? []
   // Exactly load_trip's counters. Delivery legs for the parcel cap; every leg
@@ -103,6 +124,11 @@ export function loadPlan(
     // Before the ceilings: a mixed selection has no single leg, so there is
     // nothing coherent to measure it against.
     if (mixed) return 'mixed_legs'
+    if (heldMixedWithPickup) return 'held_not_collectable'
+    // load_trip refuses these outright: the parcel keeps `picked_up`, so the
+    // run's rider becomes its rider, and a run without one would leave it
+    // rider-less in a state orders_assigned_needs_rider forbids.
+    if (held > 0 && !target.hasRider) return 'held_needs_rider'
     if (target.status !== 'planned' && target.status !== 'loading') return 'target_not_loadable'
     // `p_leg = 'delivery' and v_parcels > v_r.max_parcels_per_trip`
     if (leg === 'delivery' && projectedParcels > target.maxParcels) return 'over_parcel_cap'
@@ -131,6 +157,9 @@ export const LOAD_BLOCKER_MESSAGE: Record<LoadBlocker, string> = {
   target_not_loadable: 'That run has already left.',
   over_parcel_cap: 'That would put the run over its parcel limit.',
   over_cod_cap: 'That would put the run over its cash limit.',
+  held_not_collectable:
+    'These are already at the hub — they can only go out for delivery, not be collected again.',
+  held_needs_rider: 'Give this run a rider before loading parcels held at the hub.',
 }
 
 // ---------------------------------------------------------------------------

@@ -8,11 +8,20 @@ import {
   type LoadTarget,
 } from './load-gate'
 
-const parcel = (id: string, codAmount = 0, isReturn = false): LoadParcel => ({
+const parcel = (
+  id: string,
+  codAmount = 0,
+  isReturn = false,
+  isHubHeld = false,
+): LoadParcel => ({
   id,
   codAmount,
   isReturn,
+  isHubHeld,
 })
+
+/** Collected from a shop and sitting at the hub. Outbound only. */
+const held = (id: string, codAmount = 0): LoadParcel => parcel(id, codAmount, false, true)
 
 /** An empty run on Route A: 60 parcels, 2,000,000 Ks. */
 const EMPTY: LoadTarget = {
@@ -21,6 +30,7 @@ const EMPTY: LoadTarget = {
   loaded: [],
   maxParcels: 60,
   maxCod: 2_000_000,
+  hasRider: true,
 }
 
 describe('loadPlan — the leg is derived from the selection', () => {
@@ -225,5 +235,64 @@ describe('summariseManifest', () => {
       cod: 0,
       areas: [],
     })
+  })
+})
+
+describe('loadPlan — parcels already on the hub shelf', () => {
+  /**
+   * THE BLACK HOLE THIS CLOSES. A pickup leg brings a parcel from the shop to
+   * the hub; close_trip then detaches it but leaves `status = 'picked_up'`,
+   * which matched none of the dispatcher's pools and which load_trip refused.
+   * The parcel was in the building and invisible.
+   */
+  test('a held parcel goes out on a delivery leg', () => {
+    const plan = loadPlan([held('h1')], EMPTY)
+    assert.equal(plan.leg, 'delivery')
+    assert.equal(plan.blocker, null)
+  })
+
+  /** It counts against the parcel ceiling like any other outbound parcel. */
+  test('and takes a delivery slot', () => {
+    const plan = loadPlan([held('h1'), parcel('p1')], EMPTY)
+    assert.equal(plan.projectedParcels, 2)
+  })
+
+  /**
+   * The one that matters operationally: collecting it again would send a rider
+   * across Yangon to fetch what is already on our own shelf. 0027's load_trip
+   * refuses it; this is the same refusal, before the button is pressed.
+   */
+  test('it can never be collected a second time', () => {
+    const plan = loadPlan([held('h1')], EMPTY, 'pickup')
+    assert.equal(plan.blocker, 'held_not_collectable')
+    assert.match(LOAD_BLOCKER_MESSAGE.held_not_collectable, /already at the hub/i)
+  })
+
+  /**
+   * A held parcel keeps `picked_up`, and load_trip gives it the RUN's rider —
+   * so a run without one would leave it rider-less, which
+   * orders_assigned_needs_rider forbids. Caught here as advice rather than
+   * there as a 55000.
+   */
+  test('a run with no rider cannot carry one', () => {
+    const plan = loadPlan([held('h1')], { ...EMPTY, hasRider: false })
+    assert.equal(plan.blocker, 'held_needs_rider')
+    assert.match(LOAD_BLOCKER_MESSAGE.held_needs_rider, /rider/i)
+  })
+
+  test('but an ordinary parcel still loads onto a riderless run', () => {
+    assert.equal(loadPlan([parcel('p1')], { ...EMPTY, hasRider: false }).blocker, null)
+  })
+
+  /** Returns still win the leg: they are the one thing that is not outbound. */
+  test('a return mixed with a held parcel is still refused as mixed', () => {
+    const plan = loadPlan([held('h1'), parcel('r1', 0, true)], EMPTY)
+    assert.equal(plan.blocker, 'mixed_legs')
+  })
+
+  test('every blocker has a message', () => {
+    for (const [key, message] of Object.entries(LOAD_BLOCKER_MESSAGE)) {
+      assert.ok(message.trim().length > 0, `${key} is blank`)
+    }
   })
 })

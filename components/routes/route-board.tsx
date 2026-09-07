@@ -194,7 +194,7 @@ export function RouteBoard({ board }: { board: PlanningBoard }) {
     return map
   }, [board.trips])
 
-  const totalUnrouted = board.unrouted.length + board.returns.length
+  const totalUnrouted = board.unrouted.length + board.returns.length + board.hubHeld.length
   const unmapped = board.unrouted.filter((p) => p.suggestedRouteId === null).length
 
   /**
@@ -208,8 +208,11 @@ export function RouteBoard({ board }: { board: PlanningBoard }) {
    */
   const poolParcels = React.useMemo(
     () => [
-      ...board.returns.map((p) => ({ ...p, isReturn: true })),
-      ...board.unrouted.map((p) => ({ ...p, isReturn: false })),
+      ...board.returns.map((p) => ({ ...p, isReturn: true, isHubHeld: false })),
+      // Collected from a shop and on the hub shelf. Before 0027 these matched
+      // no pool at all and simply were not on this board.
+      ...board.hubHeld.map((p) => ({ ...p, isReturn: false, isHubHeld: true })),
+      ...board.unrouted.map((p) => ({ ...p, isReturn: false, isHubHeld: false })),
     ],
     [board.returns, board.unrouted],
   )
@@ -228,6 +231,7 @@ export function RouteBoard({ board }: { board: PlanningBoard }) {
       loaded: trip.parcels.map((p) => ({ leg: p.leg, codAmount: p.codAmount })),
       maxParcels: route.maxParcels,
       maxCod: route.maxCod,
+      hasRider: trip.riderId !== null,
       label: `${route.code.replace('ROUTE_', 'Route ')} · run ${index}`,
       colour: route.colour,
       riderName: trip.riderName,
@@ -264,6 +268,25 @@ export function RouteBoard({ board }: { board: PlanningBoard }) {
           <span className="mt-1 block text-xs">
             These reached the attempt limit. Nothing happens to
             them until the shop chooses retry, return or cancel — chase the shop, not the parcel.
+          </span>
+        </Alert>
+      ) : null}
+
+      {/*
+        THE HUB SHELF. These were collected from a shop on an inbound run and
+        carried to the hub; until 0027 they matched no pool and were simply not
+        on this board, while sitting physically in the building. Given its own
+        banner because the parcel is already paid for in riding and the only
+        thing left is to send it out.
+      */}
+      {board.hubHeld.length > 0 ? (
+        <Alert tone="warning" title={`${board.hubHeld.length} at the hub, waiting to go out`}>
+          <ParcelLine parcels={board.hubHeld} />
+          <span className="mt-1 block text-xs">
+            Collected from a shop and back at the hub. They sit near the top of the parcel list
+            under <strong>At the hub</strong> — give a run a rider, tick them, and load. They can
+            only go <em>out</em>: offering them to a collection run would send a rider to fetch
+            what is already on the shelf.
           </span>
         </Alert>
       ) : null}

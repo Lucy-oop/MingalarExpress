@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { Coins, CornerUpLeft, MapPin, PackageOpen, PackagePlus, Search } from 'lucide-react'
+import { Coins, CornerUpLeft, MapPin, PackageOpen, PackagePlus, Search, Warehouse } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -11,7 +11,7 @@ import { cn, formatMmk } from '@/lib/utils'
 import type { BoardRoute, UnroutedParcel } from '@/lib/routes/queries'
 
 /** An unrouted parcel plus whether the shop has asked for it back. */
-export type PanelParcel = UnroutedParcel & { isReturn: boolean }
+export type PanelParcel = UnroutedParcel & { isReturn: boolean; isHubHeld: boolean }
 
 /** Everything the panel needs to name and measure the run it will load into. */
 export type PanelTarget = LoadTarget & {
@@ -80,7 +80,7 @@ export function UnroutedPanel({
     return parcels.filter((p) => {
       // Returns travel to the shop, not to the customer's area, so a route
       // filter must never hide them — they belong on whichever run is going.
-      if (!p.isReturn) {
+      if (!p.isReturn && !p.isHubHeld) {
         // '__none' is its own case: a parcel whose area maps to no route cannot
         // be loaded anywhere and needs surfacing, not hiding.
         if (routeFilter === '__none') {
@@ -103,18 +103,30 @@ export function UnroutedPanel({
   const groups = React.useMemo(() => {
     const map = new Map<
       string,
-      { key: string; label: string; routeId: string | null; isReturn: boolean; items: PanelParcel[] }
+      {
+        key: string
+        label: string
+        routeId: string | null
+        isReturn: boolean
+        isHubHeld: boolean
+        items: PanelParcel[]
+      }
     >()
     for (const p of visible) {
       // Returns are one group of their own, whatever area they came from: they
       // are a different job, and mixing them into an area group would invite
       // the mixed selection that load_trip refuses.
-      const key = p.isReturn ? '__return' : (p.areaId ?? 'unmapped')
+      const key = p.isReturn ? '__return' : p.isHubHeld ? '__hub' : (p.areaId ?? 'unmapped')
       const entry = map.get(key) ?? {
         key,
-        label: p.isReturn ? 'Back to the shop' : (p.areaName ?? 'No area set'),
-        routeId: p.isReturn ? null : p.suggestedRouteId,
+        label: p.isReturn
+          ? 'Back to the shop'
+          : p.isHubHeld
+            ? 'At the hub — collected, ready to go out'
+            : (p.areaName ?? 'No area set'),
+        routeId: p.isReturn || p.isHubHeld ? null : p.suggestedRouteId,
         isReturn: p.isReturn,
+        isHubHeld: p.isHubHeld,
         items: [],
       }
       entry.items.push(p)
@@ -122,6 +134,9 @@ export function UnroutedPanel({
     }
     return [...map.values()].sort((a, b) => {
       if (a.isReturn !== b.isReturn) return a.isReturn ? -1 : 1
+      // Then the hub shelf: it is stock already paid for in riding, and it
+      // should go out before anything new is collected.
+      if (a.isHubHeld !== b.isHubHeld) return a.isHubHeld ? -1 : 1
       const ra = a.routeId ? routeById.get(a.routeId)?.sortOrder ?? 999 : 999
       const rb = b.routeId ? routeById.get(b.routeId)?.sortOrder ?? 999 : 999
       return ra - rb || a.label.localeCompare(b.label)
@@ -135,6 +150,7 @@ export function UnroutedPanel({
   const plan = loadPlan(chosen, target, mode)
   const hiddenTicks = selected.size - visible.filter((p) => selected.has(p.id)).length
   const hasReturns = chosen.some((p) => p.isReturn)
+  const hasHeld = chosen.some((p) => p.isHubHeld)
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-2">
@@ -236,12 +252,20 @@ export function UnroutedPanel({
             return (
               <section
                 key={group.key}
-                className={cn('rounded-lg border', group.isReturn && 'border-blue-300')}
+                className={cn(
+                  'rounded-lg border',
+                  group.isReturn && 'border-blue-300',
+                  group.isHubHeld && 'border-amber-300',
+                )}
               >
                 <header
                   className={cn(
                     'flex items-center gap-2 border-b p-2',
-                    group.isReturn ? 'bg-blue-50' : 'bg-muted/40',
+                    group.isReturn
+                      ? 'bg-blue-50'
+                      : group.isHubHeld
+                        ? 'bg-amber-50'
+                        : 'bg-muted/40',
                   )}
                 >
                   <input
@@ -255,6 +279,8 @@ export function UnroutedPanel({
                     <span className="flex items-center gap-1.5 text-xs font-semibold">
                       {group.isReturn ? (
                         <CornerUpLeft className="size-3 shrink-0" aria-hidden="true" />
+                      ) : group.isHubHeld ? (
+                        <Warehouse className="size-3 shrink-0" aria-hidden="true" />
                       ) : (
                         <MapPin className="size-3 shrink-0" aria-hidden="true" />
                       )}
@@ -263,6 +289,8 @@ export function UnroutedPanel({
                   </span>
                   {group.isReturn ? (
                     <Badge tone="blue">Return</Badge>
+                  ) : group.isHubHeld ? (
+                    <Badge tone="amber">Out only</Badge>
                   ) : route ? (
                     <span
                       className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold text-white"
@@ -338,23 +366,42 @@ export function UnroutedPanel({
           — so offering the toggle there would be offering a choice the server
           does not have.
         */}
-        {!hasReturns && chosen.length > 0 ? (
-          <div className="flex gap-1" role="group" aria-label="What this load is">
-            {(['delivery', 'pickup'] as const).map((m) => (
-              <button
-                key={m}
-                type="button"
-                onClick={() => setMode(m)}
-                aria-pressed={mode === m}
-                className={cn(
-                  'flex-1 rounded-md border px-2 py-1 text-xs font-medium',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                  mode === m ? 'border-primary bg-primary text-primary-foreground' : 'hover:bg-muted',
-                )}
-              >
-                {m === 'delivery' ? 'Deliver' : 'Collect'}
-              </button>
-            ))}
+        {/*
+          NAMED, AND ALWAYS ON SCREEN. This used to appear only once a parcel
+          was ticked, sat unlabelled at the bottom of a scrolling panel, and
+          read "Deliver / Collect" — the word "pickup" appeared nowhere on the
+          board. The inbound half of the operation was reachable in four clicks
+          and effectively undiscoverable, which is why no pickup run had ever
+          been loaded.
+
+          Hidden only when the selection has already decided the leg for us: a
+          return goes back to its shop, and a parcel on the hub shelf can only
+          go out.
+        */}
+        {!hasReturns && !hasHeld ? (
+          <div className="space-y-1">
+            <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+              This load is
+            </p>
+            <div className="flex gap-1" role="group" aria-label="What this load is">
+              {(['delivery', 'pickup'] as const).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setMode(m)}
+                  aria-pressed={mode === m}
+                  className={cn(
+                    'flex-1 rounded-md border px-2 py-1.5 text-xs font-medium leading-tight',
+                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                    mode === m
+                      ? 'border-primary bg-primary text-primary-foreground'
+                      : 'hover:bg-muted',
+                  )}
+                >
+                  {m === 'delivery' ? 'Out — deliver to customers' : 'In — collect from shops'}
+                </button>
+              ))}
+            </div>
           </div>
         ) : null}
 

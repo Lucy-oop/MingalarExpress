@@ -113,6 +113,12 @@ export type PlanningBoard = {
   returns: UnroutedParcel[]
   /** Parcels stopped at the attempt cap, waiting on their shop to decide. */
   stalled: UnroutedParcel[]
+  /**
+   * Collected from a shop and sitting at the hub, waiting to go out. Loadable
+   * onto a DELIVERY leg only — 0027 refuses them to a pickup leg, because
+   * fetching what we already hold sends a rider across Yangon for nothing.
+   */
+  hubHeld: UnroutedParcel[]
   rates: TripPayRates
   tiers: RoutePayTier[]
   routes: BoardRoute[]
@@ -190,6 +196,7 @@ export async function getPlanningBoard(serviceDate?: string): Promise<PlanningBo
     { data: unroutedRows, error: unroutedErr },
     { data: returnRows },
     { data: stalledRows },
+    { data: hubHeldRows },
     riders,
   ] = await Promise.all([
       tripIds.length
@@ -235,6 +242,21 @@ export async function getPlanningBoard(serviceDate?: string): Promise<PlanningBo
         .eq('status', 'failed')
         .is('resolution', null)
         .order('created_at', { ascending: true })
+        .limit(200),
+      /*
+        ON THE HUB SHELF: collected from a shop, carried in, and now waiting for
+        a delivery run. `close_trip` detaches a finished pickup leg but leaves
+        the status at `picked_up`, which matched none of the three pools above
+        -- so the parcel was physically in the building and invisible on this
+        board, with `load_trip` refusing it as well. That is the black hole 0027
+        closes, and this is the query that makes it visible.
+      */
+      supabase
+        .from('orders')
+        .select(UNROUTED_COLUMNS)
+        .is('trip_id', null)
+        .eq('status', 'picked_up')
+        .order('picked_up_at', { ascending: true })
         .limit(200),
       getBoardRiders(),
     ])
@@ -406,6 +428,7 @@ export async function getPlanningBoard(serviceDate?: string): Promise<PlanningBo
     unrouted,
     returns: toParcels(returnRows),
     stalled: toParcels(stalledRows),
+    hubHeld: toParcels(hubHeldRows),
     riders: riders.map((r) => ({ ...r, onOpenTrip: openTripRiders.has(r.id) })),
   }
 }

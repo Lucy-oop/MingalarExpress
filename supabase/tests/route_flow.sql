@@ -1079,6 +1079,7 @@ declare
   v_route uuid;
   v_rider uuid;
   t_id    uuid;
+  t2_id   uuid;
   ids     uuid[];
   n       int;
 begin
@@ -1168,6 +1169,56 @@ begin
     raise exception 'FAIL: a collected pickup leg is still attached to its trip';
   end if;
   raise notice 'PASS: a finished collection lets go of the run';
+
+  -- ------------------------------------------------------------------------
+  --  0027 -- THE BLACK HOLE. ids[1] now sits on the hub shelf: trip_id null,
+  --  trip_leg null, status picked_up. Every dispatcher pool wants 'pending',
+  --  'failed' or resolution = 'return', and load_trip's eligibility test was
+  --  status in ('pending','failed'). So a parcel the company had physically
+  --  collected matched nothing and could never be sent out again.
+  -- ------------------------------------------------------------------------
+  select count(*) into n from public.orders
+   where id = ids[1] and status = 'picked_up' and trip_id is null and trip_leg is null;
+  if n <> 1 then raise exception 'FAIL: fixture is not a hub-held parcel'; end if;
+
+  t2_id := (public.plan_trip(v_route)).id;
+
+  -- 1. A run with no rider must refuse it: the parcel keeps 'picked_up', and
+  --    load_trip takes the RUN's rider, which would null it and break
+  --    orders_assigned_needs_rider.
+  begin
+    perform public.load_trip(t2_id, array[ids[1]], 'delivery');
+    raise exception 'FAIL: a held parcel loaded onto a run with no rider';
+  exception when sqlstate '55000' then
+    raise notice 'PASS: a run needs a rider before it can carry hub-held parcels';
+  end;
+
+  perform public.assign_trip_rider(t2_id, v_rider);
+
+  -- 2. It must never be offered to another collection -- that sends a rider
+  --    across Yangon to fetch what is already on our shelf.
+  begin
+    perform public.load_trip(t2_id, array[ids[1]], 'pickup');
+    raise exception 'FAIL: a parcel already at the hub was collected twice';
+  exception when sqlstate '55000' then
+    raise notice 'PASS: a parcel at the hub is never collected twice';
+  end;
+
+  -- 3. THE FIX. It loads onto a delivery leg, keeps 'picked_up' (there is no
+  --    picked_up -> assigned edge in the status machine) and takes the new
+  --    run's rider.
+  perform public.load_trip(t2_id, array[ids[1]], 'delivery');
+  select count(*) into n
+    from public.orders o join public.trips t on t.id = t2_id
+   where o.id = ids[1]
+     and o.trip_id = t2_id and o.trip_leg = 'delivery'
+     and o.status = 'picked_up' and o.rider_id = t.rider_id;
+  if n <> 1 then
+    raise exception 'FAIL: a collected parcel could not be sent out for delivery';
+  end if;
+  raise notice 'PASS: a parcel collected from a shop can be delivered to the customer';
+
+  perform public.cancel_trip(t2_id, 'test cleanup');
 end $$;
 
 \echo ''

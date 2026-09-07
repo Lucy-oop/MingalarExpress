@@ -156,6 +156,20 @@ export async function getRiderFeed(riderId: string): Promise<RiderFeed> {
         .from('orders')
         .select(JOB_COLUMNS)
         .in('status', ['assigned', 'picked_up'])
+        /*
+          THE FEED IS THE CURRENT RUN. Without this a collected pickup haunts
+          the rider forever: close_trip detaches it (trip_id null) but it stays
+          `picked_up` and keeps its rider_id -- it must, because
+          orders_assigned_needs_rider forbids a rider-less parcel in any state
+          but pending or cancelled. Status and rider both still matched, so the
+          parcel reappeared as a stop on every later run, now with leg null and
+          therefore showing the CUSTOMER's address for a job that was finished.
+
+          Safe as a filter because every rider assignment goes through a trip:
+          the offer engine was retired in 0009 and `orders.rider_id` is now
+          written only by assign_trip_rider, load_trip and depart_trip.
+        */
+        .not('trip_id', 'is', null)
         .order('created_at', { ascending: true }),
       // The open run, if there is one. trips_rider_open_uk guarantees at most one.
       supabase
