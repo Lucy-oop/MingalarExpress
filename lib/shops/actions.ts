@@ -2,39 +2,22 @@
 
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
-import { z } from 'zod'
 import { requireShop } from '@/lib/auth/guards'
 import { createClient } from '@/lib/supabase/server'
 import { forwardGeocode } from '@/lib/map/geocoder'
-import { myanmarPhone, servicePoint } from '@/lib/validation/schemas'
+import { servicePoint, shopSetupSchema } from '@/lib/validation/schemas'
 
 export type ShopSetupResult =
   | { ok: true }
   | { ok: false; message?: string; fieldErrors?: Record<string, string[]> }
 
 /**
- * What a shop tells us about itself. Four fields, and clause 1 of the COD
- * advance policy asks for three of them by name.
+ * The shop describes itself into existence and starts trading.
  *
- * The pickup POINT is absent on purpose: the owner types an address and never
- * touches a map. Coordinates are derived below.
- */
-const setupSchema = z.object({
-  name: z.string().trim().min(2, 'Shop name is required').max(160),
-  goodsType: z.string().trim().min(2, 'Tell us what you sell').max(160),
-  phone: myanmarPhone,
-  pickupAddress: z.string().trim().min(8, 'Give the full address, with street and ward').max(300),
-  /**
-   * Optional, and only present when the owner opened the map and moved the pin
-   * themselves. When it is here it beats the lookup -- they know where their own
-   * shop is and OSM does not.
-   */
-  pickupLat: z.coerce.number().optional(),
-  pickupLng: z.coerce.number().optional(),
-})
-
-/**
- * The shop describes itself into existence, unapproved.
+ * NOT "PENDING" ANY MORE. 0031 moved approval off trade and onto cash: this
+ * insert leaves `approved_at` null, and that now means "can book prepaid, COD
+ * locked" rather than "wait for a phone call". Which is why the form says Save
+ * and not Send for confirmation -- there is nothing to wait for.
  *
  * INSERTED UNDER THE OWNER'S OWN SESSION, not the service role. `shops_owner_all`
  * permits `owner_id = auth.uid()`, and `tg_shops_guard` (0026) forces
@@ -42,14 +25,19 @@ const setupSchema = z.object({
  * an address, and a shop still cannot wave itself through. That pairing is the
  * whole design; using the service role here would throw away the second half.
  *
- * THE COORDINATES ARE DERIVED, NOT ASKED FOR. `shops.pickup_lat/lng` are NOT
- * NULL behind a geofence CHECK and `createOrder` copies them onto every order,
- * where they become the rider's navigation target -- so they cannot be skipped,
- * and they cannot be invented either. The typed address is looked up; if the
- * lookup fails or lands outside Greater Yangon, NO ROW IS WRITTEN and the owner
- * is told the office will call. They stay a pending owner, which is the state
- * `ShopConfirmDialog` already handles. A guessed pin sends a rider to the wrong
- * street while the screen shows the right address.
+ * THE COORDINATES ARE NOT TYPED. `shops.pickup_lat/lng` are NOT NULL behind a
+ * geofence CHECK and `createOrder` copies them onto every order, where they
+ * become the rider's navigation target -- so they cannot be skipped, and they
+ * cannot be invented either. Two honest sources, in order of trust:
+ *
+ *   1. the owner's own device, tapped while standing in the shop
+ *   2. a lookup of the address they typed
+ *
+ * Nothing else. If both are absent, NO ROW IS WRITTEN and the owner is told to
+ * tap the location button or ring the office. A guessed pin -- a ward centroid,
+ * a hub default -- sends a rider to the wrong street while the screen shows the
+ * right address, and the seeded ward centroids are flagged VERIFY-CENTROID for
+ * exactly that reason: Bahan's is 2.2 km out.
  */
 export async function setUpShop(
   _prev: ShopSetupResult,
@@ -57,11 +45,15 @@ export async function setUpShop(
 ): Promise<ShopSetupResult> {
   const { userId } = await requireShop()
 
-  const parsed = setupSchema.safeParse({
+  const parsed = shopSetupSchema.safeParse({
     name: formData.get('name'),
     goodsType: formData.get('goodsType'),
     phone: formData.get('phone'),
     pickupAddress: formData.get('pickupAddress'),
+    pickupNote: formData.get('pickupNote') ?? '',
+    // The hidden pair is empty until the owner taps for their location, and an
+    // empty string coerces to 0 -- which is a real coordinate, in the Gulf of
+    // Guinea. `|| undefined` is what keeps it out of `resolvePoint`.
     pickupLat: formData.get('pickupLat') || undefined,
     pickupLng: formData.get('pickupLng') || undefined,
   })
@@ -95,7 +87,7 @@ export async function setUpShop(
       ok: false,
       fieldErrors: {
         pickupAddress: [
-          'We could not find that address on the map. Check the street and ward, or the office will set it up for you.',
+          'We could not find that address on the map. Tap "Use my current location" while you are at the shop, or contact the office and they will set it up for you.',
         ],
       },
     }
@@ -107,6 +99,7 @@ export async function setUpShop(
     phone: v.phone,
     goods_type: v.goodsType,
     pickup_address: v.pickupAddress,
+    pickup_note: v.pickupNote || null,
     pickup_lat: point.lat,
     pickup_lng: point.lng,
   })

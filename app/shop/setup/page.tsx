@@ -28,7 +28,7 @@ export default async function ShopSetupPage() {
     <div className="mx-auto max-w-xl space-y-5">
       <PageHeader
         title="Tell us about your shop"
-        description="Four things, and the office confirms it from here. You can change any of it later in Shop settings."
+        description="Five quick things and you are trading. You can change any of it later in Shop settings."
       />
       <ShopSetupForm
         defaultName={profile.full_name}

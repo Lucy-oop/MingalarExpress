@@ -1,7 +1,9 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { dbId, orderCreateSchema } from './schemas'
+import { dbId, orderCreateSchema,
+  shopSetupSchema,
+} from './schemas'
 import { MAX_MMK } from './limits'
 import { codCollectable } from '@/lib/pricing'
 
@@ -253,5 +255,69 @@ describe('orderCreateSchema — where the money ceiling does and does not apply'
     const stored = codCollectable(parsed.data.codAmount, 3_500, 'customer')
     assert.ok(stored > MAX_MMK, 'the gap this test documents has closed — check createOrder')
     assert.equal(stored, MAX_MMK + 3_500)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// shopSetupSchema — the five fields a merchant fills in to start trading
+// ---------------------------------------------------------------------------
+
+describe('shopSetupSchema', () => {
+  const BASE = {
+    name: 'San Pya Mini Mart',
+    goodsType: 'Clothes and bags',
+    phone: '09761234567',
+    pickupAddress: 'No. 24, Thitsar Road, San Pya Ward, Thingangyun',
+    pickupNote: '',
+  }
+
+  test('the five typed fields are enough on their own', () => {
+    const r = shopSetupSchema.safeParse(BASE)
+    assert.equal(r.success, true)
+  })
+
+  /**
+   * THE ONE THAT MATTERS, and the reason the action writes
+   * `formData.get('pickupLat') || undefined`.
+   *
+   * The location button's hidden inputs are EMPTY STRINGS until it is tapped,
+   * and `z.coerce.number()` turns '' into 0 — a real coordinate, in the Gulf of
+   * Guinea. Absent has to stay absent, because absent is what makes the server
+   * fall back to geocoding the address. Coerced to 0 it would look like a pin
+   * the owner placed, fail the service-area check, and block every registration
+   * where nobody tapped the button.
+   */
+  test('an untapped location button leaves the point absent, not zero', () => {
+    const r = shopSetupSchema.safeParse({ ...BASE, pickupLat: undefined, pickupLng: undefined })
+    assert.equal(r.success, true)
+    assert.equal(r.data?.pickupLat, undefined, 'a missing pin must not become lat 0')
+    assert.equal(r.data?.pickupLng, undefined)
+  })
+
+  test('but a real tap comes through as numbers', () => {
+    const r = shopSetupSchema.safeParse({ ...BASE, pickupLat: '16.8478', pickupLng: '96.1693' })
+    assert.equal(r.success, true)
+    assert.equal(r.data?.pickupLat, 16.8478)
+    assert.equal(r.data?.pickupLng, 96.1693)
+  })
+
+  test('the pickup note is optional and survives untouched', () => {
+    assert.equal(shopSetupSchema.safeParse(BASE).data?.pickupNote, '')
+    const r = shopSetupSchema.safeParse({ ...BASE, pickupNote: 'Near the big mall, green shutter' })
+    assert.equal(r.data?.pickupNote, 'Near the big mall, green shutter')
+  })
+
+  /** 300 to match `shopSettingsSchema.pickupNote`, which edits the same column. */
+  test('and it is capped at the same length settings allows', () => {
+    assert.equal(shopSetupSchema.safeParse({ ...BASE, pickupNote: 'x'.repeat(300) }).success, true)
+    assert.equal(shopSetupSchema.safeParse({ ...BASE, pickupNote: 'x'.repeat(301) }).success, false)
+  })
+
+  test('a one-word address is refused — a rider cannot find a shop from "Yangon"', () => {
+    assert.equal(shopSetupSchema.safeParse({ ...BASE, pickupAddress: 'Yangon' }).success, false)
+  })
+
+  test('what you sell is required, because COD review asks for it by name', () => {
+    assert.equal(shopSetupSchema.safeParse({ ...BASE, goodsType: '' }).success, false)
   })
 })

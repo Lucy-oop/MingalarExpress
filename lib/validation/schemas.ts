@@ -191,6 +191,40 @@ export const shopSettingsSchema = z.object({
   pickupNote: z.string().trim().max(300).optional().or(z.literal('')),
 })
 
+/**
+ * What a shop tells us about itself. Five fields, and clause 1 of the COD
+ * advance policy asks for three of them by name.
+ *
+ * The pickup POINT is not typed: the owner writes an address in plain text and
+ * either taps "use my current location" or lets the server look the address up.
+ */
+export const shopSetupSchema = z.object({
+  name: z.string().trim().min(2, 'Shop name is required').max(160),
+  goodsType: z.string().trim().min(2, 'Tell us what you sell').max(160),
+  phone: myanmarPhone,
+  pickupAddress: z.string().trim().min(8, 'Give the full address, with street and ward').max(300),
+  /**
+   * How to recognise the shop once a rider is on the street -- a landmark, a
+   * shutter colour, who to ask for. Optional, and 300 to match
+   * `shopSettingsSchema.pickupNote`, which edits the same column later.
+   *
+   * It earns its place because the pin is often approximate: a geocoded Yangon
+   * address usually resolves no finer than the township, and this is the line
+   * that closes the last two hundred metres.
+   */
+  pickupNote: z.string().trim().max(300).optional().or(z.literal('')),
+  /**
+   * Present when the owner tapped "use my current location" while standing in
+   * the shop. When it is here it beats the lookup outright -- they are at the
+   * door and Nominatim has, in the common case, never heard of the street.
+   */
+  pickupLat: z.coerce.number().optional(),
+  pickupLng: z.coerce.number().optional(),
+})
+
+
+export type ShopSetupValues = z.output<typeof shopSetupSchema>
+
 export type ShopSettingsValues = z.output<typeof shopSettingsSchema>
 
 // ---------------------------------------------------------------------------

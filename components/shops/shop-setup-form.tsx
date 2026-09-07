@@ -2,9 +2,8 @@
 
 import { useActionState, useState } from 'react'
 import { useFormStatus } from 'react-dom'
-import { Store } from 'lucide-react'
+import { LocateFixed, Store } from 'lucide-react'
 import { setUpShop, type ShopSetupResult } from '@/lib/shops/actions'
-import { LocationPicker } from '@/components/map/location-picker'
 import { Card, CardContent } from '@/components/ui/card'
 import { Field } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
@@ -13,17 +12,33 @@ import { Alert } from '@/components/ui/alert'
 import type { LatLng } from '@/types/domain'
 
 /**
- * Four fields, and the address is the only one that takes any thought.
+ * Five fields, all of them typed, and none of them a map.
  *
  * Name and phone come from the sign-up and are prefilled rather than asked
  * again. "What you sell" is clause 1 of the COD advance policy -- the office
  * needs it to verify a shop, and asking now costs a line where asking later
  * costs a second conversation.
  *
- * THE MAP IS NOT A STEP. `LocationPicker` is address-first: typing offers
- * suggestions, choosing one sets the pin, and the map stays collapsed. An owner
- * who never opens it still produces coordinates, because the server geocodes
- * what they typed. The pin is there for the case OSM does not know the place.
+ * THE ADDRESS IS PLAIN TEXT. It used to be `LocationPicker`: search-as-you-type
+ * suggestions over a collapsible map with a draggable pin, 595 lines of it, on
+ * the first screen a merchant ever sees. They know their own address. They type
+ * it.
+ *
+ * WHICH LEAVES THE COORDINATES, and they are not optional -- `pickup_lat/lng`
+ * are NOT NULL behind a geofence CHECK, and `createOrder` copies them onto
+ * every order as the rider's navigation target. Geocoding the typed address
+ * cannot carry that alone: of six realistic Yangon addresses, Nominatim found
+ * two. "No. 24, Thitsar Road, San Pya Ward, Thingangyun" returns nothing at
+ * all. So the button below matters more than it looks --
+ *
+ *   a merchant setting up their shop is STANDING IN IT.
+ *
+ * One tap gives a pin more accurate than any address lookup, with no map to
+ * pan and nothing to search. The typed address is still what a rider reads; the
+ * tap is only how we learn where to send them.
+ *
+ * If they are not at the shop, the server geocodes what they typed, exactly as
+ * before. The tap is the reliable path, not the only one.
  */
 export function ShopSetupForm({
   defaultName,
@@ -36,7 +51,6 @@ export function ShopSetupForm({
   const err = (k: string) => (state.ok ? undefined : state.fieldErrors?.[k]?.[0])
 
   const [point, setPoint] = useState<LatLng | null>(null)
-  const [address, setAddress] = useState('')
 
   return (
     <Card>
@@ -68,28 +82,123 @@ export function ShopSetupForm({
             />
           </Field>
 
-          {/* The address a rider will read. Suggestions set the pin behind it. */}
-          <LocationPicker
-            kind="pickup"
+          <Field
             label="Where should riders collect from?"
-            point={point}
-            address={address}
-            onPointChange={setPoint}
-            onAddressChange={setAddress}
-            fieldPrefix="pickup"
-            addressError={err('pickupAddress')}
-            addressPlaceholder="No. 24, Thitsar Road, San Pya Ward, Thingangyun"
-          />
+            htmlFor="pickupAddress"
+            required
+            error={err('pickupAddress')}
+            hint="Street, ward and township."
+          >
+            <Input
+              id="pickupAddress"
+              name="pickupAddress"
+              autoComplete="street-address"
+              placeholder="No. 24, Thitsar Road, San Pya Ward, Thingangyun"
+            />
+          </Field>
+
+          {/* Directly under the address, because it is the same question a
+              second time: not where the shop is, but how to recognise it. */}
+          <Field
+            label="Pickup notes for riders"
+            htmlFor="pickupNote"
+            error={err('pickupNote')}
+            hint="A landmark, the shutter colour, who to ask for. Optional."
+          >
+            <Input
+              id="pickupNote"
+              name="pickupNote"
+              placeholder="Near the big mall, green shutter. Ask for Ma Su."
+            />
+          </Field>
+
+          <PinButton point={point} onPoint={setPoint} />
 
           <SubmitButton />
 
           <p className="text-xs text-muted-foreground">
-            The Mingalar Express office checks new shops before the first parcel. You will be able
-            to book as soon as it is confirmed.
+            You can book prepaid parcels straight away. Cash on delivery opens once the Mingalar
+            Express office has had a look at your shop.
           </p>
         </form>
       </CardContent>
     </Card>
+  )
+}
+
+/**
+ * One tap, no map.
+ *
+ * `getCurrentPosition` prompts the browser's own permission dialog, so there is
+ * nothing to explain up front and no state to render before the answer. A
+ * refusal or a failure is NOT a blocker -- the address still gets geocoded
+ * server-side -- so it reports quietly and the form stays submittable. The
+ * alternative, blocking Save on a pin, would put a browser permission dialog in
+ * front of shop registration.
+ */
+function PinButton({
+  point,
+  onPoint,
+}: {
+  point: LatLng | null
+  onPoint: (p: LatLng) => void
+}) {
+  const [busy, setBusy] = useState(false)
+  const [problem, setProblem] = useState<string | null>(null)
+
+  function locate() {
+    if (!('geolocation' in navigator)) {
+      setProblem('This phone cannot share its location. Type the address and we will find it.')
+      return
+    }
+    setBusy(true)
+    setProblem(null)
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        onPoint({ lat: pos.coords.latitude, lng: pos.coords.longitude })
+        setBusy(false)
+      },
+      () => {
+        setBusy(false)
+        setProblem(
+          'We could not read your location. Type the address instead and we will look it up.',
+        )
+      },
+      // A shop is a fixed address, so a cached fix from a few minutes ago is
+      // just as good and answers instantly. `enableHighAccuracy` would spin up
+      // GPS indoors and often time out.
+      { timeout: 10_000, maximumAge: 300_000 },
+    )
+  }
+
+  return (
+    <div className="rounded-md border bg-muted/30 p-3">
+      {/*
+        The hidden pair is what the server reads. Empty when no tap happened,
+        which `setupSchema` treats as absent and falls back to geocoding.
+      */}
+      <input type="hidden" name="pickupLat" value={point?.lat ?? ''} />
+      <input type="hidden" name="pickupLng" value={point?.lng ?? ''} />
+
+      {point ? (
+        <p className="text-sm font-medium text-emerald-700 dark:text-emerald-500">
+          Location saved. Riders will be sent here.
+        </p>
+      ) : (
+        <>
+          <Button type="button" variant="outline" size="touch" block onClick={locate} disabled={busy}>
+            <LocateFixed />
+            {busy ? 'Getting your location…' : 'Use my current location'}
+          </Button>
+          <p className="mt-2 text-xs text-muted-foreground">
+            Tap this while you are at the shop and riders will find it first time. Otherwise we
+            will look up the address you typed.
+          </p>
+        </>
+      )}
+
+      {problem ? <p className="mt-2 text-xs text-destructive">{problem}</p> : null}
+    </div>
   )
 }
 
@@ -98,7 +207,7 @@ function SubmitButton() {
   return (
     <Button type="submit" size="touch" block disabled={pending}>
       <Store />
-      {pending ? 'Saving…' : 'Send for confirmation'}
+      {pending ? 'Saving…' : 'Save'}
     </Button>
   )
 }
