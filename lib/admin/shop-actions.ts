@@ -469,8 +469,12 @@ export async function onboardShop(
     const tokenHash = link?.properties?.hashed_token
     const built = tokenHash ? await setupLinkFor(tokenHash) : null
     if (linkError || !built) {
+      // Points at flows that exist. There is no password-reset page in this
+      // app -- app/auth has only login, register, callback and confirm -- so
+      // the old advice to "send a password reset from the login page" sent an
+      // operator looking for a button nobody ever built.
       warning =
-        'The account was created but a sign-in link could not be generated. Use "Send a password reset" from the login page instead.'
+        'The account was created but a sign-in link could not be generated. Register the owner with a password, or have them sign up at /auth/register and attach the shop.'
     } else {
       inviteLink = built
     }
