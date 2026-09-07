@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, test } from 'node:test'
+import { THINGANGYUN_SEARCH_BBOX } from '@/lib/geo/thingangyun'
 import assert from 'node:assert/strict'
 import { forwardGeocode, getGeocoder, reverseGeocode } from './geocoder'
 
@@ -280,7 +281,15 @@ describe('forwardGeocode — MapTiler', () => {
   test('sends the Greater Yangon search bbox as minLng,minLat,maxLng,maxLat', async () => {
     stubFetch(FEATURES)
     await forwardGeocode('Thitsar')
-    assert.equal(new URL(calls[0]!).searchParams.get('bbox'), '96.02,16.72,96.37,17.05')
+    // Built from the constant, not restated. The assertion here is about the
+    // ORDER MapTiler wants — minLng,minLat,maxLng,maxLat — and hardcoding the
+    // numbers made a geofence change (0032 moved west for Hlaingtharyar) look
+    // like an ordering bug.
+    const b = THINGANGYUN_SEARCH_BBOX
+    assert.equal(
+      new URL(calls[0]!).searchParams.get('bbox'),
+      `${b.west},${b.south},${b.east},${b.north}`,
+    )
   })
 
   test('biases ordering toward Thingangyun Base', async () => {
@@ -393,7 +402,13 @@ describe('forwardGeocode — Nominatim', () => {
   test('converts the bbox to Nominatim viewbox ordering', async () => {
     stubFetch([])
     await forwardGeocode('Thitsar')
-    assert.equal(new URL(calls[0]!).searchParams.get('viewbox'), '96.02,17.05,96.37,16.72')
+    // Nominatim wants left,top,right,bottom — north and south swapped relative
+    // to MapTiler. That inversion is the point of this test.
+    const b = THINGANGYUN_SEARCH_BBOX
+    assert.equal(
+      new URL(calls[0]!).searchParams.get('viewbox'),
+      `${b.west},${b.north},${b.east},${b.south}`,
+    )
   })
 
   test('parses lat/lon strings into a LatLng', async () => {

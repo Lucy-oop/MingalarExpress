@@ -27,7 +27,10 @@ import type { LatLng } from '@/types/domain'
 export const THINGANGYUN_BBOX = {
   south: 16.74,
   north: 17.02,
-  west: 96.05,
+  // 0032 moved this from 96.05 to reach Hlaingtharyar, which sits around 96.03
+  // and runs further west still. in_service_area(16.87, 96.03) was false, so a
+  // shop could pick the ward and have the CHECK refuse the order.
+  west: 95.95,
   east: 96.34,
 } as const
 
@@ -53,7 +56,9 @@ export const THINGANGYUN_BBOX = {
  * lib/map/geocoder.ts converts.
  */
 export const THINGANGYUN_SEARCH_BBOX = {
-  west: 96.02,
+  // Kept wider than THINGANGYUN_BBOX on every side — see the note above. Moved
+  // with the west bound in 0032 so the gap survives.
+  west: 95.9,
   south: 16.72,
   east: 96.37,
   north: 17.05,
