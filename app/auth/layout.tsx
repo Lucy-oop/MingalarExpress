@@ -3,10 +3,10 @@ import { LifeBuoy } from 'lucide-react'
 import { BrandMark } from '@/components/shared/brand-mark'
 
 /**
- * One footer covers login, register and forgot-password — and therefore the
- * "This account has been disabled. Contact your dispatcher." and "not set up
- * yet" notices too, which are the messages most likely to leave somebody
- * stranded with nobody to ring.
+ * One footer covers login and register — and therefore the "This account has
+ * been disabled. Contact your dispatcher." and "not set up yet" notices too,
+ * which are the messages most likely to leave somebody stranded with nobody to
+ * ring. (There is no forgot-password page; this comment used to claim one.)
  *
  * A LINK RATHER THAN THE NUMBER ITSELF. The number was here first and worked,
  * but a `tel:` href is the wrong shape for how this business is reached: Viber

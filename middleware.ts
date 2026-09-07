@@ -42,7 +42,7 @@ const ROLE_HOME: Record<UserRole, string> = {
 }
 
 /** Signed-in users have no business on the login/register forms. */
-const AUTH_PAGES = ['/auth/login', '/auth/register', '/auth/forgot-password']
+const AUTH_PAGES = ['/auth/login', '/auth/register']
 
 function matchPrefix(pathname: string): string | undefined {
   return PROTECTED_PREFIXES.find(
