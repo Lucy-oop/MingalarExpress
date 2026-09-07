@@ -461,6 +461,74 @@ export const DICTIONARY = {
   // unreviewed shop books prepaid parcels from its first minute.
   'sd.awaiting': { en: 'Cash on delivery not unlocked yet', my: 'COD ကို မဖွင့်ရသေးပါ' },
 
+  // ---- what is holding a shop back ------------------------------------------
+  //
+  //  These were English string literals in lib/shops/approval.ts, rendered raw
+  //  into the alert on the dashboard and on settings while the heading beside
+  //  them came from here. On a Burmese phone -- the default -- that produced a
+  //  Burmese title over an English paragraph, and the paragraph is the half
+  //  that says "you can trade right now".
+  //
+  //  Titles and bodies both live here now so SHOP_BLOCKED_COPY can pair them.
+  //  The dashboard used to hardcode the awaiting title for every state, which
+  //  headed a SUSPENDED shop "Cash on delivery not unlocked yet".
+  'shop.blocked.awaitingTitle': {
+    en: 'Cash on delivery not unlocked yet',
+    my: 'COD ကို မဖွင့်ရသေးပါ',
+  },
+  'shop.blocked.awaiting': {
+    en: 'You can book prepaid parcels now. Cash on delivery unlocks once the Mingalar Express office has reviewed your shop.',
+    my: 'ငွေရှင်းပြီးသား ပါဆယ်များကို အခုတင်နိုင်ပါသည်။ ရုံးမှ ဆိုင်ကို စစ်ပြီးလျှင် COD ကို ဖွင့်ပေးပါမည်။',
+  },
+  'shop.blocked.suspendedTitle': { en: 'This shop is suspended', my: 'ဆိုင် ရပ်ဆိုင်းထားပါသည်' },
+  'shop.blocked.suspended': {
+    en: 'This shop is suspended, so it cannot take new orders. Contact the Mingalar Express office to reactivate it.',
+    my: 'ဆိုင်ကို ရပ်ဆိုင်းထားသဖြင့် ပါဆယ်အသစ် တင်လို့မရပါ။ ပြန်ဖွင့်ရန် Mingalar Express ရုံးကို ဆက်သွယ်ပါ။',
+  },
+  'shop.blocked.rejectedTitle': { en: 'Shop not approved', my: 'ဆိုင်ကို ငြင်းပယ်လိုက်ပါသည်' },
+  'shop.blocked.rejected': {
+    en: 'This shop was not approved. Contact the Mingalar Express office if you think that is a mistake.',
+    my: 'ဆိုင်ကို ခွင့်မပြုပါ။ မှားယွင်းသည်ထင်ပါက Mingalar Express ရုံးကို ဆက်သွယ်ပါ။',
+  },
+  'shop.codNeedsReview': {
+    en: 'Cash on delivery unlocks once the office has reviewed your shop. Book this parcel as prepaid, or contact the office.',
+    my: 'ရုံးမှ ဆိုင်ကို စစ်ပြီးလျှင် COD ဖွင့်ပါမည်။ ဒီပါဆယ်ကို ငွေရှင်းပြီးသားအဖြစ် တင်ပါ၊ သို့မဟုတ် ရုံးကို ဆက်သွယ်ပါ။',
+  },
+
+  // ---- the pickup pin, when nobody has placed one ---------------------------
+  //
+  //  0034 lets a shop register on its address alone, because two thirds of
+  //  Yangon addresses do not geocode. The parcel is then what cannot be made,
+  //  not the account -- orders.pickup_lat is NOT NULL and there is no honest
+  //  default for a rider's navigation target. Two wordings because the dashboard
+  //  is a reminder and the booking page is a refusal of the parcel in front of
+  //  them.
+  'shop.noPin.title': { en: 'Add your pickup location', my: 'ယူရမည့် တည်နေရာ ထည့်ပါ' },
+  'shop.noPin.body': {
+    en: 'We have your address but not the exact spot on the map. Riders need it to collect, so your first parcel is waiting on this. Open Shop settings, tap the locate button while you are at the shop, and save.',
+    my: 'သင့်လိပ်စာ ရှိပါသည်၊ ဒါပေမယ့် မြေပုံပေါ်ရှိ တိကျသည့် အမှတ် မရှိသေးပါ။ ရိုက်ဒါ ယူရန် လိုအပ်သဖြင့် ပထမပါဆယ် ဒီအတွက် စောင့်နေပါသည်။ ဆိုင်တွင် ရှိစဉ် ဆိုင် အပြင်အဆင် ထဲမှ တည်နေရာ ခလုတ်ကို နှိပ်၍ သိမ်းပါ။',
+  },
+  'shop.noPin.cta': { en: 'Set my pickup location', my: 'တည်နေရာ သတ်မှတ်ပါ' },
+  'shop.noPin.bookTitle': {
+    en: 'Add your pickup location first',
+    my: 'အရင် ယူရမည့် တည်နေရာ ထည့်ပါ',
+  },
+  'shop.noPin.bookBody': {
+    en: 'We have your address but not the exact spot on the map, and a rider needs it to collect. Open Shop settings, tap the locate button while you are at the shop or move the pin, and save. You only do this once.',
+    my: 'သင့်လိပ်စာ ရှိပါသည်၊ ဒါပေမယ့် မြေပုံပေါ်ရှိ တိကျသည့် အမှတ် မရှိသေးပါ။ ရိုက်ဒါ ယူရန် လိုအပ်ပါသည်။ ဆိုင် အပြင်အဆင် ထဲမှ တည်နေရာ ခလုတ်ကို နှိပ်ပါ သို့မဟုတ် အမှတ်ကို ရွှေ့၍ သိမ်းပါ။ တစ်ခါတည်း လုပ်ရပါသည်။',
+  },
+
+  // ---- no shop row at all ---------------------------------------------------
+  //
+  //  Replaces copy that told the merchant to ring the office and have their
+  //  pickup point registered for them. /shop/setup has been self-service since
+  //  0026, and they know their own address better than the office does.
+  'shop.noShop.title': { en: 'Set up your shop first', my: 'အရင် ဆိုင်ကို ပြင်ဆင်ပါ' },
+  'shop.noShop.body': {
+    en: 'Your account has no shop yet, so a parcel cannot be created. Tell us your shop name, what you sell and where riders collect from — it takes a minute.',
+    my: 'သင့်အကောင့်တွင် ဆိုင် မရှိသေးသဖြင့် ပါဆယ် တင်လို့မရပါ။ ဆိုင်အမည်၊ ဘာရောင်းသည်နှင့် ရိုက်ဒါ ယူရမည့် နေရာကို ပြောပါ — တစ်မိနစ်သာ ကြာပါသည်။',
+  },
+
   // ---- updates --------------------------------------------------------------
   //
   //  What happened to a shop's parcels, read when they open the app. Derived
@@ -524,6 +592,21 @@ export const DICTIONARY = {
   'ss.suspended': { en: 'This shop is suspended', my: 'ဆိုင် ရပ်ဆိုင်းထားပါသည်' },
   'ss.awaiting': { en: 'Cash on delivery not unlocked yet', my: 'COD ကို မဖွင့်ရသေးပါ' },
   'ss.rejected': { en: 'Shop not approved', my: 'ဆိုင်ကို အတည်မပြုပါ' },
+  // The two states that stop Save on the settings form. Separate strings because
+  // they call for opposite actions: place a pin you never had, versus move one
+  // that landed outside Greater Yangon.
+  'ss.noPinWarn': {
+    en: 'No pickup point set yet. Tap “Use my location” while you are at the shop, or open the map and drop the pin. A rider needs it to collect.',
+    my: 'ယူရမည့် အမှတ် မသတ်မှတ်ရသေးပါ။ ဆိုင်တွင် ရှိစဉ် “ကျွန်ုပ်တည်နေရာ” ကို နှိပ်ပါ၊ သို့မဟုတ် မြေပုံဖွင့်၍ အမှတ်ချပါ။ ရိုက်ဒါ ယူရန် လိုအပ်ပါသည်။',
+  },
+  'ss.outOfArea': {
+    en: 'The pickup pin is outside our delivery area. Move it before saving.',
+    my: 'ယူရမည့် အမှတ်သည် ပို့ဆောင်ဝန်းကျင် အပြင်တွင် ရှိပါသည်။ သိမ်းမည့်မတိုင်မီ ရွှေ့ပါ။',
+  },
+  'ss.addressHint': {
+    en: 'This address pre-fills every new order.',
+    my: 'ဒီလိပ်စာက ပါဆယ်အသစ်တိုင်းတွင် အလိုအလျောက် ပါဝင်ပါမည်။',
+  },
   'ss.help': { en: 'Need help?', my: 'အကူအညီ လိုပါသလား' },
   // Said "call ... during working hours" until the card grew Viber and Telegram
   // rows and an hours line of its own. It named no hours, and "call" stopped

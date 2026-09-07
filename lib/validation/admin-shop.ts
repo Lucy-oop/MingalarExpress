@@ -88,9 +88,10 @@ export const shopEditSchema = z.object(shopCoreShape)
  * Two ways in, because two things are actually being created.
  *
  * A shop owner who signed up publicly already has an auth user and a `profiles`
- * row — nothing in the app has ever created their `shops` row, which is the
- * "pending" state `/shop/settings` tells them to ring the office about. That
- * case needs a shop attached to an existing owner, NOT a second account.
+ * row — nothing has created their `shops` row, which is the "pending" state.
+ * They can fix that themselves at `/shop/setup`, so this path is for the office
+ * doing it FOR them: a shop attached to an existing owner, NOT a second
+ * account.
  *
  * Walk-in registration needs both.
  */
@@ -131,12 +132,14 @@ export type ShopOnboardExistingOwnerValues = z.output<typeof shopOnboardExisting
   Four states now, and the two new ones are the point of 0026:
 
     pending    signed up, has not described their shop yet
-    awaiting   described it, the office has not looked
-    active     approved and trading
-    suspended  approved, then switched off
+    awaiting   described it, the office has not looked -- TRADING, prepaid
+    active     reviewed, cash on delivery unlocked
+    suspended  switched off, cannot book at all
 
   `awaiting` and `suspended` were one thing before, and they call for opposite
-  actions -- wait, versus ring the office.
+  actions -- carry on booking, versus ring the office. Note that `awaiting` is
+  not a blocked state: since 0031 approval gates CASH, not trade, which is why
+  its label reads "Active · COD locked".
 */
 export const SHOP_STATUSES = ['awaiting', 'active', 'suspended', 'pending'] as const
 export type ShopStatus = (typeof SHOP_STATUSES)[number]

@@ -36,7 +36,8 @@ function SubmitButton({ mode }: { mode: 'new' | 'existing' }) {
  *
  * Two modes, because two different things can be missing. Public signup creates
  * the auth user and the profile but never a `shops` row — that is the "pending
- * setup" state `/shop/settings` tells owners to ring the office about, and it
+ * setup" state -- which an owner can now clear themselves at `/shop/setup`, so
+ * this is the office doing it for them, and it
  * needs a shop attached to the account they already have, not a duplicate.
  */
 export function ShopOnboardForm({

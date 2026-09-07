@@ -5,6 +5,7 @@ import { useFormStatus } from 'react-dom'
 import { Save } from 'lucide-react'
 import { updateShopSettings, type ShopSettingsState } from '@/lib/orders/actions'
 import { LocationPicker } from '@/components/map/location-picker'
+import { useT } from '@/components/shared/i18n-provider'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -52,6 +53,7 @@ export function ShopSettingsForm({
     pickup_note: string | null
   }
 }) {
+  const t = useT()
   const [state, action] = useActionState<ShopSettingsState, FormData>(updateShopSettings, {})
   const err = (k: string) => state.fieldErrors?.[k]?.[0]
 
@@ -155,18 +157,11 @@ export function ShopSettingsForm({
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
         <SaveButton disabled={outOfArea || noPin} />
         {noPin ? (
-          <p className="text-xs text-destructive">
-            No pickup point set yet. Tap &ldquo;Use my location&rdquo; while you are at the shop,
-            or open the map and drop the pin. A rider needs it to collect.
-          </p>
+          <p className="text-xs text-destructive">{t('ss.noPinWarn')}</p>
         ) : outOfArea ? (
-          <p className="text-xs text-destructive">
-            The pickup pin is outside our delivery area. Move it before saving.
-          </p>
+          <p className="text-xs text-destructive">{t('ss.outOfArea')}</p>
         ) : (
-          <p className="text-xs text-muted-foreground">
-            This address pre-fills every new order.
-          </p>
+          <p className="text-xs text-muted-foreground">{t('ss.addressHint')}</p>
         )}
       </div>
     </form>

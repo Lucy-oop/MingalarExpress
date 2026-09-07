@@ -198,7 +198,8 @@ export async function setShopStatus(
   // Four verbs, because "reactivated" is a lie to an owner who has never been
   // active and "suspended" is a lie to one who was never approved.
   const VERB: Record<typeof action, string> = {
-    approve: 'confirmed — it can book parcels now',
+    // Not "it can book parcels now": it could already. Approval unlocks cash.
+    approve: 'confirmed — cash on delivery is now unlocked',
     reject: 'rejected',
     activate: 'reactivated',
     suspend: 'suspended',

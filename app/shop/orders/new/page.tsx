@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { shopCanUseCod } from '@/lib/shops/approval'
+import { shopBlockedCopy, shopCanUseCod, shopUsable } from '@/lib/shops/approval'
 import Link from 'next/link'
 import { requireShop } from '@/lib/auth/guards'
 import { getLocale } from '@/lib/i18n/locale'
@@ -22,7 +22,18 @@ export default async function NewOrderPage() {
     supabase
       .from('shops')
       .select('id, name, pickup_address, pickup_lat, pickup_lng, is_active, approved_at, rejected_at')
-      .eq('is_active', true)
+      /*
+        NO is_active FILTER, matching `createOrder`. It used to be here, and
+        `lib/orders/actions.ts` says exactly why it should not be: "a filtered-
+        away row reads as 'you have no shop', which is a fourth thing that is
+        not true." A suspended shop was told its account had no shop at all --
+        and sent to ring the office about registering a pickup point it already
+        had. The blocked notice below names the real reason.
+
+        It also made the two disagree for an owner with more than one shop: the
+        page rendered against their oldest ACTIVE shop while the submit resolved
+        their oldest shop full stop.
+      */
       .order('created_at', { ascending: true })
       .limit(1)
       .maybeSingle(),
@@ -42,15 +53,33 @@ export default async function NewOrderPage() {
     ? { isActive: shop.is_active, approvedAt: shop.approved_at, rejectedAt: shop.rejected_at }
     : null
 
+  /*
+    GENUINELY NO SHOP, which since the is_active filter came off is the only way
+    to land here. The old copy sent them to the office to have a pickup point
+    registered for them; /shop/setup has been self-service since 0026 and they
+    know their own address better than the office does.
+  */
   if (!shop || !shopState) {
     return (
-      <Alert tone="error" title="No shop set up">
-        Your account has no active shop yet, so orders cannot be created. Ask the Mingalar Express
-        office to register your pickup point, then{' '}
-        <Link href="/shop/dashboard" className="underline">
-          return to the dashboard
+      <Alert tone="warning" title={t('shop.noShop.title')}>
+        <span className="block">{t('shop.noShop.body')}</span>
+        <Link href="/shop/setup" className={cn(buttonVariants({ size: 'sm' }), 'mt-3')}>
+          {t('sd.notSetUp')}
         </Link>
-        .
+      </Alert>
+    )
+  }
+
+  /*
+    SUSPENDED OR REJECTED, now reachable because the query no longer hides it.
+    `shopUsable` admits `awaiting` -- that shop trades prepaid -- so this catches
+    only the two states that really cannot book, and says which.
+  */
+  const blocked = shopBlockedCopy(shopState)
+  if (blocked && !shopUsable(shopState)) {
+    return (
+      <Alert tone={blocked.tone} title={t(blocked.title)}>
+        <span className="block">{t(blocked.body)}</span>
       </Alert>
     )
   }
@@ -83,17 +112,10 @@ export default async function NewOrderPage() {
   */
   if (shop.pickup_lat === null || shop.pickup_lng === null) {
     return (
-      <Alert tone="warning" title="Add your pickup location first">
-        <span className="block">
-          We have your address but not the exact spot on the map, and a rider needs it to collect.
-          Open Shop settings, tap the locate button while you are at the shop or move the pin, and
-          save. You only do this once.
-        </span>
-        <Link
-          href="/shop/settings"
-          className={cn(buttonVariants({ size: 'sm' }), 'mt-3')}
-        >
-          Set my pickup location
+      <Alert tone="warning" title={t('shop.noPin.bookTitle')}>
+        <span className="block">{t('shop.noPin.bookBody')}</span>
+        <Link href="/shop/settings" className={cn(buttonVariants({ size: 'sm' }), 'mt-3')}>
+          {t('shop.noPin.cta')}
         </Link>
       </Alert>
     )

@@ -11,7 +11,7 @@ import { Alert } from '@/components/ui/alert'
 import { formatMmk } from '@/lib/utils'
 import { ContactSupport } from '@/components/shared/contact-support'
 import { getPublicSettings } from '@/lib/settings/public'
-import { shopApprovalState, shopBlockedMessage } from '@/lib/shops/approval'
+import { shopBlockedCopy } from '@/lib/shops/approval'
 import { buttonVariants } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
@@ -29,15 +29,17 @@ export default async function ShopDashboardPage() {
   const t = translator(locale)
   const { shop, counts, codInTransit, recent } = await getShopDashboard()
   const { supportPhone } = await getPublicSettings()
-  const state = shop
-    ? shopApprovalState({
-        isActive: shop.is_active,
-        approvedAt: shop.approved_at,
-        rejectedAt: shop.rejected_at,
-      })
-    : null
+  /*
+    ONE CALL, carrying title, body and tone together.
+
+    This used to be two calls plus a hardcoded title, and the title was the bug:
+    `t('sd.awaiting')` was used for all three states, so a SUSPENDED shop was
+    headed "Cash on delivery not unlocked yet" above a body saying it could not
+    take orders. The pairing now lives in `SHOP_BLOCKED_COPY`, which the settings
+    page reads too, so the two screens cannot disagree.
+  */
   const blocked = shop
-    ? shopBlockedMessage({
+    ? shopBlockedCopy({
         isActive: shop.is_active,
         approvedAt: shop.approved_at,
         rejectedAt: shop.rejected_at,
@@ -62,9 +64,7 @@ export default async function ShopDashboardPage() {
       */}
       {!shop ? (
         <Alert tone="warning" title={t('sd.notSetUp')}>
-          <span className="block">
-            Tell us your shop name, what you sell and where riders collect from. It takes a minute.
-          </span>
+          <span className="block">{t('shop.noShop.body')}</span>
           <Link href="/shop/setup" className={cn(buttonVariants({ size: 'sm' }), 'mt-3')}>
             <Store className="size-4" />
             Set up my shop
@@ -79,10 +79,10 @@ export default async function ShopDashboardPage() {
           shop is open for business — the notice tells them COD is still to
           come, and an amber alert on a working dashboard reads as a fault.
           A suspended or rejected shop genuinely cannot trade, and keeps the
-          warning.
+          warning. `tone` travels with the copy so settings gets it right too.
         */
-        <Alert tone={state === 'awaiting' ? 'info' : 'warning'} title={t('sd.awaiting')}>
-          <span className="block">{blocked}</span>
+        <Alert tone={blocked.tone} title={t(blocked.title)}>
+          <span className="block">{t(blocked.body)}</span>
           <ContactSupport phone={supportPhone} moreLabel={t('contact.more')} className="mt-2 text-sm" />
         </Alert>
       ) : null}
@@ -99,15 +99,11 @@ export default async function ShopDashboardPage() {
         shop at all, where "set up my shop" is already the ask.
       */}
       {shop && shop.pickup_lat === null ? (
-        <Alert tone="warning" title="Add your pickup location">
-          <span className="block">
-            We have your address but not the exact spot on the map. Riders need it to collect, so
-            your first parcel is waiting on this. Open Shop settings, tap the locate button while
-            you are at the shop, and save.
-          </span>
+        <Alert tone="warning" title={t('shop.noPin.title')}>
+          <span className="block">{t('shop.noPin.body')}</span>
           <Link href="/shop/settings" className={cn(buttonVariants({ size: 'sm' }), 'mt-3')}>
             <MapPin className="size-4" />
-            Set my pickup location
+            {t('shop.noPin.cta')}
           </Link>
         </Alert>
       ) : null}

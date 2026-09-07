@@ -288,9 +288,10 @@ export async function getShopList(): Promise<ShopListResult> {
 
   /**
    * Owners with no shop row. Public signup creates the auth user and the
-   * profile; nothing has ever created the shop, which is why /shop/settings
-   * tells them to ring the office. They belong in this list — invisible
-   * signups are signups nobody onboards.
+   * profile; nothing creates the shop, and /shop/setup is where the owner does
+   * it themselves. They belong in this list anyway — an owner who signed up and
+   * never finished is a signup nobody onboards, and the office chasing them is
+   * the point of the tile.
    */
   const owned = new Set(rows.map((r) => r.ownerId))
   for (const o of owners ?? []) {

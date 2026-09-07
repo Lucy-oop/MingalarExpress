@@ -17,22 +17,12 @@ import { ContactChannelList } from '@/components/shared/contact-channels'
 import { OFFICE_HOURS, contactChannels } from '@/lib/contact/channels'
 import { getPublicSettings } from '@/lib/settings/public'
 import { shouldBlock } from '@/lib/legal/gate'
-import {
-  SHOP_BLOCKED_MESSAGE,
-  shopApprovalState,
-  type ShopApprovalState,
-} from '@/lib/shops/approval'
+import { shopBlockedCopy } from '@/lib/shops/approval'
 import { buttonVariants } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
 export const metadata: Metadata = { title: 'Shop settings' }
 export const dynamic = 'force-dynamic'
-
-const BLOCKED_TITLE: Record<Exclude<ShopApprovalState, 'active'>, MessageKey> = {
-  awaiting: 'ss.awaiting',
-  rejected: 'ss.rejected',
-  suspended: 'ss.suspended',
-}
 
 export default async function ShopSettingsPage() {
   const { profile } = await requireShop()
@@ -54,14 +44,19 @@ export default async function ShopSettingsPage() {
     getPublicSettings(),
   ])
   const policyOutstanding = shouldBlock(acceptance, COD_ADVANCE_POLICY.version)
-  const state = shop
-    ? shopApprovalState({
+  /*
+    The local title map that used to live here moved into `SHOP_BLOCKED_COPY`,
+    because the dashboard had its own idea of the title and got it wrong for two
+    of the three states. `tone` came with it: this page painted every state amber,
+    including `awaiting` — a shop that is trading normally.
+  */
+  const blocked = shop
+    ? shopBlockedCopy({
         isActive: shop.is_active,
         approvedAt: shop.approved_at,
         rejectedAt: shop.rejected_at,
       })
     : null
-  const blocked = state && state !== 'active' ? SHOP_BLOCKED_MESSAGE[state] : null
 
   // Phone, both Viber numbers and Telegram, straight on the card. Facebook and
   // TikTok are left to /contact: a settings page is not where somebody goes to
@@ -80,9 +75,9 @@ export default async function ShopSettingsPage() {
         shop that has never been looked at that it is "suspended" is the exact
         confusion lib/shops/approval exists to prevent.
       */}
-      {blocked && state && state !== 'active' ? (
-        <Alert tone="warning" title={t(BLOCKED_TITLE[state])}>
-          <span className="block">{blocked}</span>
+      {blocked ? (
+        <Alert tone={blocked.tone} title={t(blocked.title)}>
+          <span className="block">{t(blocked.body)}</span>
           <ContactSupport phone={supportPhone} moreLabel={t('contact.more')} className="mt-2 text-sm" />
         </Alert>
       ) : null}
@@ -109,9 +104,7 @@ export default async function ShopSettingsPage() {
         <ShopSettingsForm shop={shop} />
       ) : (
         <Alert tone="warning" title={t('ss.noShop')}>
-          <span className="block">
-            Tell us your shop name, what you sell and where riders collect from.
-          </span>
+          <span className="block">{t('shop.noShop.body')}</span>
           <Link href="/shop/setup" className={cn(buttonVariants({ size: 'sm' }), 'mt-3')}>
             Set up my shop
           </Link>

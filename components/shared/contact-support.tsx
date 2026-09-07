@@ -7,11 +7,12 @@ import { cn } from '@/lib/utils'
  * How to reach the office.
  *
  * WHY IT EXISTS. Nine places in the app tell somebody to contact the office and
- * none of them says how — including the one every shop meets the moment they
- * finish signing up: "Your account has no shop yet. Ask the Mingalar Express
- * office to add your pickup point." There was no number anywhere in the
- * product, and `app_settings.support_phone` had been sitting there since
- * migration 0001, editable by the office, rendered to nobody.
+ * none of them says how. The worst was the screen every shop met the moment
+ * they finished signing up — "Ask the Mingalar Express office to add your
+ * pickup point" — which has since been replaced by self-service setup, but the
+ * other eight remain. There was no number anywhere in the product, and
+ * `app_settings.support_phone` had been sitting there since migration 0001,
+ * editable by the office, rendered to nobody.
  *
  * A `tel:` link with the number VISIBLE, not hidden behind a word: it dials on
  * a phone, and on a desktop it can still be read aloud or copied. That matches

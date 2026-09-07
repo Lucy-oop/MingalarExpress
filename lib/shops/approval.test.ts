@@ -1,13 +1,17 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
+import { DICTIONARY } from '@/lib/i18n'
 import {
   COD_NEEDS_REVIEW,
-  SHOP_BLOCKED_MESSAGE,
+  SHOP_BLOCKED_COPY,
   shopApprovalState,
-  shopBlockedMessage,
+  shopBlockedCopy,
   shopCanUseCod,
   shopUsable,
 } from './approval'
+
+/** The English half of a key, for the copy assertions below. */
+const en = (key: keyof typeof DICTIONARY) => DICTIONARY[key].en
 
 const APPROVED = '2026-09-05T10:00:00Z'
 
@@ -25,8 +29,8 @@ describe('shopApprovalState', () => {
   test('never approved is awaiting, not suspended', () => {
     assert.equal(shopApprovalState({ isActive: true, approvedAt: null }), 'awaiting')
     assert.notEqual(
-      shopBlockedMessage({ isActive: true, approvedAt: null }),
-      shopBlockedMessage({ isActive: false, approvedAt: APPROVED }),
+      shopBlockedCopy({ isActive: true, approvedAt: null })?.body,
+      shopBlockedCopy({ isActive: false, approvedAt: APPROVED })?.body,
     )
   })
 
@@ -81,16 +85,46 @@ describe('shopApprovalState', () => {
   })
 })
 
-describe('shopBlockedMessage', () => {
+describe('shopBlockedCopy', () => {
   test('an active shop is given no refusal to show', () => {
-    assert.equal(shopBlockedMessage({ isActive: true, approvedAt: APPROVED }), null)
+    assert.equal(shopBlockedCopy({ isActive: true, approvedAt: APPROVED }), null)
   })
 
   test('every blocked state has copy, and each one differs', () => {
-    const msgs = Object.values(SHOP_BLOCKED_MESSAGE)
-    assert.equal(msgs.length, 3)
-    assert.equal(new Set(msgs).size, 3, 'two states share a message')
-    for (const m of msgs) assert.ok(m.trim().length > 0)
+    const pairs = Object.values(SHOP_BLOCKED_COPY)
+    assert.equal(pairs.length, 3)
+    assert.equal(new Set(pairs.map((p) => p.body)).size, 3, 'two states share a body')
+    assert.equal(new Set(pairs.map((p) => p.title)).size, 3, 'two states share a title')
+    for (const { title, body } of pairs) {
+      assert.ok(en(title).trim().length > 0, `${title} is blank`)
+      assert.ok(en(body).trim().length > 0, `${body} is blank`)
+    }
+  })
+
+  /**
+   * THE BUG THIS MAP EXISTS TO PREVENT. The dashboard used to hardcode the
+   * awaiting title for every state, so a suspended shop was headed "Cash on
+   * delivery not unlocked yet" over a body saying it could not take orders.
+   * Pairing title with body in one place makes that unrepresentable.
+   */
+  test('each title matches its own body, not the awaiting one', () => {
+    assert.match(en(SHOP_BLOCKED_COPY.suspended.title), /suspend/i)
+    assert.match(en(SHOP_BLOCKED_COPY.rejected.title), /not approved/i)
+    assert.match(en(SHOP_BLOCKED_COPY.awaiting.title), /cash on delivery/i)
+  })
+
+  /**
+   * An amber alert on a working dashboard reads as a fault, and an `awaiting`
+   * shop is working. The tone travels with the copy so the dashboard and the
+   * settings page cannot disagree about it — they did, until this moved here.
+   */
+  test('awaiting is a notice; the other two are warnings', () => {
+    assert.equal(shopBlockedCopy({ isActive: true, approvedAt: null })?.tone, 'info')
+    assert.equal(shopBlockedCopy({ isActive: false, approvedAt: APPROVED })?.tone, 'warning')
+    assert.equal(
+      shopBlockedCopy({ isActive: true, approvedAt: null, rejectedAt: '2026-09-08' })?.tone,
+      'warning',
+    )
   })
 
   /**
@@ -100,13 +134,13 @@ describe('shopBlockedMessage', () => {
    * business.
    */
   test('the copy points at the right next action', () => {
-    assert.match(SHOP_BLOCKED_MESSAGE.awaiting, /prepaid/i)
+    assert.match(en(SHOP_BLOCKED_COPY.awaiting.body), /prepaid/i)
     assert.ok(
-      !/as soon as it is approved/i.test(SHOP_BLOCKED_MESSAGE.awaiting),
+      !/as soon as it is approved/i.test(en(SHOP_BLOCKED_COPY.awaiting.body)),
       'the awaiting copy still reads as a refusal',
     )
-    assert.match(SHOP_BLOCKED_MESSAGE.suspended, /contact/i)
-    assert.match(SHOP_BLOCKED_MESSAGE.rejected, /contact/i)
+    assert.match(en(SHOP_BLOCKED_COPY.suspended.body), /contact/i)
+    assert.match(en(SHOP_BLOCKED_COPY.rejected.body), /contact/i)
   })
 })
 
@@ -140,7 +174,16 @@ describe('shopCanUseCod — the bounded exposure', () => {
 
   /** The refusal has to name the way forward, or it is just a wall. */
   test('the refusal offers prepaid instead of only saying no', () => {
-    assert.match(COD_NEEDS_REVIEW, /prepaid/i)
-    assert.ok(COD_NEEDS_REVIEW.trim().length > 0)
+    assert.match(en(COD_NEEDS_REVIEW), /prepaid/i)
+    assert.ok(en(COD_NEEDS_REVIEW).trim().length > 0)
+  })
+
+  /**
+   * IT IS A KEY NOW, not a sentence. Burmese is the default locale and this was
+   * an English literal returned straight out of `createOrder` as a form error.
+   */
+  test('and it is a dictionary key, so a Burmese shop can read it', () => {
+    assert.ok(COD_NEEDS_REVIEW in DICTIONARY, `${COD_NEEDS_REVIEW} is not a real key`)
+    assert.notEqual(DICTIONARY[COD_NEEDS_REVIEW].my, DICTIONARY[COD_NEEDS_REVIEW].en)
   })
 })

@@ -10,13 +10,15 @@ import { haversineKm } from '@/lib/geo/haversine'
 import { codCollectable } from '@/lib/pricing'
 import {
   COD_NEEDS_REVIEW,
-  shopBlockedMessage,
+  shopBlockedCopy,
   shopCanUseCod,
   shopUsable,
 } from '@/lib/shops/approval'
 import { resolveAreaRoute } from '@/lib/orders/queries'
 import { MAX_MMK } from '@/lib/validation/limits'
 import { formatMmk } from '@/lib/utils'
+import { translator } from '@/lib/i18n'
+import { getLocale } from '@/lib/i18n/locale'
 
 /** What the confirmation modal needs. Every money figure is the SERVER's. */
 export type CreatedOrder = {
@@ -110,8 +112,19 @@ export async function createOrder(
     approvedAt: shop.approved_at,
     rejectedAt: shop.rejected_at,
   }
+  /*
+    RESOLVED HERE, in the merchant's own language.
+
+    These used to be English literals handed back as `state.error`, which the
+    form renders verbatim -- so a Burmese shop, on the default locale, got an
+    English refusal. A server action can read the locale cookie, so the copy
+    lives in the dictionary and this is the only place that needs to know.
+  */
+  const t = translator(await getLocale())
+
   if (!shopUsable(shopState)) {
-    return { error: shopBlockedMessage(shopState) ?? 'This shop cannot take new orders.' }
+    const copy = shopBlockedCopy(shopState)
+    return { error: copy ? t(copy.body) : 'This shop cannot take new orders.' }
   }
 
   const num = (value: FormDataEntryValue | null): number | undefined => {
@@ -215,7 +228,7 @@ export async function createOrder(
     with a session can POST straight to PostgREST.
   */
   if (v.paymentMethod === 'cod' && !shopCanUseCod(shopState)) {
-    return { error: COD_NEEDS_REVIEW }
+    return { error: t(COD_NEEDS_REVIEW) }
   }
 
   const goodsValue = v.paymentMethod === 'cod' ? v.codAmount : 0

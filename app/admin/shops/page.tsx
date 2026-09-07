@@ -20,7 +20,7 @@ export default async function AdminShopsPage() {
     <div className="space-y-4">
       <PageHeader
         title="Shops"
-        description="Registration, approval and account status for every shop Mingalar Express delivers for. Suspending a shop also blocks its owner's login when it is their only one."
+        description="Every shop Mingalar Express delivers for. A new shop trades prepaid from the minute it registers; reviewing one unlocks cash on delivery. Suspending a shop also blocks its owner's login when it is their only one."
       />
       <ShopManager data={data} areas={areas} owners={owners} />
     </div>

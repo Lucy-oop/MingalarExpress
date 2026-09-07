@@ -32,7 +32,13 @@ const DESCRIPTION: Record<StatusAction, string> = {
   activate: 'The shop can create orders again, and its owner can sign in.',
   // Nothing to type: the shop supplied its own name, goods, phone and address
   // at setup. This is only the office saying yes.
-  approve: 'The shop can start booking parcels straight away.',
+  //
+  // And saying yes to CASH, not to trading. It read "The shop can start booking
+  // parcels straight away", which has not been true since 0031 -- the shop has
+  // been booking prepaid parcels since it registered. Telling the office that
+  // approval is what unblocks booking invites them to treat a working shop as a
+  // queue to clear under pressure.
+  approve: 'Cash on delivery is unlocked. The shop has been booking prepaid parcels since it registered.',
   reject: 'The shop is told no and leaves the queue. The reason is kept.',
 }
 
