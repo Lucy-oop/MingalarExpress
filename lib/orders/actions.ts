@@ -172,19 +172,32 @@ export async function createOrder(
   }
   const v = parsed.data
 
-  // THE PRICE.
-  //
-  // Flat, per route, from `routes.per_parcel_fee` — the schedule the business
-  // signed off. It replaced distance quoting, which had survived the route
-  // migration and was charging a Mingaladon parcel 8,100 Ks against an official
-  // 4,000. The browser shows the same number from `getAreaRoutes()`, but this is
-  // the one that gets stored: a fee posted from a form is user input.
+  /*
+    THE PRICE.
+
+    From the destination area's ZONE since 0033 — 4,000 Ks inner, 5,000 Ks outer
+    — not from `routes.per_parcel_fee`, which could not express a rate card
+    drawn by zone once one route bundled townships from both bands. The route is
+    still resolved here because the parcel needs one to be dispatched at all.
+
+    The browser shows the same number from `getAreaRoutes()`, but this is the one
+    that gets stored: a fee posted from a form is user input.
+
+    NO FALLBACK. `resolveAreaRoute` returns null when the area has no active
+    route OR no active zone, and either way there is no price to charge. Falling
+    back to some default would ship a wrong number silently and surface it in an
+    invoice dispute weeks later; refusing surfaces it now, to someone who can
+    fix it. Both halves of the message are said because the shop cannot tell
+    which one it hit, and the office can.
+  */
   const route = await resolveAreaRoute(v.dropoffAreaId)
   if (!route) {
     return {
-      error: 'We do not deliver to that area yet.',
+      error: 'We cannot price a parcel to that area yet.',
       fieldErrors: {
-        dropoffAreaId: ['No route serves this area, so the parcel cannot be priced or dispatched.'],
+        dropoffAreaId: [
+          'This area has no delivery rate or no route serving it, so it cannot be priced. Choose another area or contact the office.',
+        ],
       },
     }
   }

@@ -287,7 +287,22 @@ export async function getShopMoney(from?: string, to?: string): Promise<ShopMone
 // Route pricing
 // ---------------------------------------------------------------------------
 
-/** An area a shop can deliver to, with the route that prices it. */
+/**
+ * An area a shop can deliver to: the ZONE that prices it and the ROUTE that
+ * carries it.
+ *
+ * TWO SEPARATE FACTS, and 0033 split them apart. The fee used to come from
+ * `routes.per_parcel_fee`, which cannot work now that the rate card is drawn by
+ * zone: one route bundles several townships, and Route C spans both a 4,000 Ks
+ * township and a 5,000 Ks industrial pocket. So:
+ *
+ *   the zone   what the customer pays
+ *   the route  which run carries it, in what stop order, for what rider pay
+ *
+ * `routes.per_parcel_fee` still exists and still drives the rider-pay margin
+ * check in `lib/pricing.ts` — that is planning revenue, deliberately left
+ * alone. It is no longer selected here so it cannot be mistaken for the price.
+ */
 export type AreaRoute = {
   areaId: string
   areaName: string
@@ -297,33 +312,64 @@ export type AreaRoute = {
   routeCode: string
   routeName: string
   colour: string
-  /** What the shop pays for one parcel to this area, in MMK. */
+  /** What the shop pays for one parcel to this area, in MMK. From the zone. */
   fee: number
+  zoneCode: string
+  zoneName: string
+  zoneNameMm: string | null
+  /** Days promised on the rate card for this zone. Shown, not scheduled against. */
+  deliveryDays: number
 }
 
 const AREA_ROUTE_COLUMNS = `
   area_id,
-  service_areas:area_id (name, name_mm, kind, is_active),
-  routes:route_id (id, code, name, colour, per_parcel_fee, is_active)
+  service_areas:area_id (
+    name, name_mm, kind, is_active,
+    delivery_zones:zone_id (code, name, name_mm, fee, delivery_days, is_active)
+  ),
+  routes:route_id (id, code, name, colour, is_active)
 ` as const
 
 type AreaRouteRow = {
   area_id: string
-  service_areas: { name: string; name_mm: string | null; kind: string; is_active: boolean } | null
+  service_areas: {
+    name: string
+    name_mm: string | null
+    kind: string
+    is_active: boolean
+    delivery_zones: {
+      code: string
+      name: string
+      name_mm: string | null
+      fee: number
+      delivery_days: number
+      is_active: boolean
+    } | null
+  } | null
   routes: {
     id: string
     code: string
     name: string
     colour: string
-    per_parcel_fee: number
     is_active: boolean
   } | null
 }
 
+/**
+ * Null means NOT QUOTABLE, and every caller has to treat it as a refusal.
+ *
+ * An area with no zone, or an inactive one, produces null exactly like an area
+ * with no active route — because there is no price for it. The alternative
+ * considered and rejected was falling back to the route fee: a wrong price ships
+ * silently, reaches an invoice weeks later, and costs the merchant's trust in
+ * every number we show them. A blocked booking costs a phone call today.
+ */
 function toAreaRoute(row: AreaRouteRow): AreaRoute | null {
   const a = row.service_areas
   const r = row.routes
   if (!a || !r || !a.is_active || !r.is_active) return null
+  const z = a.delivery_zones
+  if (!z || !z.is_active) return null
   return {
     areaId: row.area_id,
     areaName: a.name,
@@ -333,7 +379,11 @@ function toAreaRoute(row: AreaRouteRow): AreaRoute | null {
     routeCode: r.code,
     routeName: r.name,
     colour: r.colour,
-    fee: Number(r.per_parcel_fee),
+    fee: Number(z.fee),
+    zoneCode: z.code,
+    zoneName: z.name,
+    zoneNameMm: z.name_mm,
+    deliveryDays: Number(z.delivery_days),
   }
 }
 
@@ -347,9 +397,10 @@ function toAreaRoute(row: AreaRouteRow): AreaRoute | null {
  *
  * An area with no primary route is not returned at all: the shop cannot be
  * quoted for it, so offering it in the dropdown would only produce a rejected
- * submission.
+ * submission. Since 0033 an area with no ZONE is dropped for the same reason —
+ * see `toAreaRoute`.
  *
- * Both tables are `using (true)`, so this needs no elevated access.
+ * All three tables are `using (true)`, so this needs no elevated access.
  */
 export async function getAreaRoutes(): Promise<AreaRoute[]> {
   const supabase = await createClient()
@@ -367,12 +418,14 @@ export async function getAreaRoutes(): Promise<AreaRoute[]> {
 }
 
 /**
- * The route and fee for ONE area — the authoritative server-side price.
+ * The zone fee and the route for ONE area — the authoritative server-side price.
  *
  * `createOrder` calls this; the browser's copy from `getAreaRoutes` is a display
  * convenience and is never trusted, exactly as the distance quote never was.
- * Returns null when the area maps to no active route, which the caller must turn
- * into a visible field error rather than a silent zero.
+ *
+ * Returns null when the area maps to no active route OR no active zone, and the
+ * caller must turn either into a visible field error rather than a silent zero.
+ * There is no default fee to fall back on, on purpose — see `toAreaRoute`.
  */
 export async function resolveAreaRoute(areaId: string): Promise<AreaRoute | null> {
   const supabase = await createClient()

@@ -61,7 +61,12 @@ update public.profiles p
 -- Thingangyun wards.  VERIFY-CENTROID on every row below.
 -- ----------------------------------------------------------------------------
 
-insert into public.service_areas (name, name_mm, sort_order, centroid) values
+-- zone_id is NOT NULL since 0033: an area with no zone cannot be priced. Every
+-- ward below is inner-east Yangon, so all eight are Zone 1. The VALUES rows are
+-- untouched; the zone is joined on once rather than repeated 8 times.
+insert into public.service_areas (name, name_mm, sort_order, centroid, zone_id)
+select v.*, (select id from public.delivery_zones where code = 'ZONE_1')
+  from (values
   ('San Pya',          'စံပြ',            10, extensions.st_point(96.1690, 16.8480)::extensions.geography),
   ('Lhay Htaung Kan',  'လှေတောင်ကန်',      20, extensions.st_point(96.1820, 16.8395)::extensions.geography),
   ('Saung Thuma',      'စောင့်သုမ',        30, extensions.st_point(96.1610, 16.8330)::extensions.geography),
@@ -70,6 +75,7 @@ insert into public.service_areas (name, name_mm, sort_order, centroid) values
   ('Ngamoeyeik',       'ငမိုးရိပ်',        60, extensions.st_point(96.2050, 16.8620)::extensions.geography),
   ('Thitsar',          'သစ္စာ',           70, extensions.st_point(96.1595, 16.8620)::extensions.geography),
   ('Yadanar',          'ရတနာ',            80, extensions.st_point(96.1930, 16.8280)::extensions.geography)
+) as v(name, name_mm, sort_order, centroid)
 on conflict (name) do nothing;
 
 
@@ -84,7 +90,12 @@ on conflict (name) do nothing;
 -- work in dev. Not survey data. Replace before production.
 -- ----------------------------------------------------------------------------
 
-insert into public.service_areas (name, name_mm, sort_order, kind, centroid) values
+-- All Zone 1. The rate card puts the "(extended)" pockets of North Dagon, South
+-- Dagon, Dagon Seikkan and Shwe Pyi Thar in Zone 2, but those are separate area
+-- rows created by 0033 -- none of the townships below is one of them.
+insert into public.service_areas (name, name_mm, sort_order, kind, centroid, zone_id)
+select v.*, (select id from public.delivery_zones where code = 'ZONE_1')
+  from (values
   -- Route A · Downtown
   ('Tamwe',              'တာမွေ',              110, 'township', extensions.st_point(96.1650, 16.7900)::extensions.geography),
   ('Mingalar Taungnyunt','မင်္ဂလာတောင်ညွှန့်',   120, 'township', extensions.st_point(96.1560, 16.7870)::extensions.geography),
@@ -105,6 +116,7 @@ insert into public.service_areas (name, name_mm, sort_order, kind, centroid) val
   ('East Dagon',         'အရှေ့ဒဂုံ',            420, 'township', extensions.st_point(96.2650, 16.8900)::extensions.geography),
   ('South Dagon',        'တောင်ဒဂုံ',            430, 'township', extensions.st_point(96.2450, 16.8500)::extensions.geography),
   ('Dagon Seikkan',      'ဒဂုံဆိပ်ကမ်း',         440, 'township', extensions.st_point(96.3000, 16.8300)::extensions.geography)
+) as v(name, name_mm, sort_order, kind, centroid)
 on conflict (name) do nothing;
 
 

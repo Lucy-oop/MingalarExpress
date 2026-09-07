@@ -250,6 +250,45 @@ export type Database = {
           },
         ]
       }
+      delivery_zones: {
+        Row: {
+          code: string
+          created_at: string
+          delivery_days: number
+          fee: number
+          id: string
+          is_active: boolean
+          name: string
+          name_mm: string | null
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          delivery_days?: number
+          fee: number
+          id?: string
+          is_active?: boolean
+          name: string
+          name_mm?: string | null
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          delivery_days?: number
+          fee?: number
+          id?: string
+          is_active?: boolean
+          name?: string
+          name_mm?: string | null
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       order_assignments: {
         Row: {
           distance_km: number | null
@@ -954,6 +993,7 @@ export type Database = {
           name: string
           name_mm: string | null
           sort_order: number
+          zone_id: string
         }
         Insert: {
           boundary?: unknown
@@ -965,6 +1005,7 @@ export type Database = {
           name: string
           name_mm?: string | null
           sort_order?: number
+          zone_id: string
         }
         Update: {
           boundary?: unknown
@@ -976,8 +1017,17 @@ export type Database = {
           name?: string
           name_mm?: string | null
           sort_order?: number
+          zone_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "service_areas_zone_id_fkey"
+            columns: ["zone_id"]
+            isOneToOne: false
+            referencedRelation: "delivery_zones"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       settlements: {
         Row: {

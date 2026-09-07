@@ -155,7 +155,13 @@ describe('coverageSchema', () => {
 })
 
 describe('areaSchema', () => {
-  const BASE_AREA = { name: 'Thu Mingalar', nameMm: '', sortOrder: '10', isActive: true }
+  const BASE_AREA = {
+    name: 'Thu Mingalar',
+    nameMm: '',
+    sortOrder: '10',
+    isActive: true,
+    zoneId: '3b8f2c14-0000-4000-8000-00000000zone'.replace('zone', 'aaaa'),
+  }
 
   test('accepts a ward with no centroid', () => {
     const r = areaSchema.safeParse({ ...BASE_AREA, lat: null, lng: null })
@@ -188,6 +194,26 @@ describe('areaSchema', () => {
 
   test('requires a name', () => {
     assert.equal(areaSchema.safeParse({ ...BASE_AREA, name: '   ', lat: null, lng: null }).success, false)
+  })
+
+  /**
+   * 0033. `service_areas.zone_id` is NOT NULL, so a ward saved without one dies
+   * on a constraint violation with no field to blame. Refusing here names the
+   * field instead — and the alternative, defaulting to Zone 1, would silently
+   * charge 4,000 Ks for an outer township.
+   */
+  test('requires a delivery zone', () => {
+    const { zoneId: _drop, ...noZone } = BASE_AREA
+    const r = areaSchema.safeParse({ ...noZone, lat: null, lng: null })
+    assert.equal(r.success, false)
+    assert.ok(r.error?.flatten().fieldErrors.zoneId, 'the error must name zoneId')
+  })
+
+  test('and it has to be a real id, not a stray form value', () => {
+    assert.equal(
+      areaSchema.safeParse({ ...BASE_AREA, zoneId: 'ZONE_1', lat: null, lng: null }).success,
+      false,
+    )
   })
 })
 

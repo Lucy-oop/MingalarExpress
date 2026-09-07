@@ -258,11 +258,13 @@ begin
   raise notice 'PASS: Sule -> ROUTE_A, San Pya -> ROUTE_LOCAL, unmapped -> NULL';
 end $$;
 
-\echo '=== R2b. every area prices to the official schedule (shop billing) ==='
---  Shops are charged routes.per_parcel_fee for the destination area's primary
---  route. This walks the mapping the way createOrder does and checks each area
---  lands on the signed-off figure -- the check that would have caught a
---  Mingaladon parcel being billed 8,100 against an official 4,000.
+\echo '=== R2b. every route still carries its signed-off planning fee ==='
+--  routes.per_parcel_fee is NO LONGER what a shop is billed -- 0033 moved the
+--  customer price to the destination area's ZONE, because one route bundles
+--  townships from both bands and cannot express two prices. What it still is:
+--  the revenue side of the rider-pay margin check in lib/pricing.ts, which
+--  decides whether a run is worth sending. So this stays, as a check on the
+--  planning schedule; R2c below checks what the customer actually pays.
 do $$
 declare r record; v_expected bigint; n int := 0;
 begin
@@ -303,7 +305,118 @@ begin
     raise exception 'FAIL: an active area has no primary route and cannot be priced';
   end if;
 
-  raise notice 'PASS: all % areas price to the official schedule', n;
+  raise notice 'PASS: all % routed areas carry the official planning fee', n;
+end $$;
+
+
+\echo '=== R2c. every bookable area prices to the ZONE rate card (shop billing) ==='
+--  THE CUSTOMER PRICE, and the check that replaces the old per-route one. It
+--  walks exactly the join `resolveAreaRoute` walks -- area -> zone -- and
+--  asserts the fee is one of the two figures on the printed card. A silent
+--  wrong fee here is an invoice dispute weeks later, which is why refusing to
+--  quote is the designed behaviour and why there is no default to fall back on.
+do $$
+declare r record; n int := 0;
+begin
+  for r in
+    select sa.name as area, z.code as zone, z.fee, z.delivery_days
+      from public.service_areas sa
+      join public.delivery_zones z on z.id = sa.zone_id
+     where sa.is_active
+  loop
+    if r.zone = 'ZONE_1' and r.fee <> 4000 then
+      raise exception 'FAIL: % is Zone 1 but priced %, card says 4000', r.area, r.fee;
+    end if;
+    if r.zone = 'ZONE_2' and r.fee <> 5000 then
+      raise exception 'FAIL: % is Zone 2 but priced %, card says 5000', r.area, r.fee;
+    end if;
+    if r.delivery_days <> 3 then
+      raise exception 'FAIL: % promises % days, card says 3', r.area, r.delivery_days;
+    end if;
+    n := n + 1;
+  end loop;
+  if n < 24 then raise exception 'FAIL: only % active areas zoned, expected 24+', n; end if;
+  raise notice 'PASS: all % active areas price to the zone rate card', n;
+end $$;
+
+
+\echo '=== R2d. the townships the card is specific about land in the right band ==='
+--  THE CLARIFICATIONS, pinned. Each of these was a judgement call rather than
+--  something derivable from the name, and getting one wrong misprices a real
+--  merchant by 1,000 Ks a parcel:
+--
+--    Dagon           non-extended is Zone 1; "(extended)" is Zone 2
+--    Shwepyitha      Zone 1; "Shwe Pyi Thar (extended)" and its Industrial
+--                    pocket are two different places, both Zone 2
+--    Thingangyun     the industrial variant is Zone 1, not an outlying pocket
+do $$
+declare r record; v_fee bigint;
+begin
+  for r in
+    select * from (values
+      ('Dagon',                     4000),
+      ('North Dagon',               4000),
+      ('South Dagon',               4000),
+      ('Dagon Seikkan',             4000),
+      ('North Dagon (extended)',    5000),
+      ('South Dagon (extended)',    5000),
+      ('Dagon Seikkan (extended)',  5000),
+      ('Shwepyitha',                4000),
+      ('Shwe Pyi Thar (extended)',  5000),
+      ('Shwe Pyi Thar Industrial',  5000),
+      ('Hlaingtharyar',             4000),
+      ('Hlaing Thar Yar (extended)',5000),
+      ('Thingangyun',               4000),
+      ('Thingangyun Industrial',    4000),
+      ('Thanlyin',                  5000),
+      ('Kamayut',                   4000),
+      ('Kyauktada / Sule',          4000)
+    ) as v(area, fee)
+  loop
+    select z.fee into v_fee
+      from public.service_areas sa
+      join public.delivery_zones z on z.id = sa.zone_id
+     where sa.name = r.area;
+    if v_fee is null then
+      raise exception 'FAIL: % is on the rate card but not in service_areas', r.area;
+    end if;
+    if v_fee <> r.fee then
+      raise exception 'FAIL: % is priced %, the card says %', r.area, v_fee, r.fee;
+    end if;
+  end loop;
+  raise notice 'PASS: all 17 named rate-card areas land in the right zone';
+end $$;
+
+
+\echo '=== R2e. an area cannot exist without a price, and a zone in use cannot vanish ==='
+do $$
+declare n int; z_id uuid;
+begin
+  -- NOT NULL, not merely refused by the application. An unzoned area would drop
+  -- out of the shop's booking list silently and the admin who created it would
+  -- never learn why; the constraint puts the failure where it can be fixed.
+  begin
+    insert into public.service_areas (name, kind) values ('Nowhere', 'township');
+    raise exception 'FAIL: an area was created with no delivery zone';
+  exception when not_null_violation then
+    raise notice 'PASS: an area cannot be created without a zone';
+  end;
+
+  -- ON DELETE RESTRICT. Dropping a zone that still prices areas would leave
+  -- them unpriceable; reassign first.
+  select id into z_id from public.delivery_zones where code = 'ZONE_1';
+  begin
+    delete from public.delivery_zones where id = z_id;
+    raise exception 'FAIL: a zone still pricing areas was deleted';
+  exception when foreign_key_violation then
+    raise notice 'PASS: a zone in use cannot be deleted';
+  end;
+
+  -- And every area really does have one, which is what makes the app's refusal
+  -- path dead code in practice rather than a state to design around.
+  select count(*) into n from public.service_areas where zone_id is null;
+  if n <> 0 then raise exception 'FAIL: % area(s) have no zone', n; end if;
+  raise notice 'PASS: every area is priced';
 end $$;
 
 
@@ -1079,6 +1192,36 @@ begin
   raise notice 'PASS: pay-tier write silently filtered by RLS';
 exception when insufficient_privilege then
   raise notice 'PASS: pay-tier write refused';
+end $$;
+
+\echo '=== R8c2. a rider cannot reprice a delivery zone, but can read it ==='
+--  A rider CAN read the rate card, deliberately: `zones_read_all` is
+--  `using (true)` because a shop's own session has to resolve the fee to be
+--  quoted, and narrowing it to shops would mean a role check on the hot path of
+--  every booking. Reading a price nobody pays them is harmless. Writing it is
+--  not -- the fee is what a merchant is invoiced.
+do $$
+declare n int;
+begin
+  select count(*) into n from public.delivery_zones;
+  if n < 2 then raise exception 'FAIL: a rider cannot read the rate card (% rows)', n; end if;
+  raise notice 'PASS: a rider can read the rate card (% zones)', n;
+
+  begin
+    update public.delivery_zones set fee = 99000 where code = 'ZONE_1';
+    if found then raise exception 'FAIL: a rider repriced Zone 1'; end if;
+    raise notice 'PASS: zone write silently filtered by RLS';
+  exception when insufficient_privilege then
+    raise notice 'PASS: zone write refused';
+  end;
+
+  begin
+    insert into public.delivery_zones (code, name, fee) values ('ZONE_FREE', 'Free', 0);
+    raise exception 'FAIL: a rider invented a free delivery zone';
+  exception
+    when insufficient_privilege then raise notice 'PASS: zone insert refused';
+    when check_violation then raise notice 'PASS: zone insert refused';
+  end;
 end $$;
 reset role;
 

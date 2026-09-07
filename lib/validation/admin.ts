@@ -125,6 +125,39 @@ export const pricingSchema = z.object({
 // Service areas (wards)
 // ---------------------------------------------------------------------------
 
+/**
+ * The rate card, as an admin may edit it.
+ *
+ * `fee` is what a MERCHANT is charged, so the bounds are deliberately loose at
+ * the top (a special zone might one day cost 20,000 Ks) and hard at the bottom:
+ * zero is allowed, because a promotional free zone is a real business decision,
+ * but a negative fee would credit the shop for every parcel it sent.
+ *
+ * `code` is the stable handle. It is not editable once created — `ZONE_1`
+ * appears in migration 0033's backfill and in the seed, so renaming it would
+ * orphan those. The name is what the office actually reads, and that is free.
+ */
+export const zoneSchema = z.object({
+  name: z.string().trim().min(1, 'Zone name is required').max(80),
+  nameMm: z.string().trim().max(80, 'Name is too long'),
+  fee: z.coerce
+    .number({ error: 'Enter the per-parcel fee' })
+    .int('Whole kyats only')
+    .min(0, 'Cannot be negative')
+    .max(1_000_000, 'That is not a delivery fee'),
+  deliveryDays: z.coerce
+    .number({ error: 'Enter the promised days' })
+    .int('Whole days only')
+    .min(1, 'At least one day')
+    .max(30, 'Too long to promise'),
+  sortOrder: z.coerce
+    .number({ error: 'Enter a sort position' })
+    .int('Whole numbers only')
+    .min(0, 'Cannot be negative')
+    .max(32767, 'Too large'),
+  isActive: z.coerce.boolean(),
+})
+
 export const areaSchema = z
   .object({
     name: z.string().trim().min(1, 'Ward name is required').max(80),
@@ -135,6 +168,14 @@ export const areaSchema = z
       .min(0, 'Cannot be negative')
       .max(32767, 'Too large'),
     isActive: z.coerce.boolean(),
+    /*
+      REQUIRED, because `service_areas.zone_id` is NOT NULL as of 0033. An area
+      with no zone has no price, so it silently vanishes from the shop's booking
+      list -- the failure would surface to a merchant as a missing township
+      rather than to the admin who forgot the field. Asking here puts it in
+      front of the only person who can answer it.
+    */
+    zoneId: z.string().uuid({ error: 'Choose a delivery zone' }),
     lat: nullableNumber(lat),
     lng: nullableNumber(lng),
   })

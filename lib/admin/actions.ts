@@ -11,6 +11,7 @@ import {
   riderUpdateSchema,
   pricingSchema,
   areaSchema,
+  zoneSchema,
   coverageSchema,
   adjustmentSchema,
 } from '@/lib/validation/admin'
@@ -272,6 +273,7 @@ export async function saveArea(areaId: string | null, formData: FormData): Promi
     nameMm: formData.get('nameMm') || '',
     sortOrder: formData.get('sortOrder'),
     isActive: formData.get('isActive') === 'on',
+    zoneId: formData.get('zoneId'),
     lat: formData.get('lat') || null,
     lng: formData.get('lng') || null,
   })
@@ -290,6 +292,9 @@ export async function saveArea(areaId: string | null, formData: FormData): Promi
     name_mm: v.nameMm || null,
     sort_order: v.sortOrder,
     is_active: v.isActive,
+    // What the customer is charged to deliver here. NOT NULL in the database,
+    // so this is the field that decides whether the area is bookable at all.
+    zone_id: v.zoneId,
     ...(centroid !== null ? { centroid } : {}),
   }
 
@@ -306,6 +311,126 @@ export async function saveArea(areaId: string | null, formData: FormData): Promi
 
   refresh()
   return { ok: true, message: areaId ? 'Ward updated.' : 'Ward added.' }
+}
+
+// ---------------------------------------------------------------------------
+// Delivery zones — the rate card
+// ---------------------------------------------------------------------------
+
+/**
+ * Create or edit a zone.
+ *
+ * THIS CHANGES WHAT MERCHANTS PAY, which is why it is audited and why the code
+ * is not editable. Two things it deliberately does NOT do:
+ *
+ *   - it does not touch orders already booked. `orders.delivery_fee` is a
+ *     snapshot taken at booking, so a rate rise never rewrites a parcel a shop
+ *     was already quoted for. That is the whole reason the column exists.
+ *   - it does not delete. `service_areas.zone_id` is NOT NULL with an ON DELETE
+ *     RESTRICT reference, so a zone that still prices areas cannot be removed —
+ *     and should not be: deactivating it makes every one of its areas unbookable
+ *     immediately, which is the honest version of "we stopped serving that
+ *     price band" and leaves the history readable. Same reasoning as wards.
+ */
+export async function saveZone(
+  zoneId: string | null,
+  formData: FormData,
+): Promise<AdminResult> {
+  const supabase = await admin().catch(() => null)
+  if (!supabase) return { ok: false, message: 'Only a Super Admin can change delivery rates.' }
+
+  const parsed = zoneSchema.safeParse({
+    name: formData.get('name'),
+    nameMm: formData.get('nameMm') || '',
+    fee: formData.get('fee'),
+    deliveryDays: formData.get('deliveryDays'),
+    sortOrder: formData.get('sortOrder'),
+    isActive: formData.get('isActive') === 'on',
+  })
+  if (!parsed.success) {
+    return {
+      ok: false,
+      message: 'Check the fields below.',
+      fieldErrors: parsed.error.flatten().fieldErrors,
+    }
+  }
+  const v = parsed.data
+
+  // Read the old row first, so the audit entry says what the fee CHANGED FROM.
+  // An entry recording only the new value cannot answer "what were we charging
+  // in September", which is the question an invoice dispute actually asks.
+  const before = zoneId
+    ? (await supabase.from('delivery_zones').select('*').eq('id', zoneId).maybeSingle()).data
+    : null
+
+  const payload = {
+    name: v.name,
+    name_mm: v.nameMm || null,
+    fee: v.fee,
+    delivery_days: v.deliveryDays,
+    sort_order: v.sortOrder,
+    is_active: v.isActive,
+  }
+
+  const result = zoneId
+    ? await supabase.from('delivery_zones').update(payload).eq('id', zoneId).select('id').maybeSingle()
+    : await supabase
+        .from('delivery_zones')
+        // A new zone needs a code and the form does not ask for one: the office
+        // thinks in names, and a hand-typed handle is a typo waiting to collide
+        // with the seeded ZONE_1 / ZONE_2. Derived, then uniqueness-checked by
+        // the database.
+        .insert({ ...payload, code: zoneCode(v.name) })
+        .select('id')
+        .maybeSingle()
+
+  if (result.error) {
+    if (/duplicate key|unique/i.test(result.error.message)) {
+      return {
+        ok: false,
+        message: 'A zone with that name already exists.',
+        fieldErrors: { name: ['Already exists'] },
+      }
+    }
+    return { ok: false, message: explainAdminError(result.error.message) }
+  }
+
+  const id = result.data?.id ?? zoneId
+  if (id) {
+    await supabase.rpc('write_audit', {
+      p_action: zoneId ? 'zone.update' : 'zone.create',
+      p_table: 'delivery_zones',
+      p_entity_id: id,
+      p_before: before,
+      p_after: { ...payload, id },
+    })
+  }
+
+  refresh()
+
+  // Say what it now COSTS, not just that it saved. A fee is the one field on
+  // this form worth reading back.
+  const changed = before && Number(before.fee) !== v.fee
+  return {
+    ok: true,
+    message: changed
+      ? `Saved. ${v.name} is now ${v.fee.toLocaleString('en-US')} Ks per parcel, was ${Number(before.fee).toLocaleString('en-US')} Ks. Orders already booked keep the fee they were quoted.`
+      : `Saved. ${v.name} is ${v.fee.toLocaleString('en-US')} Ks per parcel, ${v.deliveryDays} day${v.deliveryDays === 1 ? '' : 's'}.`,
+  }
+}
+
+/** `Zone 3 — Bago road` -> `ZONE_3_BAGO_ROAD`, trimmed to the column's 20. */
+function zoneCode(name: string): string {
+  const slug = name
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 20)
+    .replace(/_+$/, '')
+  // A name of pure non-Latin characters (a Burmese-only zone name) slugs to
+  // nothing, and `code` is NOT NULL with a length check. Fall back to something
+  // unique rather than failing the save on a field the form never showed.
+  return slug || `ZONE_${Date.now().toString(36).toUpperCase().slice(-8)}`
 }
 
 // ---------------------------------------------------------------------------

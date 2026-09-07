@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation'
 import { MapPin, Plus, X } from 'lucide-react'
 import { saveArea, type AdminResult } from '@/lib/admin/actions'
 import type { ServiceArea } from '@/types/domain'
+import type { ZoneChoice } from '@/lib/admin/queries'
+import { formatMmk } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
@@ -21,8 +23,13 @@ type Feedback = { tone: 'success' | 'error'; message: string }
  * There is no delete. A ward is referenced by shops, orders and rider base
  * areas; deactivating hides it from every picker while leaving history
  * readable, which is what "we stopped serving that ward" actually means.
+ *
+ * EVERY WARD MUST HAVE A ZONE (0033), because the zone is what a customer pays
+ * to deliver there. `service_areas.zone_id` is NOT NULL, so the selector below
+ * is required rather than optional — an unzoned ward would simply vanish from
+ * the shop's booking list, and the admin who created it would never find out.
  */
-export function AreaManager({ areas }: { areas: ServiceArea[] }) {
+export function AreaManager({ areas, zones }: { areas: ServiceArea[]; zones: ZoneChoice[] }) {
   const router = useRouter()
   const [feedback, setFeedback] = useState<Feedback | null>(null)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]> | null>(null)
@@ -80,6 +87,7 @@ export function AreaManager({ areas }: { areas: ServiceArea[] }) {
         {adding ? (
           <AreaForm
             area={null}
+            zones={zones}
             busy={busy}
             fieldErrors={fieldErrors}
             nextSortOrder={(areas.at(-1)?.sort_order ?? 0) + 10}
@@ -110,7 +118,9 @@ export function AreaManager({ areas }: { areas: ServiceArea[] }) {
                       )}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      Sort {a.sort_order}
+                      {zoneLabel(zones, a.zone_id)}
+                      {' · sort '}
+                      {a.sort_order}
                       {a.centroid ? ' · centroid set' : ' · no centroid'}
                     </p>
                   </div>
@@ -131,6 +141,7 @@ export function AreaManager({ areas }: { areas: ServiceArea[] }) {
                   <div className="border-t bg-muted/30 p-3">
                     <AreaForm
                       area={a}
+                      zones={zones}
                       busy={busy}
                       fieldErrors={fieldErrors}
                       onSubmit={(fd) => submit(a.id, fd)}
@@ -147,10 +158,22 @@ export function AreaManager({ areas }: { areas: ServiceArea[] }) {
   )
 }
 
+/**
+ * A zone id is a UUID and means nothing to a reader; the name and the fee are
+ * what the office is actually checking when it scans this list. Falls back to a
+ * warning rather than an empty string: an unmatched id means the zone was
+ * switched off, and every parcel to this ward is unbookable until it is moved.
+ */
+function zoneLabel(zones: ZoneChoice[], zoneId: string | null): string {
+  const z = zones.find((x) => x.id === zoneId)
+  return z ? `${z.name} · ${formatMmk(z.fee)}` : 'No active zone — not bookable'
+}
+
 // ---------------------------------------------------------------------------
 
 function AreaForm({
   area,
+  zones,
   busy,
   fieldErrors,
   nextSortOrder,
@@ -158,6 +181,7 @@ function AreaForm({
   onCancel,
 }: {
   area: ServiceArea | null
+  zones: ZoneChoice[]
   busy: boolean
   fieldErrors: Record<string, string[]> | null
   nextSortOrder?: number
@@ -199,8 +223,31 @@ function AreaForm({
           />
         </Field>
 
+        <Field
+          label="Delivery zone"
+          htmlFor={`zone-${id}`}
+          required
+          hint="Sets what a shop pays."
+          error={err('zoneId')}
+        >
+          <select
+            id={`zone-${id}`}
+            name="zoneId"
+            defaultValue={area?.zone_id ?? zones[0]?.id ?? ''}
+            required
+            aria-invalid={!!err('zoneId')}
+            className="h-11 w-full rounded-md border border-input bg-background px-3 text-sm"
+          >
+            {zones.map((z) => (
+              <option key={z.id} value={z.id}>
+                {z.name} — {formatMmk(z.fee)}
+              </option>
+            ))}
+          </select>
+        </Field>
+
         <div className="flex items-end pb-1.5">
-          <label className="flex items-center gap-2 text-sm">
+          <label className="flex min-h-11 items-center gap-2 text-sm">
             <input
               type="checkbox"
               name="isActive"

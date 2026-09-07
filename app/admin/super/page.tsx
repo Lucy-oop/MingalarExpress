@@ -220,8 +220,8 @@ export default async function SuperAdminOverviewPage() {
         <NavCard
           href="/admin/super/areas"
           icon={<MapPinned className="size-4" />}
-          title="Coverage & base"
-          body="Wards, the soft service bounds and the map's home location."
+          title="Coverage & rates"
+          body="Delivery zones and what each costs, the wards in them, and the served bounds."
         />
         <NavCard
           href="/admin/super/pricing"

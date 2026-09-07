@@ -24,9 +24,10 @@ export default async function NewOrderPage() {
       .order('created_at', { ascending: true })
       .limit(1)
       .maybeSingle(),
-    // Areas arrive with the route that prices them. An area with no primary
-    // route is not returned at all — the shop could not be quoted for it, so
-    // offering it would only produce a rejected submission.
+    // Areas arrive with the ZONE that prices them and the route that carries
+    // them. An area missing either is not returned at all — the shop could not
+    // be quoted for it, so offering it would only produce a rejected
+    // submission.
     getAreaRoutes(),
   ])
 

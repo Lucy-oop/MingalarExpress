@@ -45,6 +45,10 @@ REQUIRE=(
   "advance_orders"
   # 0028/0029 — collect before deliver
   "picked_up_at"
+  # 0033 — the rate card. Hand-patched, so a stale regeneration silently
+  # reverts every fee lookup in lib/orders/queries.ts to a type error.
+  "delivery_zones"
+  "zone_id"
 )
 
 if ! command -v supabase >/dev/null 2>&1; then

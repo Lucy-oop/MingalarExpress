@@ -102,6 +102,119 @@ export async function getRiders(): Promise<AdminRider[]> {
   })
 }
 
+// ---------------------------------------------------------------------------
+// Delivery zones — the rate card
+// ---------------------------------------------------------------------------
+
+/**
+ * One row of the rate card, with the two facts the office needs to judge it.
+ *
+ * `areaCount` is how much of the map this price covers. `waiting` is the part of
+ * that which a shop still CANNOT book, and it is the more interesting number:
+ * 0033 created 21 townships straight off the printed rate card and could not
+ * invent their `route_areas` mapping, because which run visits Thanlyin is an
+ * operational decision. They were inserted switched off for exactly that
+ * reason, and this is the only screen that would ever say so.
+ *
+ * An area is bookable only when it is active AND has a primary route AND has an
+ * active zone — the same three conditions `toAreaRoute` applies. Anything else
+ * is priced but not sellable.
+ */
+export type ZoneRow = {
+  id: string
+  code: string
+  name: string
+  nameMm: string | null
+  /** What a shop pays per parcel into this zone, in MMK. */
+  fee: number
+  deliveryDays: number
+  sortOrder: number
+  isActive: boolean
+  /** Every area priced by this zone, sellable or not. */
+  areaCount: number
+  /**
+   * Of those, how many are READY on the area side: switched on and on a route.
+   *
+   * Deliberately not zeroed when the zone itself is off, even though nothing in
+   * an off zone is bookable. Collapsing both facts into one number produced a
+   * row reading "0 of 24 bookable · 0 waiting", which invites the reader to
+   * hunt for 24 broken areas that are all fine. The zone's own state is stated
+   * separately, where it can be acted on.
+   */
+  bookableCount: number
+  /**
+   * The rest, named. Named rather than counted because an office cannot act on
+   * a number, and each of these needs the same specific thing: a route.
+   */
+  waiting: Array<{ name: string; why: 'no route' | 'switched off' }>
+}
+
+export async function getDeliveryZones(): Promise<ZoneRow[]> {
+  const supabase = await createClient()
+
+  const [zones, areas, mapped] = await Promise.all([
+    supabase
+      .from('delivery_zones')
+      .select('id, code, name, name_mm, fee, delivery_days, sort_order, is_active')
+      .order('sort_order', { ascending: true }),
+    // Inactive ones included on purpose — they are the ones worth reporting.
+    supabase.from('service_areas').select('id, name, zone_id, is_active').order('name'),
+    supabase.from('route_areas').select('area_id').eq('is_primary', true),
+  ])
+
+  if (zones.error) throw new Error(`zones unavailable: ${zones.error.message}`)
+  if (areas.error) throw new Error(`areas unavailable: ${areas.error.message}`)
+  if (mapped.error) throw new Error(`route mappings unavailable: ${mapped.error.message}`)
+
+  const routed = new Set((mapped.data ?? []).map((r) => r.area_id))
+
+  return (zones.data ?? []).map((z) => {
+    const mine = (areas.data ?? []).filter((a) => a.zone_id === z.id)
+    const waiting = mine
+      .filter((a) => !a.is_active || !routed.has(a.id))
+      .map((a) => ({
+        name: a.name,
+        // "No route" is the actionable one and outranks the switch: an area
+        // that is off AND unrouted needs the route first, and saying "switched
+        // off" would send an admin to flip a toggle that makes it bookable-
+        // looking while still undispatchable.
+        why: (!routed.has(a.id) ? 'no route' : 'switched off') as 'no route' | 'switched off',
+      }))
+    return {
+      id: z.id,
+      code: z.code,
+      name: z.name,
+      nameMm: z.name_mm,
+      fee: Number(z.fee),
+      deliveryDays: Number(z.delivery_days),
+      sortOrder: Number(z.sort_order),
+      isActive: z.is_active,
+      areaCount: mine.length,
+      bookableCount: mine.length - waiting.length,
+      waiting,
+    }
+  })
+}
+
+/** Just enough to fill the zone selector on the ward form. */
+export type ZoneChoice = { id: string; code: string; name: string; fee: number }
+
+export async function getZoneChoices(): Promise<ZoneChoice[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('delivery_zones')
+    .select('id, code, name, fee')
+    .eq('is_active', true)
+    .order('sort_order', { ascending: true })
+  if (error) throw new Error(`zones unavailable: ${error.message}`)
+  return (data ?? []).map((z) => ({
+    id: z.id,
+    code: z.code,
+    name: z.name,
+    fee: Number(z.fee),
+  }))
+}
+
 export async function getServiceAreas(): Promise<ServiceArea[]> {
   const supabase = await createClient()
   const { data, error } = await supabase
