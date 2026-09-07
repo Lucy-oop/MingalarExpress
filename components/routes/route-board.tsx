@@ -65,9 +65,23 @@ export function RouteBoard({ board }: { board: PlanningBoard }) {
    */
   const [targetTripId, setTargetTripId] = React.useState<string | null>(null)
 
-  // Drop ticks for parcels that left the pool (another dispatcher loaded them).
-  // Without this, "Load 12 selected" silently becomes "load 9".
-  const poolIds = React.useMemo(() => new Set(board.unrouted.map((p) => p.id)), [board.unrouted])
+  /*
+    Drop ticks for parcels that left the pool (another dispatcher loaded them).
+    Without this, "Load 12 selected" silently becomes "load 9".
+
+    ALL THREE POOLS, which it was not. Built from `board.unrouted` alone, it
+    pruned every ticked return and — once 0027 added it — every ticked hub-held
+    parcel, on the very next refresh. The board holds a realtime channel that
+    refreshes on any order change anywhere, so a dispatcher ticking six returns
+    could watch the selection empty itself while they reached for the button.
+  */
+  const poolIds = React.useMemo(
+    () =>
+      new Set(
+        [...board.unrouted, ...board.returns, ...board.hubHeld].map((p) => p.id),
+      ),
+    [board.unrouted, board.returns, board.hubHeld],
+  )
   React.useEffect(() => {
     setSelected((prev) => {
       const next = new Set([...prev].filter((id) => poolIds.has(id)))
@@ -283,10 +297,9 @@ export function RouteBoard({ board }: { board: PlanningBoard }) {
         <Alert tone="warning" title={`${board.hubHeld.length} at the hub, waiting to go out`}>
           <ParcelLine parcels={board.hubHeld} />
           <span className="mt-1 block text-xs">
-            Collected from a shop and back at the hub. They sit near the top of the parcel list
-            under <strong>At the hub</strong> — give a run a rider, tick them, and load. They can
-            only go <em>out</em>: offering them to a collection run would send a rider to fetch
-            what is already on the shelf.
+            Already collected and on the shelf. These are the only parcels a delivery run can
+            carry — grouped by <strong>destination area</strong> in the list, since that is where
+            they are going. Give the run a rider, tick them, and load.
           </span>
         </Alert>
       ) : null}

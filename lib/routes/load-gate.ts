@@ -61,7 +61,6 @@ export type LoadBlocker =
   | 'target_not_loadable'
   | 'over_parcel_cap'
   | 'over_cod_cap'
-  | 'held_not_collectable'
   | 'held_needs_rider'
 
 export type LoadPlan = {
@@ -79,29 +78,27 @@ export type LoadPlan = {
 }
 
 /**
- * `mode` is the dispatcher's Deliver/Collect choice, and it only applies to a
- * selection with no returns in it. A return selection ignores it entirely.
+ * THE PARCEL CHOOSES THE LEG. There is no dispatcher mode any more.
+ *
+ * Under 0028 a parcel is on exactly one side of the hub and that decides what
+ * can be done with it: still at its shop, so it must be collected; already at
+ * the hub, so it must go out. The Deliver/Collect toggle this used to take a
+ * `mode` from is gone, because there was never a real choice behind it — every
+ * combination it allowed except the right one is now refused by load_trip.
+ *
+ * Returns are the exception and outrank both: they travel to a shop, not from
+ * one, and the shop asked for them.
  */
-export function loadPlan(
-  selection: readonly LoadParcel[],
-  target: LoadTarget | null,
-  mode: 'delivery' | 'pickup' = 'delivery',
-): LoadPlan {
+export function loadPlan(selection: readonly LoadParcel[], target: LoadTarget | null): LoadPlan {
   const returns = selection.filter((p) => p.isReturn).length
-  const mixed = returns > 0 && returns < selection.length
-
-  /*
-    A parcel already on the hub shelf can only go OUT. 0027's load_trip accepts
-    `picked_up` for a delivery leg and refuses it for a pickup one -- fetching
-    what we are already holding sends a rider across Yangon for nothing -- so
-    the Collect choice must not even be offered for a selection containing one.
-    Mirrored here rather than left to the RPC so the dispatcher sees it before
-    pressing the button, not as a 55000 afterwards.
-  */
   const held = selection.filter((p) => p.isHubHeld).length
-  const heldMixedWithPickup = held > 0 && mode === 'pickup'
 
-  const leg: LoadLeg = returns > 0 && !mixed ? 'return' : held > 0 ? 'delivery' : mode
+  // Three kinds, and a selection may only contain one of them: load_trip takes
+  // a single leg for the whole batch.
+  const kinds = [returns, held, selection.length - returns - held].filter((n) => n > 0).length
+  const mixed = kinds > 1
+
+  const leg: LoadLeg = returns > 0 ? 'return' : held > 0 ? 'delivery' : 'pickup'
 
   const loaded = target?.loaded ?? []
   // Exactly load_trip's counters. Delivery legs for the parcel cap; every leg
@@ -124,7 +121,6 @@ export function loadPlan(
     // Before the ceilings: a mixed selection has no single leg, so there is
     // nothing coherent to measure it against.
     if (mixed) return 'mixed_legs'
-    if (heldMixedWithPickup) return 'held_not_collectable'
     // load_trip refuses these outright: the parcel keeps `picked_up`, so the
     // run's rider becomes its rider, and a run without one would leave it
     // rider-less in a state orders_assigned_needs_rider forbids.
@@ -153,12 +149,11 @@ export function loadPlan(
 export const LOAD_BLOCKER_MESSAGE: Record<LoadBlocker, string> = {
   no_target: 'Pick a run to load into.',
   nothing_selected: 'Tick some parcels first.',
-  mixed_legs: 'Returns cannot travel with deliveries — load them separately.',
+  mixed_legs:
+    'Collections, deliveries and returns each travel on their own run — load them separately.',
   target_not_loadable: 'That run has already left.',
   over_parcel_cap: 'That would put the run over its parcel limit.',
   over_cod_cap: 'That would put the run over its cash limit.',
-  held_not_collectable:
-    'These are already at the hub — they can only go out for delivery, not be collected again.',
   held_needs_rider: 'Give this run a rider before loading parcels held at the hub.',
 }
 

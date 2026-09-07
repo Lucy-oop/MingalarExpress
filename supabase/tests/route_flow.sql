@@ -380,6 +380,10 @@ begin
   select array_agg(o.id) into ids from (
     select id from public.orders where status = 'pending' and trip_id is null limit 14
   ) o;
+  -- 0028: these came in on an earlier collection run. A delivery leg
+  -- may only carry parcels the hub is already holding.
+  update public.orders set picked_up_at = coalesce(picked_up_at, now())
+   where id = any(ids);
   t := public.load_trip(t.id, ids, 'delivery');
   if t.status <> 'loading' then raise exception 'FAIL: status %', t.status; end if;
 
@@ -414,6 +418,10 @@ declare t_id uuid; ids uuid[];
 begin
   select id into t_id from public.trips where status = 'loading' order by created_at desc limit 1;
   select array_agg(id) into ids from public.orders where trip_id = t_id limit 1;
+  -- 0028: these came in on an earlier collection run. A delivery leg
+  -- may only carry parcels the hub is already holding.
+  update public.orders set picked_up_at = coalesce(picked_up_at, now())
+   where id = any(ids);
   perform public.load_trip(t_id, ids, 'delivery');
   raise exception 'FAIL: double-loaded a parcel';
 exception when sqlstate '55000' then
@@ -441,6 +449,10 @@ begin
   returning id into oid;
 
   begin
+    -- 0028: these came in on an earlier collection run. A delivery leg
+    -- may only carry parcels the hub is already holding.
+    update public.orders set picked_up_at = coalesce(picked_up_at, now())
+     where id = any(array[oid]);
     perform public.load_trip(t_id, array[oid], 'delivery');
     raise exception 'FAIL: loaded past max_cod_per_trip';
   exception when sqlstate '55000' then
@@ -465,6 +477,10 @@ begin
     select id from public.orders where status = 'pending' and trip_id is null limit 5
   ) o;
   begin
+    -- 0028: these came in on an earlier collection run. A delivery leg
+    -- may only carry parcels the hub is already holding.
+    update public.orders set picked_up_at = coalesce(picked_up_at, now())
+     where id = any(ids);
     perform public.load_trip(t_id, ids, 'delivery');
     raise exception 'FAIL: loaded 19 parcels against a 15 ceiling';
   exception when sqlstate '55000' then
@@ -595,6 +611,10 @@ begin
   t_id := (public.plan_trip((select route_id from public.trips
                               where status = 'loading' order by created_at desc limit 1),
                             public.mm_today() + 1)).id;
+  -- 0028: these came in on an earlier collection run. A delivery leg
+  -- may only carry parcels the hub is already holding.
+  update public.orders set picked_up_at = coalesce(picked_up_at, now())
+   where id = any(array[o_id]);
   perform public.load_trip(t_id, array[o_id], 'delivery');
 
   select rider_id into v_rider from public.orders where id = o_id;
@@ -704,6 +724,10 @@ begin
   t := public.plan_trip((select id from public.routes where code = 'ROUTE_C'));
   select array_agg(o.id) into ids from (
     select id from public.orders where status = 'pending' and trip_id is null limit 2) o;
+  -- 0028: these came in on an earlier collection run. A delivery leg
+  -- may only carry parcels the hub is already holding.
+  update public.orders set picked_up_at = coalesce(picked_up_at, now())
+   where id = any(ids);
   t := public.load_trip(t.id, ids, 'delivery');
 
   -- attached, but still pending: no rider means no assignment
@@ -730,6 +754,10 @@ begin
   if array_length(ids, 1) <> 20 then
     raise exception 'FAIL: only % parcels available for the full run', array_length(ids, 1);
   end if;
+  -- 0028: these came in on an earlier collection run. A delivery leg
+  -- may only carry parcels the hub is already holding.
+  update public.orders set picked_up_at = coalesce(picked_up_at, now())
+   where id = any(ids);
   t := public.load_trip(t.id, ids, 'delivery');
   t := public.depart_trip(t.id);
 
@@ -1116,6 +1144,10 @@ begin
 
   t_id := (public.plan_trip(v_route)).id;
   perform public.assign_trip_rider(t_id, v_rider);
+  -- 0028: these came in on an earlier collection run. A delivery leg
+  -- may only carry parcels the hub is already holding.
+  update public.orders set picked_up_at = coalesce(picked_up_at, now())
+   where id = any(ids);
   perform public.load_trip(t_id, ids, 'delivery');
   perform public.depart_trip(t_id, 'collection test, deliberately short');
 
@@ -1187,6 +1219,10 @@ begin
   --    load_trip takes the RUN's rider, which would null it and break
   --    orders_assigned_needs_rider.
   begin
+    -- 0028: these came in on an earlier collection run. A delivery leg
+    -- may only carry parcels the hub is already holding.
+    update public.orders set picked_up_at = coalesce(picked_up_at, now())
+     where id = any(array[ids[1]]);
     perform public.load_trip(t2_id, array[ids[1]], 'delivery');
     raise exception 'FAIL: a held parcel loaded onto a run with no rider';
   exception when sqlstate '55000' then
@@ -1207,6 +1243,10 @@ begin
   -- 3. THE FIX. It loads onto a delivery leg, keeps 'picked_up' (there is no
   --    picked_up -> assigned edge in the status machine) and takes the new
   --    run's rider.
+  -- 0028: these came in on an earlier collection run. A delivery leg
+  -- may only carry parcels the hub is already holding.
+  update public.orders set picked_up_at = coalesce(picked_up_at, now())
+   where id = any(array[ids[1]]);
   perform public.load_trip(t2_id, array[ids[1]], 'delivery');
   select count(*) into n
     from public.orders o join public.trips t on t.id = t2_id
@@ -1219,6 +1259,103 @@ begin
   raise notice 'PASS: a parcel collected from a shop can be delivered to the customer';
 
   perform public.cancel_trip(t2_id, 'test cleanup');
+end $$;
+
+-- ----------------------------------------------------------------------------
+--  0028 — COLLECT FIRST, THEN DELIVER
+-- ----------------------------------------------------------------------------
+do $$
+declare
+  v_route uuid;
+  v_rider uuid;
+  t_id    uuid;
+  oid     uuid;
+  n       int;
+begin
+  select id into v_route from public.routes where code = 'ROUTE_LOCAL';
+  select r.id into v_rider
+    from public.rider_profiles r
+   where not exists (select 1 from public.trips t
+                      where t.rider_id = r.id and t.status in ('planned','loading','departed'))
+   limit 1;
+  if v_rider is null then
+    raise notice 'SKIP: every rider is already out, cannot test the collection rule';
+    return;
+  end if;
+
+  insert into public.orders (
+    shop_id, pickup_address, pickup_lat, pickup_lng, customer_name, customer_phone,
+    dropoff_address, dropoff_area_id, dropoff_lat, dropoff_lng, parcel_desc,
+    payment_method, cod_amount, delivery_fee, created_by)
+  values ('aaaaaaaa-0000-0000-0000-000000000001',
+    'No. 24, Thitsar Road, San Pya Ward, Thingangyun, Yangon', 16.8478, 96.1693,
+    'Collect First Customer', '+959780000042',
+    'Somewhere, Thingangyun', null, 16.8500, 16.8500 * 0 + 96.1700, 'Parcel',
+    'prepaid', 0, 2500, '33333333-3333-3333-3333-333333333333')
+  returning id into oid;
+
+  t_id := (public.plan_trip(v_route)).id;
+  perform public.assign_trip_rider(t_id, v_rider);
+
+  -- 1. THE RULE. It is still on the shop's shelf, so it cannot be delivered.
+  begin
+    perform public.load_trip(t_id, array[oid], 'delivery');
+    raise exception 'FAIL: an uncollected parcel was loaded for delivery';
+  exception when sqlstate '55000' then
+    raise notice 'PASS: a parcel still at its shop cannot go on a delivery run';
+  end;
+
+  -- 2. It CAN be collected.
+  perform public.load_trip(t_id, array[oid], 'pickup');
+
+  --    COLLECTIONS NOW COUNT TOWARD THE MINIMUM. One parcel against a minimum
+  --    of 20 is still short -- but the gate must say 1/20, not 0/20. Before
+  --    0028 it measured delivery legs alone, so a run of thirty collections
+  --    read as empty and every collection departure needed a typed override.
+  begin
+    perform public.depart_trip(t_id);
+    raise exception 'FAIL: a one-parcel run departed against a minimum of 20';
+  exception when sqlstate '55000' then
+    if strpos(sqlerrm, '1/') = 0 then
+      raise exception 'FAIL: the volume gate still ignores collections (%)', sqlerrm;
+    end if;
+    raise notice 'PASS: collections count toward the minimum volume';
+  end;
+
+  perform public.depart_trip(t_id, 'Single collection, verification run.');
+
+  perform public.advance_order(oid, 'picked_up');
+  perform public.return_trip(t_id);
+  perform public.close_trip(t_id);
+
+  -- 3. picked_up_at SURVIVES A BOUNCE BACK TO 'pending'. This is the property
+  --    the whole rule rests on, and the exact path close_trip takes for a
+  --    failed delivery that has attempts left: picked_up -> failed -> pending.
+  --    The pending branch used to wipe picked_up_at, which would have sent a
+  --    rider back to the shop for a parcel sitting on our own shelf.
+  update public.orders set status = 'failed', fail_reason = 'nobody home'
+   where id = oid and status = 'picked_up';
+  update public.orders set status = 'pending' where id = oid and status = 'failed';
+  select count(*) into n from public.orders
+   where id = oid and picked_up_at is not null;
+  if n <> 1 then
+    raise exception 'FAIL: picked_up_at was wiped, the parcel looks uncollected again';
+  end if;
+  raise notice 'PASS: a collection survives the parcel being unassigned';
+
+  -- 4. And it is never collected twice, whatever its status says.
+  t_id := (public.plan_trip(v_route)).id;
+  perform public.assign_trip_rider(t_id, v_rider);
+  begin
+    perform public.load_trip(t_id, array[oid], 'pickup');
+    raise exception 'FAIL: a parcel at the hub was sent for collection again';
+  exception when sqlstate '55000' then
+    raise notice 'PASS: a parcel the hub holds is never collected twice';
+  end;
+
+  perform public.load_trip(t_id, array[oid], 'delivery');
+  raise notice 'PASS: and it goes out on a delivery run';
+  perform public.cancel_trip(t_id, 'test cleanup');
 end $$;
 
 \echo ''

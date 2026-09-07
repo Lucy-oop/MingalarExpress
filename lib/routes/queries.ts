@@ -90,6 +90,13 @@ export type UnroutedParcel = {
   parcelDesc: string
   isFragile: boolean
   createdAt: string
+  /**
+   * Where a COLLECTION run goes. A parcel's dropoff area is meaningless for
+   * the inbound half of the operation — a rider collecting parcels visits
+   * shops, not townships.
+   */
+  pickupAddress: string
+  shopName: string | null
 }
 
 export type BoardRider = {
@@ -136,8 +143,9 @@ const TRIP_ORDER_COLUMNS = `
 const UNROUTED_COLUMNS = `
   id, code, status, customer_name, customer_phone, dropoff_address,
   dropoff_area_id, cod_amount, delivery_fee, payment_method, parcel_desc,
-  is_fragile, created_at,
-  dropoff_area:dropoff_area_id (name, kind)
+  is_fragile, created_at, pickup_address,
+  dropoff_area:dropoff_area_id (name, kind),
+  shops:shop_id (name)
 ` as const
 
 /** Yangon is UTC+06:30 with no DST, so a fixed offset is exact, not an estimate. */
@@ -217,6 +225,9 @@ export async function getPlanningBoard(serviceDate?: string): Promise<PlanningBo
         .select(UNROUTED_COLUMNS)
         .is('trip_id', null)
         .eq('status', 'pending')
+        // 0028: still on the shop's shelf. Anything already collected belongs
+        // in the hub pool below and can only go OUT.
+        .is('picked_up_at', null)
         .or('resolution.is.null,resolution.eq.retry')
         .order('created_at', { ascending: true })
         .limit(500),
@@ -255,7 +266,13 @@ export async function getPlanningBoard(serviceDate?: string): Promise<PlanningBo
         .from('orders')
         .select(UNROUTED_COLUMNS)
         .is('trip_id', null)
-        .eq('status', 'picked_up')
+        // 0028: keyed on picked_up_at, not on status. A delivery that failed
+        // with attempts left comes back as `pending` — but it is at the hub,
+        // not at the shop, and sending a rider to collect it again would be
+        // the whole bug this rule exists to prevent.
+        .not('picked_up_at', 'is', null)
+        .in('status', ['pending', 'picked_up'])
+        .or('resolution.is.null,resolution.eq.retry')
         .order('picked_up_at', { ascending: true })
         .limit(200),
       getBoardRiders(),
@@ -413,6 +430,8 @@ export async function getPlanningBoard(serviceDate?: string): Promise<PlanningBo
         parcelDesc: raw.parcel_desc as string,
         isFragile: Boolean(raw.is_fragile),
         createdAt: raw.created_at as string,
+        pickupAddress: (raw.pickup_address as string) ?? '',
+        shopName: (raw.shops as { name: string } | null)?.name ?? null,
       }
     })
 

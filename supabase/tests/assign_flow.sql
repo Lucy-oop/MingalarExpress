@@ -110,6 +110,10 @@ begin
     select id from public.orders where status = 'pending' and trip_id is null limit 1) o;
   if ids is null then raise exception 'FAIL: no pending parcel to load'; end if;
   oid := ids[1];
+  -- 0028: these came in on an earlier collection run. A delivery leg
+  -- may only carry parcels the hub is already holding.
+  update public.orders set picked_up_at = coalesce(picked_up_at, now())
+   where id = any(ids);
   t := public.load_trip(t.id, ids, 'delivery');
 
   begin

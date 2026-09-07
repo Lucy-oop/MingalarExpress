@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { Coins, CornerUpLeft, MapPin, PackageOpen, PackagePlus, Search, Warehouse } from 'lucide-react'
+import { Coins, CornerUpLeft, MapPin, PackageOpen, PackagePlus, Search, Store, Warehouse } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -64,7 +64,6 @@ export function UnroutedPanel({
 }) {
   const [query, setQuery] = React.useState('')
   const [routeFilter, setRouteFilter] = React.useState<string>('')
-  const [mode, setMode] = React.useState<'delivery' | 'pickup'>('delivery')
 
   const focusRouteId = target?.routeId ?? null
   // Follow the targeted run, otherwise the panel silently keeps showing another
@@ -80,7 +79,7 @@ export function UnroutedPanel({
     return parcels.filter((p) => {
       // Returns travel to the shop, not to the customer's area, so a route
       // filter must never hide them — they belong on whichever run is going.
-      if (!p.isReturn && !p.isHubHeld) {
+      if (p.isHubHeld) {
         // '__none' is its own case: a parcel whose area maps to no route cannot
         // be loaded anywhere and needs surfacing, not hiding.
         if (routeFilter === '__none') {
@@ -107,6 +106,8 @@ export function UnroutedPanel({
         key: string
         label: string
         routeId: string | null
+        /** The shop's street address, on a collection group. */
+        sub: string | null
         isReturn: boolean
         isHubHeld: boolean
         items: PanelParcel[]
@@ -116,15 +117,27 @@ export function UnroutedPanel({
       // Returns are one group of their own, whatever area they came from: they
       // are a different job, and mixing them into an area group would invite
       // the mixed selection that load_trip refuses.
-      const key = p.isReturn ? '__return' : p.isHubHeld ? '__hub' : (p.areaId ?? 'unmapped')
+      /*
+        0028: the two halves group by different things, because they are
+        different journeys. A COLLECTION run visits shops, so it groups by
+        pickup address -- the ten parcels one shop booked are one stop, and
+        their dropoff townships are irrelevant until they are at the hub. A
+        DELIVERY run goes out to customers, so it groups by area as before.
+      */
+      const key = p.isReturn
+        ? '__return'
+        : p.isHubHeld
+          ? (p.areaId ?? 'unmapped')
+          : `shop:${p.pickupAddress.trim().toLowerCase()}`
       const entry = map.get(key) ?? {
         key,
         label: p.isReturn
           ? 'Back to the shop'
           : p.isHubHeld
-            ? 'At the hub — collected, ready to go out'
-            : (p.areaName ?? 'No area set'),
-        routeId: p.isReturn || p.isHubHeld ? null : p.suggestedRouteId,
+            ? (p.areaName ?? 'No area set')
+            : (p.shopName ?? (p.pickupAddress || 'Unknown shop')),
+        sub: p.isHubHeld || p.isReturn ? null : p.pickupAddress,
+        routeId: p.isReturn ? null : p.isHubHeld ? p.suggestedRouteId : null,
         isReturn: p.isReturn,
         isHubHeld: p.isHubHeld,
         items: [],
@@ -147,7 +160,7 @@ export function UnroutedPanel({
     () => parcels.filter((p) => selected.has(p.id)),
     [parcels, selected],
   )
-  const plan = loadPlan(chosen, target, mode)
+  const plan = loadPlan(chosen, target)
   const hiddenTicks = selected.size - visible.filter((p) => selected.has(p.id)).length
   const hasReturns = chosen.some((p) => p.isReturn)
   const hasHeld = chosen.some((p) => p.isHubHeld)
@@ -280,12 +293,17 @@ export function UnroutedPanel({
                       {group.isReturn ? (
                         <CornerUpLeft className="size-3 shrink-0" aria-hidden="true" />
                       ) : group.isHubHeld ? (
-                        <Warehouse className="size-3 shrink-0" aria-hidden="true" />
-                      ) : (
                         <MapPin className="size-3 shrink-0" aria-hidden="true" />
+                      ) : (
+                        <Store className="size-3 shrink-0" aria-hidden="true" />
                       )}
                       <span className="truncate">{group.label}</span>
                     </span>
+                    {group.sub ? (
+                      <span className="block truncate text-[10px] font-normal text-muted-foreground">
+                        {group.sub}
+                      </span>
+                    ) : null}
                   </span>
                   {group.isReturn ? (
                     <Badge tone="blue">Return</Badge>
@@ -367,43 +385,14 @@ export function UnroutedPanel({
           does not have.
         */}
         {/*
-          NAMED, AND ALWAYS ON SCREEN. This used to appear only once a parcel
-          was ticked, sat unlabelled at the bottom of a scrolling panel, and
-          read "Deliver / Collect" — the word "pickup" appeared nowhere on the
-          board. The inbound half of the operation was reachable in four clicks
-          and effectively undiscoverable, which is why no pickup run had ever
-          been loaded.
-
-          Hidden only when the selection has already decided the leg for us: a
-          return goes back to its shop, and a parcel on the hub shelf can only
-          go out.
+          THERE IS NO TOGGLE ANY MORE. 0028 made the leg a property of the
+          parcel, not a choice: still at its shop means collect, already at the
+          hub means deliver, asked back means return. The old Deliver/Collect
+          control offered four combinations of which three are now refused by
+          load_trip, so it was a way to get an error rather than a decision.
+          What replaces it is the group a parcel sits in, which is visible
+          without ticking anything.
         */}
-        {!hasReturns && !hasHeld ? (
-          <div className="space-y-1">
-            <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-              This load is
-            </p>
-            <div className="flex gap-1" role="group" aria-label="What this load is">
-              {(['delivery', 'pickup'] as const).map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  onClick={() => setMode(m)}
-                  aria-pressed={mode === m}
-                  className={cn(
-                    'flex-1 rounded-md border px-2 py-1.5 text-xs font-medium leading-tight',
-                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                    mode === m
-                      ? 'border-primary bg-primary text-primary-foreground'
-                      : 'hover:bg-muted',
-                  )}
-                >
-                  {m === 'delivery' ? 'Out — deliver to customers' : 'In — collect from shops'}
-                </button>
-              ))}
-            </div>
-          </div>
-        ) : null}
 
         <Button
           block

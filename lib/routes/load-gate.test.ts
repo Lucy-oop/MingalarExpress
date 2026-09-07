@@ -34,14 +34,20 @@ const EMPTY: LoadTarget = {
 }
 
 describe('loadPlan — the leg is derived from the selection', () => {
-  test('ordinary parcels are a delivery load', () => {
+  /**
+   * 0028 inverted this. A freshly booked parcel is at its shop, so the only
+   * thing that can be done with it is a collection — the delivery leg comes
+   * later, from the hub, once we are holding it.
+   */
+  test('ordinary parcels are a collection load', () => {
     const p = loadPlan([parcel('a'), parcel('b')], EMPTY)
-    assert.equal(p.leg, 'delivery')
+    assert.equal(p.leg, 'pickup')
     assert.equal(p.blocker, null)
   })
 
-  test('the same parcels can be collected instead, when asked', () => {
-    assert.equal(loadPlan([parcel('a')], EMPTY, 'pickup').leg, 'pickup')
+  /** 0028: there is no "instead". A parcel at its shop can only be collected. */
+  test('a parcel still at its shop is always a collection', () => {
+    assert.equal(loadPlan([parcel('a')], EMPTY).leg, 'pickup')
   })
 
   /**
@@ -49,8 +55,8 @@ describe('loadPlan — the leg is derived from the selection', () => {
    * it for anything else, both as leg_resolution_mismatch. Deriving the leg
    * makes that error unreachable instead of merely explained.
    */
-  test('an all-returns selection is a return load, whatever the mode says', () => {
-    const p = loadPlan([parcel('a', 0, true), parcel('b', 0, true)], EMPTY, 'pickup')
+  test('an all-returns selection is a return load', () => {
+    const p = loadPlan([parcel('a', 0, true), parcel('b', 0, true)], EMPTY)
     assert.equal(p.leg, 'return')
     assert.equal(p.blocker, null)
   })
@@ -90,10 +96,11 @@ describe('loadPlan — the ceilings mirror load_trip, asymmetry and all', () => 
   const full = (n: number): LoadTarget['loaded'] =>
     Array.from({ length: n }, () => ({ leg: 'delivery' as const, codAmount: 0 }))
 
+  /** Held parcels, because since 0028 they are the only kind that delivers. */
   test('the parcel cap counts what the run would carry AFTER the load', () => {
     const t: LoadTarget = { ...EMPTY, maxParcels: 10, loaded: full(8) }
-    assert.equal(loadPlan([parcel('a'), parcel('b')], t).blocker, null) // 8 + 2 = 10
-    assert.equal(loadPlan([parcel('a'), parcel('b'), parcel('c')], t).blocker, 'over_parcel_cap')
+    assert.equal(loadPlan([held('a'), held('b')], t).blocker, null) // 8 + 2 = 10
+    assert.equal(loadPlan([held('a'), held('b'), held('c')], t).blocker, 'over_parcel_cap')
   })
 
   /**
@@ -113,14 +120,14 @@ describe('loadPlan — the ceilings mirror load_trip, asymmetry and all', () => 
     assert.equal(loadPlan([parcel('a'), parcel('b')], t).blocker, null)
     // Loading five more pickups onto a 2-parcel route is fine.
     const five = [parcel('a'), parcel('b'), parcel('c'), parcel('d'), parcel('e')]
-    assert.equal(loadPlan(five, t, 'pickup').blocker, null)
+    assert.equal(loadPlan(five, t).blocker, null)
   })
 
   test('the cash cap spans every leg', () => {
     const t: LoadTarget = { ...EMPTY, maxCod: 50_000 }
     assert.equal(loadPlan([parcel('a', 50_000)], t).blocker, null)
     assert.equal(loadPlan([parcel('a', 50_001)], t).blocker, 'over_cod_cap')
-    assert.equal(loadPlan([parcel('a', 50_001)], t, 'pickup').blocker, 'over_cod_cap')
+    assert.equal(loadPlan([held('h', 50_001)], t).blocker, 'over_cod_cap')
   })
 
   /**
@@ -262,10 +269,13 @@ describe('loadPlan — parcels already on the hub shelf', () => {
    * across Yangon to fetch what is already on our own shelf. 0027's load_trip
    * refuses it; this is the same refusal, before the button is pressed.
    */
+  /**
+   * There is no way to ask for it. A held parcel derives `delivery` and nothing
+   * the dispatcher can do changes that — which is the point of deleting the
+   * mode toggle rather than relabelling it.
+   */
   test('it can never be collected a second time', () => {
-    const plan = loadPlan([held('h1')], EMPTY, 'pickup')
-    assert.equal(plan.blocker, 'held_not_collectable')
-    assert.match(LOAD_BLOCKER_MESSAGE.held_not_collectable, /already at the hub/i)
+    assert.equal(loadPlan([held('h1')], EMPTY).leg, 'delivery')
   })
 
   /**

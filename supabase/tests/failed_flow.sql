@@ -282,6 +282,10 @@ begin
   for i in 1..3 loop
     t := public.plan_trip(v_route);
     t := public.assign_trip_rider(t.id, '44444444-4444-4444-4444-444444444444');
+    -- 0028: these came in on an earlier collection run. A delivery leg
+    -- may only carry parcels the hub is already holding.
+    update public.orders set picked_up_at = coalesce(picked_up_at, now())
+     where id = any(array[oid]);
     t := public.load_trip(t.id, array[oid], 'delivery');
     t := public.depart_trip(t.id, 'Cap test run, deliberately short volume.');
     o := public.advance_order(oid, 'picked_up');
@@ -354,6 +358,10 @@ begin
 
   t := public.plan_trip(v_route);
   t := public.assign_trip_rider(t.id, '55555555-5555-5555-5555-555555555555');
+  -- 0028: these came in on an earlier collection run. A delivery leg
+  -- may only carry parcels the hub is already holding.
+  update public.orders set picked_up_at = coalesce(picked_up_at, now())
+   where id = any(array[oid]);
   t := public.load_trip(t.id, array[oid], 'delivery');
   t := public.depart_trip(t.id, 'Mid-run decision test, deliberately short.');
   o := public.advance_order(oid, 'picked_up');
@@ -447,6 +455,10 @@ begin
 
   -- A parcel the shop asked back must not go out for delivery again.
   begin
+    -- 0028: these came in on an earlier collection run. A delivery leg
+    -- may only carry parcels the hub is already holding.
+    update public.orders set picked_up_at = coalesce(picked_up_at, now())
+     where id = any(array[ret]);
     perform public.load_trip(t.id, array[ret], 'delivery');
     raise exception 'FAIL: a returning parcel was loaded for delivery';
   exception when sqlstate '55000' then
@@ -850,6 +862,10 @@ begin
   -- The third goes out on a real run and comes back empty again.
   t := public.plan_trip(v_route);
   t := public.assign_trip_rider(t.id, '55555555-5555-5555-5555-555555555555');
+  -- 0028: these came in on an earlier collection run. A delivery leg
+  -- may only carry parcels the hub is already holding.
+  update public.orders set picked_up_at = coalesce(picked_up_at, now())
+   where id = any(array[oid]);
   t := public.load_trip(t.id, array[oid], 'delivery');
   t := public.depart_trip(t.id, 'Single parcel, testing the collection ceiling.');
   perform public.advance_order(oid, 'failed', null, null, null, null, 'Shop shut a third time');
