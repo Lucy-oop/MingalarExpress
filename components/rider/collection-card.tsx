@@ -10,7 +10,9 @@ import { explainRiderError } from '@/lib/rider/errors'
 import { useLocale, useT } from '@/components/shared/i18n-provider'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
+import { Textarea } from '@/components/ui/textarea'
 import { cn, formatMmk } from '@/lib/utils'
+import { quoteTripPay } from '@/lib/pricing'
 import { localeNumber } from '@/lib/i18n'
 
 /**
@@ -34,7 +36,14 @@ import { localeNumber } from '@/lib/i18n'
  * atomicity is worth less than the guarantee that one parcel which has moved on
  * cannot discard the other nine.
  */
-export function CollectionCard({ group }: { group: CollectionGroup }) {
+export function CollectionCard({
+  group,
+  pickupRate,
+}: {
+  group: CollectionGroup
+  /** `app_settings.route_pickup_rate` — see the note on the figure below. */
+  pickupRate: number
+}) {
   const t = useT()
   const locale = useLocale()
   const router = useRouter()
@@ -46,6 +55,8 @@ export function CollectionCard({ group }: { group: CollectionGroup }) {
   const [done, setDone] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [queued, setQueued] = useState(false)
+  const [reporting, setReporting] = useState(false)
+  const [why, setWhy] = useState('')
 
   /*
     A parcel can leave this group under the rider's hands — another run takes
@@ -102,6 +113,60 @@ export function CollectionCard({ group }: { group: CollectionGroup }) {
       }
       setQueued(true)
       setDone(true)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  /*
+    REPORTING IS NOT UNTICKING. Unticking says "not on this armful" and leaves
+    the parcel for later on the same run. Reporting says "the shop did not have
+    it", which goes onto that parcel as `assigned -> failed` with a reason --
+    the UNCOLLECTED attempt 0018 counts against max_collection_attempts, so a
+    shop that is short every morning stops being invisible.
+  */
+  const missing = group.jobs.filter((j) => !ticked.has(j.id))
+
+  async function report() {
+    if (missing.length === 0 || !why.trim()) return
+    setBusy(true)
+    setError(null)
+    try {
+      const result = await advanceOrders({
+        orderIds: missing.map((j) => j.id),
+        to: 'failed',
+        reason: why.trim(),
+      })
+      if (result.ok) {
+        setReporting(false)
+        setWhy('')
+        startTransition(() => router.refresh())
+        return
+      }
+      const explained = explainRiderError(`${result.message} ${result.kind}`)
+      if (explained.kind === 'network') {
+        for (const job of missing) {
+          await enqueue({
+            kind: 'failed',
+            orderId: job.id,
+            orderCode: job.code,
+            reason: why.trim(),
+          })
+        }
+        setQueued(true)
+        setReporting(false)
+        setWhy('')
+        startTransition(() => router.refresh())
+        return
+      }
+      setError(explained.message)
+    } catch {
+      for (const job of missing) {
+        await enqueue({ kind: 'failed', orderId: job.id, orderCode: job.code, reason: why.trim() })
+      }
+      setQueued(true)
+      setReporting(false)
+      setWhy('')
     } finally {
       setBusy(false)
     }
@@ -194,11 +259,95 @@ export function CollectionCard({ group }: { group: CollectionGroup }) {
 
       <p className="text-xs text-muted-foreground">{t('collection.tickHint')}</p>
 
+      {/* Only once something is actually unticked. Offering it unprompted would
+          invite a rider to report a shop for a parcel they simply had not
+          reached yet. */}
+      {missing.length > 0 && !done ? (
+        reporting ? (
+          <div className="space-y-2 rounded-lg border border-amber-300 bg-amber-50 p-3">
+            <p className="text-sm font-semibold text-amber-900">
+              {t('collection.report')} · {n(missing.length)}
+            </p>
+            <p className="font-mono text-xs text-muted-foreground">
+              {missing.map((j) => j.code).join(' · ')}
+            </p>
+            <Textarea
+              value={why}
+              onChange={(e) => setWhy(e.target.value)}
+              rows={2}
+              placeholder={t('collection.reportWhy')}
+              className="text-base"
+            />
+            <p className="text-xs text-muted-foreground">{t('collection.reportHint')}</p>
+            {/* Stacked and full width, in order of consequence — the same fix
+                the delivery fail panel needed. */}
+            <div className="space-y-2">
+              <Button
+                size="touch"
+                block
+                variant="destructive"
+                className="font-bold"
+                disabled={busy || !why.trim()}
+                onClick={() => void report()}
+              >
+                {busy ? t('action.saving') : t('collection.reportSend')}
+              </Button>
+              <Button size="touch" block variant="ghost" disabled={busy} onClick={() => setReporting(false)}>
+                {t('action.cancel')}
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-muted/50 px-3 py-2">
+            <span className="text-xs text-muted-foreground">
+              {t('collection.short').replace('{n}', n(missing.length))}
+            </span>
+            <button
+              type="button"
+              onClick={() => setReporting(true)}
+              className="rounded text-xs font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              {t('collection.report')}
+            </button>
+          </div>
+        )
+      ) : null}
+
       {cash > 0 ? (
         <p className="flex items-center gap-1.5 text-sm">
           <Coins className="size-4 shrink-0 text-brand-gold" aria-hidden="true" />
           <span className="text-muted-foreground">{t('collection.cashAfter')}</span>
           <span className="font-bold tabular-nums">{formatMmk(cash)}</span>
+        </p>
+      ) : null}
+
+      {/*
+        WHAT THIS STOP ADDS, and deliberately not "what you earn". quote_trip_pay
+        picks its tier by DELIVERY count, so a collection-only run of ten
+        pickups pays base 15,000 + 5,000 -- and the 15,000 belongs to the whole
+        run and cannot be split between shops. The pickup component is the only
+        figure this one card can honestly claim.
+
+        Through quoteTripPay rather than `n * rate` in a component: it is the
+        declared twin of the SQL function, and passing no tiers is what makes
+        basePay zero and the intent explicit.
+      */}
+      {chosen.length > 0 ? (
+        <p className="flex items-baseline justify-between gap-2 border-t pt-2 text-sm">
+          <span className="text-muted-foreground">
+            {t('collection.adds')}{' '}
+            <span className="whitespace-nowrap text-xs">
+              ({formatMmk(pickupRate)} × {n(chosen.length)})
+            </span>
+          </span>
+          <span className="font-bold tabular-nums text-emerald-700">
+            {formatMmk(
+              quoteTripPay(0, chosen.length, [], {
+                parcelRate: 0,
+                pickupRate,
+              }).pickupPay,
+            )}
+          </span>
         </p>
       ) : null}
 

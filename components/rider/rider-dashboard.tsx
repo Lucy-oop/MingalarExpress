@@ -148,7 +148,7 @@ export function RiderDashboard({
         skipped: the parcels are not aboard, so nothing downstream can happen.
       */}
       {plan.groups.map((group) => (
-        <CollectionCard key={group.key} group={group} />
+        <CollectionCard key={group.key} group={group} pickupRate={feed.rates.pickupRate} />
       ))}
 
       {/* ---- the next stop ------------------------------------------------ */}

@@ -74,23 +74,43 @@ export async function setRiderOnline(
  * thing a rider cannot see and cannot correct. It also caps at 200 and refuses
  * an empty array.
  *
- * ONLY `picked_up` IS USEFUL HERE. `advance_orders` deliberately passes no
- * proof, receiver or coordinates, so a bulk `delivered` is refused by
+ * `picked_up` OR `failed`, AND NOTHING ELSE. `advance_orders` deliberately
+ * passes no proof, receiver or coordinates, so a bulk `delivered` is refused by
  * `advance_order`'s own `proof_required` guard — per-parcel evidence has to be
  * captured per parcel. The type says so rather than leaving it to be discovered.
+ * `failed` carries a reason, which is the one per-parcel field a whole armful
+ * can honestly share: they were all at the same counter.
  *
  * OFFLINE IS N SEPARATE ENTRIES, not one. The caller queues per order, which is
  * what `lib/rider/collection.ts` documents: each parcel then replays
  * independently and idempotently, so one parcel that has moved on cannot
  * discard the other nine. The all-or-nothing guarantee is an online one.
  */
-export async function advanceOrders(input: {
-  orderIds: string[]
-  to: Extract<OrderStatus, 'picked_up'>
-  reason?: string
-}): Promise<RiderActionResult & { moved?: number }> {
+export async function advanceOrders(
+  input:
+    | { orderIds: string[]; to: 'picked_up'; reason?: string }
+    /*
+      REPORTING A SHOP THAT WAS SHORT. `assigned -> failed` is not a delivery
+      failure — 0018 counts it separately, against max_collection_attempts, as
+      an UNCOLLECTED attempt. So a shop that is not ready every morning stops
+      being invisible and starts hitting a ceiling the office works.
+
+      The reason is required by the type because `advance_order` raises
+      `fail_reason_required` without one, and a bulk call that fails on the
+      first parcel has already rolled the rest back.
+    */
+    | { orderIds: string[]; to: 'failed'; reason: string },
+): Promise<RiderActionResult & { moved?: number }> {
   if (input.orderIds.length === 0) {
     return { ok: false, message: 'Nothing selected.', kind: 'empty', retryable: false }
+  }
+  if (input.to === 'failed' && !input.reason.trim()) {
+    return {
+      ok: false,
+      message: 'Say what happened.',
+      kind: 'fail_reason_required',
+      retryable: false,
+    }
   }
   try {
     const { supabase } = await riderClient()
@@ -105,7 +125,15 @@ export async function advanceOrders(input: {
     }
     refresh()
     const moved = Number(data ?? 0)
-    return { ok: true, message: `${moved} parcel${moved === 1 ? '' : 's'} collected.`, moved }
+    const noun = moved === 1 ? 'parcel' : 'parcels'
+    return {
+      ok: true,
+      message:
+        input.to === 'failed'
+          ? `${moved} ${noun} reported as not collected.`
+          : `${moved} ${noun} collected.`,
+      moved,
+    }
   } catch {
     return {
       ok: false,

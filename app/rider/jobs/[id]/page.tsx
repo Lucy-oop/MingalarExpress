@@ -9,7 +9,7 @@ import { getRiderJob, getKpayAccount } from '@/lib/rider/queries'
 import { JobSheet } from '@/components/rider/job-sheet'
 import { StatusBadge } from '@/components/orders/status-badge'
 import { codBreakdown } from '@/lib/pricing'
-import { formatMmk, formatMyanmarPhone } from '@/lib/utils'
+import { cn, formatMmk, formatMyanmarPhone } from '@/lib/utils'
 
 export const metadata: Metadata = { title: 'Job' }
 export const dynamic = 'force-dynamic'
@@ -60,12 +60,26 @@ export default async function RiderJobPage({ params }: { params: Promise<{ id: s
       </Link>
 
       <div className="flex items-start justify-between gap-2">
-        <div>
+        <div className="min-w-0">
           <p className="font-mono text-sm font-semibold">{job.code}</p>
+          {/*
+            LABELLED, AND BIGGER ON A DELIVERY. This was text-xs muted under the
+            code, which is not where a rider looks when a customer at the door
+            asks who sent it. On a collection the shop is the whole card below,
+            so it stays quiet there rather than being said twice.
+          */}
           {job.shopName ? (
-            <p className="flex items-center gap-1 text-xs text-muted-foreground">
-              <Store className="size-3" />
-              {job.shopName}
+            <p
+              className={cn(
+                'flex items-center gap-1 truncate',
+                collecting ? 'text-xs text-muted-foreground' : 'text-sm font-medium',
+              )}
+            >
+              <Store className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+              {collecting ? null : (
+                <span className="text-muted-foreground">{t('parcel.fromShop')}</span>
+              )}
+              <span className="truncate">{job.shopName}</span>
             </p>
           ) : null}
         </div>
@@ -121,12 +135,22 @@ export default async function RiderJobPage({ params }: { params: Promise<{ id: s
             <p className="text-sm text-muted-foreground">{t('money.collectNothing')}</p>
           </>
         )}
-        <div className="mt-3 flex items-baseline justify-between gap-3 border-t pt-2 text-sm">
-          <span className="text-muted-foreground">{t('money.youEarn')}</span>
-          <span className="font-semibold tabular-nums text-emerald-700">
-            {job.commission !== null ? formatMmk(job.commission) : '—'}
-          </span>
-        </div>
+        {/*
+          ONLY WHERE IT IS A REAL FIGURE. `rider_commission_amount` is written
+          exclusively by `assign_order`, on routes with pay_model =
+          'per_parcel' -- and every route is 'trip', where pay is base + per
+          parcel + per pickup booked once at close. So this line rendered a
+          permanent em-dash on every delivery in the app. A number that is
+          always absent teaches a rider to stop reading the row.
+        */}
+        {job.commission !== null ? (
+          <div className="mt-3 flex items-baseline justify-between gap-3 border-t pt-2 text-sm">
+            <span className="text-muted-foreground">{t('money.youEarn')}</span>
+            <span className="font-semibold tabular-nums text-emerald-700">
+              {formatMmk(job.commission)}
+            </span>
+          </div>
+        ) : null}
       </div>
 
       {/* Only while the rider is still going to COLLECT it.

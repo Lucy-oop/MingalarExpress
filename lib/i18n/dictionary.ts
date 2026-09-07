@@ -59,6 +59,7 @@ export const DICTIONARY = {
   // ---- a parcel -------------------------------------------------------------
   'parcel.deliverTo': { en: 'Deliver to', my: 'ပို့ရမည့်နေရာ' },
   'parcel.pickUp': { en: 'Pick up', my: 'ယူရမည့်နေရာ' },
+  'parcel.fromShop': { en: 'From', my: 'ပို့သူ' },
   'parcel.returnTo': { en: 'Return to shop', my: 'ဆိုင်ကို ပြန်ပို့' },
   'parcel.pickupBadge': { en: 'Pickup', my: 'ယူရန်' },
   'parcel.returnBadge': { en: 'Return', my: 'ပြန်ပို့' },
@@ -112,6 +113,23 @@ export const DICTIONARY = {
   'collection.nothingTicked': { en: 'Tick at least one parcel.', my: 'ပါဆယ် အနည်းဆုံး ၁ ခု ရွေးပါ။' },
   // Not `action.*`: the count makes it too long for that namespace's 24-unit
   // button rule, and it is the one label that must carry a number.
+  // What this stop ADDS, not what the run pays. quote_trip_pay picks its tier
+  // by DELIVERY count, so a collection-only run of ten is base 15,000 + 5,000 --
+  // and the base belongs to the run, not to any one shop.
+  'collection.adds': { en: 'This collection adds', my: 'ဒီယူမှုမှ ထပ်ရမည်' },
+  // Reporting is a stronger statement than unticking: it goes on the parcel as
+  // an uncollected attempt, and the office sees a shop that keeps being short.
+  'collection.short': { en: '{n} not ticked', my: 'မရွေးထား {n}' },
+  'collection.report': { en: 'Report as not collected', my: 'မယူရသည် အစီရင်ခံ' },
+  'collection.reportWhy': {
+    en: 'Shop shut, parcel not ready, wrong label…',
+    my: 'ဆိုင်ပိတ်၊ ပါဆယ် အသင့်မရှိ၊ တံဆိပ်မှား…',
+  },
+  'collection.reportHint': {
+    en: 'The office is told, and a shop that keeps being short is flagged.',
+    my: 'ရုံးသို့ အသိပေးပါမည်။ မကြာခဏ မပြင်ဆင်သည့် ဆိုင်ကို မှတ်သားပါမည်။',
+  },
+  'collection.reportSend': { en: 'Send report', my: 'အစီရင်ခံ ပို့ရန်' },
   'collection.collectTicked': { en: 'PICKED UP · {n}', my: 'ယူပြီး · {n}' },
 
   // ---- proof ----------------------------------------------------------------

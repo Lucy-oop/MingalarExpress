@@ -125,6 +125,15 @@ export type RiderTrip = {
 export type RiderFeed = {
   active: RiderJob[]
   /**
+   * The two per-unit trip rates, for showing a rider what a stop adds.
+   *
+   * NOT the whole of a run's pay: `quote_trip_pay` picks its tier by DELIVERY
+   * count, so a collection-only run of ten pickups is `base 15,000 + 5,000`.
+   * The base belongs to the run and cannot be split between shops, which is why
+   * a collection card can only honestly claim its own pickup component.
+   */
+  rates: { parcelRate: number; pickupRate: number }
+  /**
    * The SHOP's coordinates, keyed by `collectionKey(job)`.
    *
    * `RiderJob` deliberately carries one coordinate pair, already flipped for
@@ -161,7 +170,7 @@ export type RiderFeed = {
 export async function getRiderFeed(riderId: string): Promise<RiderFeed> {
   const supabase = await createClient()
 
-  const [{ data: rows }, { data: tripRow }, { data: profile }, { data: summary }] =
+  const [{ data: rows }, { data: tripRow }, { data: profile }, { data: summary }, { data: settings }] =
     await Promise.all([
       supabase
         .from('orders')
@@ -202,6 +211,17 @@ export async function getRiderFeed(riderId: string): Promise<RiderFeed> {
         .eq('id', riderId)
         .maybeSingle(),
       supabase.rpc('rider_earnings_summary'),
+      /*
+        The two per-unit trip rates, so a collection card can say what the stop
+        adds. A rider CAN read these -- `settings_read_all` grants SELECT on
+        app_settings to `authenticated` -- and nothing rider-side fetched them
+        before, which is why the app has never shown a rider a rate.
+      */
+      supabase
+        .from('app_settings')
+        .select('route_parcel_rate, route_pickup_rate')
+        .eq('id', true)
+        .maybeSingle(),
     ])
 
   // Stop order comes from the ROUTE, not the order, so a dispatcher reordering
@@ -282,6 +302,12 @@ export async function getRiderFeed(riderId: string): Promise<RiderFeed> {
 
   return {
     active,
+    rates: {
+      // The 0007 defaults, so a failed settings read degrades to the shipped
+      // numbers rather than telling a rider a collection is worth nothing.
+      parcelRate: Number(settings?.route_parcel_rate ?? 300),
+      pickupRate: Number(settings?.route_pickup_rate ?? 500),
+    },
     pickupPoints,
     trip:
       tripRow && route

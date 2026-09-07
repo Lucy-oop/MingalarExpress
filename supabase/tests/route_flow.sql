@@ -1359,6 +1359,83 @@ begin
 end $$;
 
 -- ----------------------------------------------------------------------------
+--  REPORTING A SHOP THAT WAS SHORT
+--
+--  The rider's collection card reports parcels a shop did not hand over as
+--  assigned -> failed with a reason, in one call. 0018 counts that separately
+--  from a delivery failure, against max_collection_attempts, so a shop that is
+--  never ready hits a ceiling the office works.
+-- ----------------------------------------------------------------------------
+do $$
+declare
+  v_route uuid;
+  v_rider uuid;
+  t_id    uuid;
+  ids     uuid[];
+  n       int;
+begin
+  select id into v_route from public.routes where code = 'ROUTE_LOCAL';
+  select r.id into v_rider
+    from public.rider_profiles r
+   where not exists (select 1 from public.trips t
+                      where t.rider_id = r.id and t.status in ('planned','loading','departed'))
+   limit 1;
+  if v_rider is null then
+    raise notice 'SKIP: every rider is already out, cannot test the short report';
+    return;
+  end if;
+
+  insert into public.orders (
+    shop_id, pickup_address, pickup_lat, pickup_lng, customer_name, customer_phone,
+    dropoff_address, dropoff_area_id, dropoff_lat, dropoff_lng, parcel_desc,
+    payment_method, cod_amount, delivery_fee, created_by)
+  select 'aaaaaaaa-0000-0000-0000-000000000001',
+    'No. 24, Thitsar Road, San Pya Ward, Thingangyun, Yangon', 16.8478, 96.1693,
+    'Short Customer ' || g, '+95978100000' || g,
+    'Stop ' || g || ', Thingangyun', null, 16.8500, 96.1700, 'Parcel',
+    'prepaid', 0, 2500, '33333333-3333-3333-3333-333333333333'
+  from generate_series(1, 2) g;
+
+  select array_agg(o.id) into ids
+    from public.orders o where o.customer_name like 'Short Customer %';
+
+  t_id := (public.plan_trip(v_route)).id;
+  perform public.assign_trip_rider(t_id, v_rider);
+  perform public.load_trip(t_id, ids, 'pickup');
+  perform public.depart_trip(t_id, 'Short-report verification run.');
+
+  -- 1. A bulk report with NO reason is refused by advance_order's own guard,
+  --    which is why the server action requires one in its type rather than
+  --    hoping.
+  begin
+    perform public.advance_orders(ids, 'failed');
+    raise exception 'FAIL: parcels were failed with no reason given';
+  exception when sqlstate '55000' then
+    raise notice 'PASS: a short report needs a reason';
+  end;
+
+  -- 2. With a reason, the whole armful moves and the reason is kept per parcel.
+  n := public.advance_orders(ids, 'failed', 'shop shut');
+  if n <> 2 then raise exception 'FAIL: reported % of 2', n; end if;
+  select count(*) into n from public.orders
+   where id = any(ids) and status = 'failed' and fail_reason = 'shop shut';
+  if n <> 2 then raise exception 'FAIL: the reason did not reach both parcels'; end if;
+  raise notice 'PASS: a short shop is reported for every parcel, with the reason';
+
+  -- 3. AND IT COUNTS AS UNCOLLECTED, not as a failed delivery. This is the
+  --    whole point: it is the collection ceiling that should move.
+  if public.order_uncollected_count(ids[1]) <> 1 then
+    raise exception 'FAIL: the report did not count as an uncollected attempt';
+  end if;
+  if public.order_attempt_count(ids[1]) <> 0 then
+    raise exception 'FAIL: it was counted against the DELIVERY ceiling instead';
+  end if;
+  raise notice 'PASS: and it counts against the collection ceiling, not delivery';
+
+  perform public.cancel_trip(t_id, 'test cleanup');
+end $$;
+
+-- ----------------------------------------------------------------------------
 --  0029 — A COLLECTION CANNOT BE DELIVERED
 --
 --  The rider screen used to offer "DONE - DELIVERED" on a pickup leg, and

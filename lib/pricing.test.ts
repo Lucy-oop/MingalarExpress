@@ -592,3 +592,54 @@ describe('isVolumeSilent — when a volume grade must not be shown', () => {
     assert.equal(isVolumeSilent('planned', 1, 0), false)
   })
 })
+
+describe('quoteTripPay — what one collection stop contributes', () => {
+  /**
+   * THE FRAMING THE RIDER CARD DEPENDS ON. A collection card can only honestly
+   * claim its own pickup component: `quote_trip_pay` picks its tier by DELIVERY
+   * count, so the base is a property of the run and cannot be divided between
+   * the shops visited on it.
+   */
+  test('the pickup component is the rate times the count, and the base is not in it', () => {
+    const rates = { parcelRate: 300, pickupRate: 500 }
+    const q = quoteTripPay(0, 10, [], rates)
+    assert.equal(q.pickupPay, 5_000)
+    assert.equal(q.basePay, 0, 'no tiers were supplied, so there is no base to claim')
+    assert.equal(q.total, 5_000)
+  })
+
+  /** It follows the ticked count, which is what the card re-renders on. */
+  test('it moves with the count', () => {
+    const rates = { parcelRate: 300, pickupRate: 500 }
+    assert.equal(quoteTripPay(0, 9, [], rates).pickupPay, 4_500)
+    assert.equal(quoteTripPay(0, 1, [], rates).pickupPay, 500)
+    assert.equal(quoteTripPay(0, 0, [], rates).pickupPay, 0)
+  })
+
+  /**
+   * AND THE REASON THE CARD DOES NOT SHOW RUN PAY. With the shipped tiers a
+   * collection-only run of ten is 15,000 + 5,000 — so "you earn 5,000" would
+   * understate it by three quarters, and putting 20,000 on one shop's card
+   * would claim a base that belongs to every stop on the run.
+   */
+  test('a collection-only run really does earn more than its pickups', () => {
+    const tiers = [
+      { minParcels: 0, maxParcels: 19, basePay: 15_000 },
+      { minParcels: 20, maxParcels: 39, basePay: 20_000 },
+    ]
+    const q = quoteTripPay(0, 10, tiers, { parcelRate: 300, pickupRate: 500 })
+    assert.equal(q.basePay, 15_000)
+    assert.equal(q.pickupPay, 5_000)
+    assert.equal(q.total, 20_000)
+    assert.notEqual(q.total, q.pickupPay)
+  })
+
+  /** Pickups never move the tier — the lookup keys on parcels alone. */
+  test('forty pickups do not buy a higher base', () => {
+    const tiers = [
+      { minParcels: 0, maxParcels: 19, basePay: 15_000 },
+      { minParcels: 20, maxParcels: null, basePay: 25_000 },
+    ]
+    assert.equal(quoteTripPay(0, 40, tiers, { parcelRate: 300, pickupRate: 500 }).basePay, 15_000)
+  })
+})
