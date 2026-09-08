@@ -3,7 +3,15 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Coins, Navigation, PackageCheck, PackageOpen, Phone, RefreshCw } from 'lucide-react'
+import {
+  Coins,
+  Navigation,
+  PackageCheck,
+  PackageOpen,
+  Phone,
+  RefreshCw,
+  Store,
+} from 'lucide-react'
 import { OnlineToggle } from '@/components/rider/online-toggle'
 import { JobCard } from '@/components/rider/job-card'
 import { CollectionCard } from '@/components/rider/collection-card'
@@ -152,6 +160,19 @@ export function RiderDashboard({
 
       {/* ---- shops to collect from ---------------------------------------- */}
       {/*
+        THE TWO WAYS, LABELLED. These sections existed only as code comments, so
+        a rider saw shop cards, then a highlighted stop, then a list, with
+        nothing on screen saying which mode they were in. The aboard line sits
+        between them and now reads as the seam it is.
+      */}
+      {plan.groups.length > 0 ? (
+        <h2 className="flex items-baseline gap-2 pt-1 text-xs font-bold uppercase tracking-wide text-brand-red">
+          <Store className="size-4 shrink-0" aria-hidden="true" />
+          {t('way.collect')}
+          <span className="tabular-nums text-muted-foreground">{n(plan.groups.length)}</span>
+        </h2>
+      ) : null}
+      {/*
         ABOVE THE DELIVERIES, and biggest armful first — `planCollections`
         sorts them. A collection is the one job where the run stalls if it is
         skipped: the parcels are not aboard, so nothing downstream can happen.
@@ -182,6 +203,13 @@ export function RiderDashboard({
       ) : null}
 
       {/* ---- the next stop ------------------------------------------------ */}
+      {plan.stops.length > 0 ? (
+        <h2 className="flex items-baseline gap-2 pt-1 text-xs font-bold uppercase tracking-wide text-primary">
+          <PackageOpen className="size-4 shrink-0" aria-hidden="true" />
+          {t('way.deliver')}
+          <span className="tabular-nums text-muted-foreground">{n(plan.stops.length)}</span>
+        </h2>
+      ) : null}
       {next ? (
         <section className="space-y-2 rounded-xl border-2 border-primary bg-card p-4">
           <p className="text-xs font-bold uppercase tracking-wide text-primary">

@@ -2,9 +2,9 @@
 
 import { useEffect, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { Coins, MapPinned, Phone, Store, Truck } from 'lucide-react'
+import { Coins, MapPinned, Phone, StickyNote, Store, Truck } from 'lucide-react'
 import type { CollectionGroup } from '@/lib/rider/collection'
-import { advanceOrders } from '@/lib/rider/actions'
+import { advanceOrders, saveCollectionNote } from '@/lib/rider/actions'
 import { enqueue } from '@/lib/rider/offline-queue'
 import { explainRiderError } from '@/lib/rider/errors'
 import { useLocale, useT } from '@/components/shared/i18n-provider'
@@ -56,6 +56,8 @@ export function CollectionCard({
   const [error, setError] = useState<string | null>(null)
   const [queued, setQueued] = useState(false)
   const [reporting, setReporting] = useState(false)
+  const [noting, setNoting] = useState(false)
+  const [note, setNote] = useState('')
   const [why, setWhy] = useState('')
 
   /*
@@ -126,6 +128,31 @@ export function CollectionCard({
     shop that is short every morning stops being invisible.
   */
   const missing = group.jobs.filter((j) => !ticked.has(j.id))
+
+  /**
+   * Saved against every parcel in the group, so the office sees it wherever it
+   * opens the collection from. Failure is reported and stopped rather than
+   * queued: a lost note costs a sentence, where a lost checkpoint costs a
+   * parcel's state — which is why only the latter has an offline queue.
+   */
+  async function saveNote() {
+    const body = note.trim()
+    if (!body) return
+    setBusy(true)
+    setError(null)
+    try {
+      const result = await saveCollectionNote({ orderIds: ids, body })
+      if (!result.ok) {
+        setError(result.message)
+        return
+      }
+      setNote('')
+      setNoting(false)
+      startTransition(() => router.refresh())
+    } finally {
+      setBusy(false)
+    }
+  }
 
   async function report() {
     if (missing.length === 0 || !why.trim()) return
@@ -244,6 +271,23 @@ export function CollectionCard({
                 />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-mono text-sm font-semibold">{job.code}</span>
+                  {/*
+                    WHERE THIS PARCEL IS GOING, not where the rider is. The code
+                    is what they match against what the shop hands over; the ward
+                    is the sanity check that they were handed the right one.
+
+                    `destinationArea`, not `dropoffArea` — the latter is nulled
+                    on a pickup leg because it names the rider's stop, which is
+                    this shop. No customer phone: since collect-before-deliver
+                    the rider collecting usually does not deliver it, so the
+                    number is not theirs to use and would treble the row height
+                    on a ten-parcel checklist.
+                  */}
+                  {job.destinationArea ? (
+                    <span className="block truncate text-xs text-muted-foreground">
+                      {job.destinationArea}
+                    </span>
+                  ) : null}
                   {job.isFragile ? (
                     <span className="text-xs font-medium text-amber-700">{t('parcel.fragile')}</span>
                   ) : null}
@@ -258,6 +302,54 @@ export function CollectionCard({
       </ul>
 
       <p className="text-xs text-muted-foreground">{t('collection.tickHint')}</p>
+
+      {/*
+        A NOTE ABOUT THE VISIT, distinct from reporting a missing parcel.
+
+        The report flow below handles "the shop was short": it files an
+        uncollected attempt against the specific parcel and counts toward the
+        shop's ceiling, which is what makes a chronically-short shop visible.
+        This is for everything a status change cannot carry — "shutter closed
+        early", "new staff", "shop says the rest come tomorrow".
+
+        Collapsed until asked for: most collections have nothing to say, and an
+        open textarea above the Picked button invites a rider to think it is
+        required.
+      */}
+      {noting ? (
+        <div className="space-y-2 rounded-lg border p-3">
+          <label className="block text-sm font-medium" htmlFor={`note-${group.key}`}>
+            {t('collection.noteTitle')}
+          </label>
+          <Textarea
+            id={`note-${group.key}`}
+            rows={3}
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder={t('collection.notePlaceholder')}
+            disabled={busy}
+          />
+          <div className="grid grid-cols-2 gap-2">
+            <Button size="touch" variant="outline" onClick={() => setNoting(false)} disabled={busy}>
+              {t('action.cancel')}
+            </Button>
+            <Button size="touch" onClick={() => void saveNote()} disabled={busy || !note.trim()}>
+              {busy ? t('action.saving') : t('collection.noteSave')}
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <Button
+          variant="ghost"
+          size="touch"
+          block
+          onClick={() => setNoting(true)}
+          disabled={busy || done}
+        >
+          <StickyNote />
+          {t('collection.noteAdd')}
+        </Button>
+      )}
 
       {/* Only once something is actually unticked. Offering it unprompted would
           invite a rider to report a shop for a parcel they simply had not

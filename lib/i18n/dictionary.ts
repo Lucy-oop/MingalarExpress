@@ -142,7 +142,35 @@ export const DICTIONARY = {
     my: 'ရုံးသို့ အသိပေးပါမည်။ မကြာခဏ မပြင်ဆင်သည့် ဆိုင်ကို မှတ်သားပါမည်။',
   },
   'collection.reportSend': { en: 'Send report', my: 'အစီရင်ခံ ပို့ရန်' },
+  // A note about the VISIT, not about a missing parcel. `collection.report`
+  // above is the one that files an uncollected attempt and reaches the shop's
+  // ceiling; this carries what no status change can.
+  'collection.noteAdd': { en: 'Add a note', my: 'မှတ်ချက် ထည့်' },
+  'collection.noteTitle': { en: 'Note for the office', my: 'ရုံးအတွက် မှတ်ချက်' },
+  'collection.notePlaceholder': {
+    en: 'Shutter closed early, new staff, rest come tomorrow…',
+    my: 'ဆိုင်စောပိတ်၊ ဝန်ထမ်းအသစ်၊ ကျန်တာ မနက်ဖန်…',
+  },
+  'collection.noteSave': { en: 'Save note', my: 'မှတ်ချက် သိမ်း' },
   'collection.collectTicked': { en: 'PICKED UP · {n}', my: 'ယူပြီး · {n}' },
+  // The two ways, labelled. These were code comments only, so a rider saw shop
+  // cards then a stop then a list with nothing saying which mode they were in.
+  'way.collect': { en: 'Collect from shops', my: 'ဆိုင်များမှ ယူရန်' },
+  // Way history. `/rider/earnings` answers "how much"; this answers "what did I
+  // do", which a ledger line cannot.
+  'ways.title': { en: 'Way history', my: 'သွားခဲ့သော လမ်းများ' },
+  'ways.hint': {
+    en: 'Your finished runs, newest first.',
+    my: 'ပြီးဆုံးသွားသော လမ်းများ၊ အသစ်မှ စ။',
+  },
+  'ways.empty': {
+    en: 'No finished runs yet. They appear here once a run closes.',
+    my: 'ပြီးဆုံးသော လမ်း မရှိသေးပါ။ လမ်းပိတ်လျှင် ဒီတွင် ပေါ်ပါမည်။',
+  },
+  'ways.delivered': { en: '{n} delivered', my: 'ပို့ပြီး {n}' },
+  'ways.collected': { en: '{n} collected', my: 'ယူပြီး {n}' },
+  'ways.unresolved': { en: '{n} unresolved', my: 'မပြီးပြတ် {n}' },
+  'way.deliver': { en: 'Deliver to customers', my: 'ဝယ်သူများဆီ ပို့ရန်' },
 
   // ---- proof ----------------------------------------------------------------
   'proof.title': { en: 'Photo of the delivery', my: 'ပို့ပြီးဓာတ်ပုံ' },

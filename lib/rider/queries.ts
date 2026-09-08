@@ -75,6 +75,13 @@ function toJob(row: RawJob, extra?: Partial<RiderJob>): RiderJob {
     customerPhone: row.customer_phone,
     dropoffAddress: row.dropoff_address,
     dropoffArea: row.dropoff_area?.name ?? null,
+    /*
+      Read BEFORE the leg flip below, and kept through it. `dropoffArea` becomes
+      null on a pickup or return leg because it names the rider's stop; this
+      names the parcel's destination, which is true on every leg and is what the
+      collection checklist shows beside each code.
+    */
+    destinationArea: row.dropoff_area?.name ?? null,
     dropoffLat: row.dropoff_lat,
     dropoffLng: row.dropoff_lng,
     parcelDesc: row.parcel_desc,

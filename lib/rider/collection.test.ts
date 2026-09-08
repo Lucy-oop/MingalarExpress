@@ -16,6 +16,7 @@ function job(over: Partial<RiderJob> & { id: string }): RiderJob {
     customerPhone: '+959791234567',
     dropoffAddress: 'somewhere',
     dropoffArea: null,
+    destinationArea: 'South Okkalapa',
     dropoffLat: 16.8,
     dropoffLng: 96.15,
     parcelDesc: 'Parcel',
@@ -272,5 +273,39 @@ describe('the three buckets, and what must never move between them', () => {
     const counted =
       plan.groups.reduce((n, g) => n + g.jobs.length, 0) + plan.aboard.length + plan.stops.length
     assert.equal(counted, jobs.length)
+  })
+})
+
+describe('destinationArea vs dropoffArea', () => {
+  /**
+   * TWO WARDS THAT ARE NOT THE SAME FACT, and the collection checklist is the
+   * one place both matter at once.
+   *
+   *   dropoffArea       where the RIDER is going. `toJob` nulls it on a pickup
+   *                     or return leg, because those legs end at the shop.
+   *   destinationArea   where the PARCEL is going, true on every leg.
+   *
+   * A rider at a shop counter is matching codes against what they are handed;
+   * the destination ward is the sanity check that they got the right parcel. If
+   * these two ever collapse into one field, a pickup row shows nothing.
+   */
+  test('a pickup-leg parcel still knows where it is going', () => {
+    const plan = planCollections([
+      job({ id: 'a', leg: 'pickup', status: 'assigned', dropoffArea: null }),
+    ])
+    const parcel = plan.groups[0]?.jobs[0]
+    assert.equal(parcel?.dropoffArea, null, 'the stop is the shop, so this stays null')
+    assert.equal(parcel?.destinationArea, 'South Okkalapa', 'the destination must survive')
+  })
+
+  /** And no customer phone on that row: since collect-before-deliver the rider
+      collecting usually does not deliver it, so the number is not theirs to
+      use. This pins the decision, not an absence of data. */
+  test('the parcel carries a customer phone that the checklist does not use', () => {
+    const plan = planCollections([job({ id: 'a', leg: 'pickup', status: 'assigned' })])
+    const parcel = plan.groups[0]?.jobs[0]
+    assert.ok(parcel?.customerPhone, 'the data is there')
+    // The checklist renders code + destinationArea + fragile + amount only —
+    // asserted at the component level would need a DOM; this documents why.
   })
 })

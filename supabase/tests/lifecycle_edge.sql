@@ -390,4 +390,106 @@ begin
   delete from public.orders where id = oid;
 end $$;
 
+\echo '=== E11. a rider may note their own parcel, and cannot read the log ==='
+--  0038. The collection card can already report a MISSING parcel -- that goes
+--  through assigned -> failed and counts against max_collection_attempts. What
+--  a rider could not do is say anything a status change does not carry:
+--  "shutter closed early", "new staff", "the rest come tomorrow".
+--
+--  The privilege is INSERT ONLY, and that is the unusual part worth pinning.
+--  order_notes holds what the OFFICE told a customer -- what was promised, what
+--  was refused -- so a rider is a source for it and not an audience.
+--  ITS OWN FIXTURE, deliberately. The first version of this looked for an
+--  existing order per rider and aborted the suite when rider2 happened to have
+--  none at this point — a test that depends on what ran before it is a test
+--  that fails for reasons unrelated to what it checks.
+do $$
+declare a uuid; b uuid;
+begin
+  insert into public.orders (shop_id, pickup_address, pickup_lat, pickup_lng,
+    customer_name, customer_phone, dropoff_address, dropoff_area_id,
+    dropoff_lat, dropoff_lng, parcel_desc, payment_method, cod_amount,
+    delivery_fee, created_by, rider_id, status)
+  select s.id, s.pickup_address, s.pickup_lat, s.pickup_lng, 'Note Target A',
+    '+959791110095', 'Waizayanta Road, South Okkalapa',
+    (select id from public.service_areas where name = 'South Okkalapa'),
+    16.8300, 96.1950, 'note fixture a', 'cod', 5000, 4000, s.owner_id,
+    '44444444-4444-4444-4444-444444444444', 'assigned'
+  from public.shops s where s.id = 'aaaaaaaa-0000-0000-0000-000000000001'
+  returning id into a;
+
+  insert into public.orders (shop_id, pickup_address, pickup_lat, pickup_lng,
+    customer_name, customer_phone, dropoff_address, dropoff_area_id,
+    dropoff_lat, dropoff_lng, parcel_desc, payment_method, cod_amount,
+    delivery_fee, created_by, rider_id, status)
+  select s.id, s.pickup_address, s.pickup_lat, s.pickup_lng, 'Note Target B',
+    '+959791110096', 'Waizayanta Road, South Okkalapa',
+    (select id from public.service_areas where name = 'South Okkalapa'),
+    16.8300, 96.1950, 'note fixture b', 'cod', 5000, 4000, s.owner_id,
+    '55555555-5555-5555-5555-555555555555', 'assigned'
+  from public.shops s where s.id = 'aaaaaaaa-0000-0000-0000-000000000001'
+  returning id into b;
+
+  -- Handed to the rider block below through a session setting, because a DO
+  -- block's variables do not outlive it.
+  perform set_config('test.note_mine', a::text, false);
+  perform set_config('test.note_theirs', b::text, false);
+end $$;
+
+select set_config('request.jwt.claims','{"sub":"44444444-4444-4444-4444-444444444444","role":"authenticated"}',false);
+set role authenticated;
+do $$
+declare mine uuid; theirs uuid; n int;
+begin
+  mine := current_setting('test.note_mine')::uuid;
+  theirs := current_setting('test.note_theirs')::uuid;
+
+  insert into public.order_notes (order_id, author_id, author_role, kind, body)
+  values (mine, '44444444-4444-4444-4444-444444444444', 'rider', 'note',
+          'Shutter closed early.');
+  raise notice 'PASS: a rider noted a parcel they are carrying';
+
+  -- SOMEBODY ELSE'S PARCEL. RLS refuses the row rather than filtering it: an
+  -- INSERT that fails WITH CHECK raises, it does not silently drop.
+  begin
+    insert into public.order_notes (order_id, author_id, author_role, kind, body)
+    values (theirs, '44444444-4444-4444-4444-444444444444', 'rider', 'note', 'not mine');
+    raise exception 'FAIL: a rider noted a parcel that is not theirs';
+  exception when insufficient_privilege then
+    raise notice 'PASS: refused on a parcel that is not theirs';
+  end;
+
+  -- AND NOT UNDER SOMEBODY ELSE'S NAME. `author_id = auth.uid()` is kept from
+  -- the dispatch policy, so a note cannot be misattributed.
+  begin
+    insert into public.order_notes (order_id, author_id, author_role, kind, body)
+    values (mine, '55555555-5555-5555-5555-555555555555', 'rider', 'note', 'signed by another');
+    raise exception 'FAIL: a rider filed a note under another rider''s name';
+  exception when insufficient_privilege then
+    raise notice 'PASS: a note cannot be misattributed';
+  end;
+
+  -- READING STAYS THE OFFICE'S. Not an error -- SELECT is filtered, so the
+  -- proof is that the row just written is invisible.
+  select count(*) into n from public.order_notes;
+  if n <> 0 then
+    raise exception 'FAIL: a rider can read % note row(s), including the office log', n;
+  end if;
+  raise notice 'PASS: and cannot read the log back';
+end $$;
+reset role;
+
+-- The office can see what the rider wrote: the whole point of write-only.
+select set_config('request.jwt.claims','{"sub":"11111111-1111-1111-1111-111111111111","role":"authenticated"}',false);
+set role authenticated;
+do $$
+declare n int;
+begin
+  select count(*) into n from public.order_notes
+   where author_role = 'rider' and body = 'Shutter closed early.';
+  if n < 1 then raise exception 'FAIL: the office cannot see the rider''s note'; end if;
+  raise notice 'PASS: the office reads it, attributed to the rider';
+end $$;
+reset role;
+
 \echo '####  ALL EDGE CHECKS PASSED  ####'

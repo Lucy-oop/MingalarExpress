@@ -15,7 +15,17 @@ export type RiderJob = {
   customerName: string
   customerPhone: string
   dropoffAddress: string
+  /** The ward of the STOP. Null on a pickup or return leg — see `toJob`. */
   dropoffArea: string | null
+  /**
+   * The ward the parcel is ultimately going to, whatever leg this is.
+   *
+   * DIFFERENT FROM `dropoffArea`, which describes where the RIDER is going and
+   * is deliberately nulled on a pickup or return leg because those end at the
+   * shop. On the collection checklist both facts matter at once: the rider is
+   * at a shop, and each parcel in their hands is bound somewhere else.
+   */
+  destinationArea: string | null
   /** Where the rider is actually going — already flipped for a return leg. */
   /**
    * Where this stop actually is. On a pickup or return leg `toJob` flips these
@@ -113,7 +123,13 @@ export function JobCard({
             <span className="truncate">{job.shopName ?? t('parcel.pickUp')}</span>
           ) : (
             <>
-              {job.dropoffArea ? <span className="truncate">{job.dropoffArea}</span> : null}
+              {/* WHO, not just where. A rider scanning the list for their next
+                  drop recognises a name faster than a ward, and the name was
+                  only visible after tapping into the detail. */}
+              <span className="truncate">{job.customerName}</span>
+              {job.dropoffArea ? (
+                <span className="shrink-0 truncate">· {job.dropoffArea}</span>
+              ) : null}
               <span className="flex shrink-0 items-center gap-1 font-medium text-foreground">
                 <Coins className="size-3.5" aria-hidden="true" />
                 <span className="tabular-nums">{collect}</span>

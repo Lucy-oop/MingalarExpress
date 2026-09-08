@@ -190,3 +190,83 @@ export async function advanceOrder(input: {
     return { ok: false, message: 'Sign in again to update this job.', kind: 'forbidden', retryable: false }
   }
 }
+
+/**
+ * A rider's note about a collection, filed against every parcel in it.
+ *
+ * BESIDE THE REPORT FLOW, NOT INSTEAD OF IT, and the division is the point:
+ *
+ *   Report as not collected   a MISSING parcel. Goes through
+ *                             `assigned -> failed` with a reason, lands as an
+ *                             uncollected attempt, and counts against
+ *                             `max_collection_attempts` — which is what makes a
+ *                             chronically-short shop visible to the office.
+ *   This                      everything else. "Shutter closed early." "New
+ *                             staff." "Shop says the rest come tomorrow."
+ *                             Nothing about the parcel's state changes.
+ *
+ * A free-text note could never do the first job: it attaches to the parcels
+ * that DID arrive and never reaches the attempt counter. So both exist.
+ *
+ * ONE ROW PER PARCEL, same body. A note filed against "the collection" would
+ * have nowhere to live — a collection is a grouping the app invents from a
+ * shared pickup address, not a row — and the office looks at parcels.
+ *
+ * `kind = 'note'` because the CHECK allows only note/contact/decision, and
+ * `author_role` already records that a rider wrote it (0038). Write-only: the
+ * policy lets a rider add a note to a parcel they are carrying and does not let
+ * them read the log back, which holds what the office promised a customer.
+ *
+ * NOT QUEUED OFFLINE, unlike a checkpoint. Losing a note costs a sentence;
+ * losing a `picked_up` costs a parcel's state, which is why that one has a
+ * queue and this one reports its failure and stops.
+ */
+export async function saveCollectionNote(input: {
+  orderIds: string[]
+  body: string
+}): Promise<RiderActionResult> {
+  const body = input.body.trim()
+  // Mirrors `order_notes_body_check` so the rider gets a sentence rather than a
+  // constraint violation.
+  if (body.length < 1) {
+    return { ok: false, message: 'Write something first.', kind: 'invalid', retryable: false }
+  }
+  if (body.length > 2000) {
+    return { ok: false, message: 'That note is too long.', kind: 'invalid', retryable: false }
+  }
+  if (input.orderIds.length === 0) {
+    return { ok: false, message: 'Nothing to note.', kind: 'invalid', retryable: false }
+  }
+
+  try {
+    const { ctx, supabase } = await riderClient()
+
+    const { error } = await supabase.from('order_notes').insert(
+      input.orderIds.map((orderId) => ({
+        order_id: orderId,
+        author_id: ctx.userId,
+        author_role: 'rider' as const,
+        kind: 'note' as const,
+        body,
+      })),
+    )
+
+    if (error) {
+      return {
+        ok: false,
+        // RLS refuses a parcel that is not theirs; anything else is a network
+        // or server problem worth retrying.
+        message: /row-level security|42501/.test(error.message)
+          ? 'That parcel is not on your run any more.'
+          : 'Could not save the note. Try again.',
+        kind: 'note_failed',
+        retryable: !/row-level security|42501/.test(error.message),
+      }
+    }
+
+    refresh()
+    return { ok: true, message: 'Note saved.' }
+  } catch {
+    return { ok: false, message: 'Sign in again to add a note.', kind: 'forbidden', retryable: false }
+  }
+}
