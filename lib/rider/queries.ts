@@ -42,8 +42,8 @@ export type RawJob = {
   customer_phone_alt: string | null
   dropoff_address: string
   dropoff_area_id: string | null
-  dropoff_lat: number
-  dropoff_lng: number
+  dropoff_lat: number | null
+  dropoff_lng: number | null
   dropoff_note: string | null
   parcel_desc: string
   parcel_weight_g: number | null
@@ -298,7 +298,9 @@ export async function getRiderFeed(riderId: string): Promise<RiderFeed> {
           ? r.pickup_lat === null || r.pickup_lng === null
             ? null
             : { lat: r.pickup_lat, lng: r.pickup_lng }
-          : { lat: r.dropoff_lat, lng: r.dropoff_lng },
+          : r.dropoff_lat === null || r.dropoff_lng === null
+            ? null
+            : { lat: r.dropoff_lat, lng: r.dropoff_lng },
     })),
     hub,
   ).map(({ destination: _destination, hubKm, stopNumber, ...job }) => ({

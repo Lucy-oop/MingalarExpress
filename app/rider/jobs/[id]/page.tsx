@@ -209,7 +209,11 @@ export default async function RiderJobPage({ params }: { params: Promise<{ id: s
             ? null
             : { lat: raw.pickup_lat, lng: raw.pickup_lng }
         }
-        dropoff={{ lat: raw.dropoff_lat, lng: raw.dropoff_lng }}
+        dropoff={
+          raw.dropoff_lat === null || raw.dropoff_lng === null
+            ? null
+            : { lat: raw.dropoff_lat, lng: raw.dropoff_lng }
+        }
         codAmount={money.total}
         kpayAccount={kpayAccount}
       />

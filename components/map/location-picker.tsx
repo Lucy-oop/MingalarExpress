@@ -30,13 +30,19 @@ import { cn } from '@/lib/utils'
  * is collapsed behind a toggle for the cases that need it -- a place OSM does
  * not know, or a pin worth nudging.
  *
- * THE PIN IS STILL REQUIRED, and not merely because `orders.dropoff_lat/lng`
- * are NOT NULL behind a geofence CHECK. It becomes the rider's `geo:` link and
- * their Google Maps directions (app/rider/jobs/[id]), so it is the thing that
- * physically moves someone across Yangon. That is why a typed address never
- * silently invents one: a wrong pin sends a rider to the wrong street while the
- * screen says the right one. Picking a suggestion is explicit, one tap, and
- * accurate -- which is what makes the map optional rather than absent.
+ * THE PIN IS NO LONGER REQUIRED (0034/0036/0037). It is worth having -- it
+ * becomes the rider's `geo:` link and their Google Maps directions
+ * (app/rider/jobs/[id]), so it is the thing that physically moves someone
+ * across Yangon -- but Nominatim finds two of six Yangon addresses, and
+ * requiring one required the user to GUESS about a street they may never have
+ * visited. A guessed pin is not more information than none; it is worse,
+ * because a rider trusts it.
+ *
+ * So a typed address still never silently invents one, and now it does not have
+ * to: no pin is a legal, nameable state all the way to the database, and the
+ * rider falls back to the address, the note and a phone call. Picking a
+ * suggestion stays explicit, one tap, and accurate -- an upgrade rather than a
+ * toll.
  *
  * Reverse geocoding is debounced to 800 ms and every lookup carries an
  * AbortSignal, because Nominatim's usage policy allows ~1 request/second. A
@@ -250,9 +256,17 @@ export function LocationPicker({
             {geocoding ? <span>· looking up address…</span> : null}
           </span>
         ) : (
-          <span className="flex items-center gap-1.5 font-medium text-amber-700">
+          /*
+            NOT AMBER, AND NOT AN INSTRUCTION. This read "Pick a suggestion
+            above to set the map pin" in warning amber beside a blocked submit,
+            which made a pin look mandatory — and for most Yangon addresses no
+            suggestion exists to pick, so it was an instruction the user could
+            not follow. Nothing is blocked now; this only says what a pin would
+            add.
+          */
+          <span className="flex items-center gap-1.5 text-muted-foreground">
             <Crosshair className="size-3.5 shrink-0" aria-hidden="true" />
-            Pick a suggestion above to set the map pin
+            No map pin — optional, riders use the address
           </span>
         )}
         <Button

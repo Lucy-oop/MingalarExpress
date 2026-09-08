@@ -133,8 +133,14 @@ export async function createOrder(
   }
   const str = (value: FormDataEntryValue | null): string =>
     typeof value === 'string' ? value : ''
-  /** A point only when BOTH sides are real numbers; otherwise absent. */
-  const pickupPointOf = (lat: number | null | undefined, lng: number | null | undefined) =>
+  /**
+   * A point only when BOTH sides are real numbers; otherwise absent.
+   *
+   * Used for the pickup AND the dropoff, both optional since 0036/0037. Half a
+   * pin is refused by a CHECK on either column, so an object with one side
+   * undefined has to become no object at all rather than reaching the insert.
+   */
+  const bothOrNeither = (lat: number | null | undefined, lng: number | null | undefined) =>
     typeof lat === 'number' && Number.isFinite(lat) && typeof lng === 'number' && Number.isFinite(lng)
       ? { lat, lng }
       : undefined
@@ -152,7 +158,7 @@ export async function createOrder(
       outright, so a single missing side would surface as a 23514 rather than a
       field error.
     */
-    pickupPoint: pickupPointOf(
+    pickupPoint: bothOrNeither(
       num(formData.get('pickupLat')) ?? shop.pickup_lat,
       num(formData.get('pickupLng')) ?? shop.pickup_lng,
     ),
@@ -164,10 +170,10 @@ export async function createOrder(
     customerPhoneAlt: str(formData.get('customerPhoneAlt')),
     dropoffAddress: str(formData.get('dropoffAddress')),
     dropoffAreaId: str(formData.get('dropoffAreaId')) || null,
-    dropoffPoint: {
-      lat: num(formData.get('dropoffLat')),
-      lng: num(formData.get('dropoffLng')),
-    },
+    // Same both-or-neither rule as the pickup: `orders_dropoff_pin_complete`
+    // refuses half a pin, and `{ lat: 16.8, lng: undefined }` is half a pin
+    // dressed as an object.
+    dropoffPoint: bothOrNeither(num(formData.get('dropoffLat')), num(formData.get('dropoffLng'))),
     dropoffNote: str(formData.get('dropoffNote')),
 
     parcelDesc: str(formData.get('parcelDesc')),
@@ -241,7 +247,8 @@ export async function createOrder(
     the honest value -- a 0 there would read as "same building" and quietly
     skew every average it appears in.
   */
-  const crowKm = v.pickupPoint ? haversineKm(v.pickupPoint, v.dropoffPoint) : null
+  const crowKm =
+    v.pickupPoint && v.dropoffPoint ? haversineKm(v.pickupPoint, v.dropoffPoint) : null
 
   /*
     COD WAITS FOR A HUMAN. Checked after parsing so the shop gets this instead
@@ -302,8 +309,10 @@ export async function createOrder(
       customer_phone_alt: v.customerPhoneAlt ?? null,
       dropoff_address: v.dropoffAddress,
       dropoff_area_id: v.dropoffAreaId,
-      dropoff_lat: v.dropoffPoint.lat,
-      dropoff_lng: v.dropoffPoint.lng,
+      // Null when nobody could place the address. `dropoff_area_id` below is
+      // then the only locator, which `orders_dropoff_locatable` insists on.
+      dropoff_lat: v.dropoffPoint?.lat ?? null,
+      dropoff_lng: v.dropoffPoint?.lng ?? null,
       dropoff_note: v.dropoffNote || null,
 
       parcel_desc: v.parcelDesc,

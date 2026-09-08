@@ -331,8 +331,14 @@ export function OrderForm({ shop, areas, codLocked = false }: OrderFormProps) {
   */
   const pickupOutside = pickup !== null && !isInServiceArea(pickup)
   const blocker = bookingBlocker({
-    hasPin: !!dropoff,
-    pinInServiceArea: !!dropoff && isInServiceArea(dropoff),
+    /*
+      NO PIN IS NOT A BLOCK since 0037 — only a pin that IS dropped and lands
+      outside Greater Yangon. Most Yangon addresses do not geocode, so requiring
+      one required the shop to guess about a street it has never visited, and a
+      guessed pin is worse than none because a rider trusts it. The AREA below
+      is the locator, and it is the stronger one.
+    */
+    pinInServiceArea: dropoff === null || isInServiceArea(dropoff),
     pickupInServiceArea: !pickupOutside,
     addressLength: dropoffAddress.trim().length,
     hasArea: !!area,
@@ -343,7 +349,6 @@ export function OrderForm({ shop, areas, codLocked = false }: OrderFormProps) {
 
   const BLOCKER_MESSAGE: Record<NonNullable<typeof blocker>, MessageKey> = {
     pickup_outside: 'book.pickupOutside',
-    no_pin: 'book.needPin',
     pin_outside: 'book.pinOutside',
     no_address: 'book.needAddress',
     no_area: 'book.needArea',

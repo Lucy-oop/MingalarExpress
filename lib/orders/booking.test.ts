@@ -11,7 +11,6 @@ import { MAX_MMK } from '@/lib/validation/limits'
 
 /** A parcel that is ready to book, so each test can spoil exactly one thing. */
 const READY: BookingGate = {
-  hasPin: true,
   pinInServiceArea: true,
   pickupInServiceArea: true,
   addressLength: 24,
@@ -55,7 +54,6 @@ describe('bookingReady — the regression this module exists for', () => {
 describe('bookingBlocker — one reason, in the order a shop would fix them', () => {
   const cases: Array<[string, Partial<BookingGate>, string]> = [
     ['the shop is outside the area', { pickupInServiceArea: false }, 'pickup_outside'],
-    ['no pin yet', { hasPin: false }, 'no_pin'],
     ['pin outside the area', { pinInServiceArea: false }, 'pin_outside'],
     ['address too short', { addressLength: 4 }, 'no_address'],
     ['no area chosen', { hasArea: false }, 'no_area'],
@@ -74,7 +72,6 @@ describe('bookingBlocker — one reason, in the order a shop would fix them', ()
    */
   test('the unfixable-here problem is reported first', () => {
     const everythingWrong: BookingGate = {
-      hasPin: false,
       pinInServiceArea: false,
       pickupInServiceArea: false,
       addressLength: 0,
@@ -229,7 +226,41 @@ describe('a shop with no map pin can still book', () => {
    * delivery with nowhere to go is not a parcel.
    */
   test('the customer still needs a pin, inside the area', () => {
-    assert.equal(bookingBlocker({ ...READY, hasPin: false }), 'no_pin')
     assert.equal(bookingBlocker({ ...READY, pinInServiceArea: false }), 'pin_outside')
+  })
+})
+
+describe('a delivery address needs no map pin', () => {
+  /**
+   * 0037. A shop types a customer's address out of a Viber message, and
+   * Nominatim finds two of six Yangon addresses — so requiring a pin required
+   * the shop to GUESS about a street it has never visited. A guessed pin is not
+   * more information than none; it is worse, because a rider trusts it.
+   *
+   * `dropoffAreaId` is the locator now, and the better one: a pin said
+   * "somewhere in Greater Yangon", an area says "South Okkalapa, which Route C
+   * visits, priced 4,000". `orders_dropoff_locatable` keeps at least one.
+   */
+  test('no pin books, as long as there is an area', () => {
+    assert.equal(bookingBlocker({ ...READY, pinInServiceArea: true, hasArea: true }), null)
+  })
+
+  /** The area is what cannot be skipped — nothing prices or routes without it. */
+  test('but no area still blocks', () => {
+    assert.equal(bookingBlocker({ ...READY, hasArea: false }), 'no_area')
+  })
+
+  /**
+   * A pin that IS dropped and lands outside Greater Yangon is a mistake the
+   * shop just made and can immediately correct, and
+   * `orders_dropoff_in_service_area` refuses the row regardless.
+   */
+  test('a dropped pin outside the area still blocks', () => {
+    assert.equal(bookingBlocker({ ...READY, pinInServiceArea: false }), 'pin_outside')
+  })
+
+  /** The address is still what the rider reads, so it is still required. */
+  test('and the address is still required', () => {
+    assert.equal(bookingBlocker({ ...READY, addressLength: 2 }), 'no_address')
   })
 })

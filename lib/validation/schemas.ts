@@ -129,7 +129,20 @@ export const orderCreateSchema = z
     // with no area cannot be priced, and could never be loaded onto a run
     // either — the planning board groups the unrouted pool by area.
     dropoffAreaId: dbId('Choose the destination area'),
-    dropoffPoint: servicePoint,
+    /*
+      OPTIONAL SINCE 0037, and the AREA above is what replaced it.
+
+      A shop types a customer's address out of a Viber message. Nominatim finds
+      two of six Yangon addresses, so for most parcels the form was asking the
+      shop to place a pin on a street it has never visited -- to guess, on the
+      customer's behalf, to satisfy a validator. A guessed pin is not more
+      information than none; it is worse, because a rider trusts it.
+
+      The area is the stronger locator anyway: a pin said "somewhere in Greater
+      Yangon", an area says "South Okkalapa, which Route C visits, priced 4,000".
+      `orders_dropoff_locatable` makes sure at least one of the two survives.
+    */
+    dropoffPoint: servicePoint.optional(),
     dropoffNote: z.string().trim().max(300).optional().or(z.literal('')),
 
     /**

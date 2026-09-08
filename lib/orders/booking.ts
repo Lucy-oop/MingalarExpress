@@ -52,9 +52,19 @@ export function parseAmount(raw: string): AmountParse {
 }
 
 export type BookingGate = {
-  /** A pin has been dropped. */
-  hasPin: boolean
-  /** ...and it is inside the delivery geofence. */
+  /**
+   * The delivery pin is not known to be OUTSIDE the geofence.
+   *
+   * TRUE WHEN THERE IS NO PIN, and `hasPin` is gone entirely — 0037 removed the
+   * requirement. A shop types a customer's address out of a Viber message, and
+   * most Yangon addresses do not geocode, so demanding a pin demanded a GUESS
+   * about a street the shop has never visited. `dropoffAreaId` is the locator
+   * now, and it is the better one: a pin said "somewhere in Greater Yangon",
+   * an area says "South Okkalapa, which Route C visits, priced 4,000".
+   *
+   * A pin that IS dropped still has to be inside, because that one is a mistake
+   * the shop just made and can immediately correct.
+   */
   pinInServiceArea: boolean
   /**
    * The shop's own saved location is not known to be OUTSIDE the geofence.
@@ -79,7 +89,6 @@ export type BookingGate = {
 
 export type BookingBlocker =
   | 'pickup_outside'
-  | 'no_pin'
   | 'pin_outside'
   | 'no_address'
   | 'no_area'
@@ -97,7 +106,6 @@ export const MIN_ADDRESS_LENGTH = 5
  */
 export function bookingBlocker(g: BookingGate): BookingBlocker | null {
   if (!g.pickupInServiceArea) return 'pickup_outside'
-  if (!g.hasPin) return 'no_pin'
   if (!g.pinInServiceArea) return 'pin_outside'
   if (g.addressLength < MIN_ADDRESS_LENGTH) return 'no_address'
   if (!g.hasArea) return 'no_area'

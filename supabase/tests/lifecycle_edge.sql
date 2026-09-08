@@ -303,13 +303,88 @@ begin
     raise notice 'PASS: an out-of-area pickup is still refused';
   end;
 
-  -- AND THE DROPOFF IS UNTOUCHED. This is the half that was never optional:
-  -- the customer's location is chosen on a map at booking time.
+  /*
+    AND THE PARCEL MUST STILL BE LOCATABLE. This block asserted
+    `not_null_violation` when it was written, because the dropoff pin was NOT
+    NULL -- and 0037 deliberately changed that, so the suite aborted here until
+    it was updated. Worth keeping the story: the invariant did not disappear, it
+    moved from "there is a pin" to "there is a pin OR an area".
+
+    This order carries no `dropoff_area_id`, so clearing its pin leaves nothing
+    at all -- nowhere to dispatch it, no zone to price it -- and
+    `orders_dropoff_locatable` refuses exactly that. E10 covers the same rule
+    from the other side, with an area and no pin.
+  */
   begin
     update public.orders set dropoff_lat = null, dropoff_lng = null where id = oid;
-    raise exception 'FAIL: a parcel was left with nowhere to go';
-  exception when not_null_violation then
-    raise notice 'PASS: the dropoff is still mandatory';
+    raise exception 'FAIL: a parcel was left with nowhere to go and no area';
+  exception when check_violation then
+    raise notice 'PASS: a parcel with no area cannot lose its pin either';
+  end;
+
+  delete from public.orders where id = oid;
+end $$;
+
+\echo '=== E10. a delivery needs an area, not a pin ==='
+--  0037. A shop types a customer's address out of a Viber message, and
+--  Nominatim finds two of six Yangon addresses -- so requiring a dropoff pin
+--  required the shop to GUESS about a street it has never visited. A guessed
+--  pin is worse than none, because a rider trusts it.
+--
+--  The AREA is the locator now and the stronger one: a pin said "somewhere in
+--  Greater Yangon", an area says "South Okkalapa, which Route C visits, priced
+--  4,000". So the thing to prove is that the area became MANDATORY as the pin
+--  became optional -- otherwise a parcel could say nothing at all about where
+--  it goes.
+do $$
+declare oid uuid; g text; aid uuid;
+begin
+  select id into aid from public.service_areas where name = 'South Okkalapa';
+
+  insert into public.orders (shop_id, pickup_address, pickup_lat, pickup_lng,
+    customer_name, customer_phone, dropoff_address, dropoff_area_id,
+    parcel_desc, payment_method, cod_amount, delivery_fee, created_by)
+  select id, pickup_address, pickup_lat, pickup_lng, 'No Pin Anywhere',
+    '+959791110092', 'A lane off Waizayanta Road', aid,
+    'unpinned parcel', 'cod', 5000, 4000, owner_id
+  from public.shops where id = 'aaaaaaaa-0000-0000-0000-000000000001'
+  returning id into oid;
+
+  select coalesce(dropoff_geog::text, '(null)') into g from public.orders where id = oid;
+  if g <> '(null)' then
+    raise exception 'FAIL: a pinless delivery got a dropoff geography of %', g;
+  end if;
+  raise notice 'PASS: a delivery books on an area and an address alone';
+
+  begin
+    update public.orders set dropoff_lng = 96.1880 where id = oid;
+    raise exception 'FAIL: stored a dropoff longitude with no latitude';
+  exception when check_violation then
+    raise notice 'PASS: half a dropoff pin is refused';
+  end;
+
+  -- THE CONSTRAINT THAT KEEPS THIS HONEST. Neither locator is not a parcel:
+  -- nothing to dispatch it, no zone to price it, nothing for the office to
+  -- work from. orders_insert_shop checks ownership alone, so this has to be a
+  -- CHECK rather than a rule in the form.
+  begin
+    update public.orders set dropoff_area_id = null where id = oid;
+    raise exception 'FAIL: a parcel was left with no area AND no pin';
+  exception when check_violation then
+    raise notice 'PASS: a parcel must have an area or a pin';
+  end;
+
+  -- And with a pin, dropping the area IS allowed: one locator is the rule.
+  update public.orders set dropoff_lat = 16.8300, dropoff_lng = 96.1950 where id = oid;
+  update public.orders set dropoff_area_id = null where id = oid;
+  raise notice 'PASS: a pin alone satisfies it too';
+
+  -- The fence still holds on a pin that IS given. Mandalay is 21.96 N.
+  begin
+    update public.orders set dropoff_lat = 21.9588, dropoff_lng = 96.0891 where id = oid;
+    raise exception 'FAIL: a Mandalay delivery was accepted';
+  exception when check_violation then
+    raise notice 'PASS: an out-of-area delivery pin is still refused';
   end;
 
   delete from public.orders where id = oid;

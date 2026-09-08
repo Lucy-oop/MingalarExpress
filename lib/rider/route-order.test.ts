@@ -119,3 +119,57 @@ describe('sortRoute — bad and missing data', () => {
     assert.ok(Math.abs(DEFAULT_HUB.lng - 96.17) < 0.02)
   })
 })
+
+describe('an unpinned run is still a route', () => {
+  /**
+   * 0037 made the dropoff pin optional, so a run of parcels the geocoder could
+   * not place has no coordinates to measure. Ordered by order code that is not
+   * a route, it is a list — so `sortRoute` falls back to `route_areas.stop_order`,
+   * the ward sequence the office chose for this route.
+   */
+  const j = (code: string, stopOrder: number | null) => ({
+    id: code,
+    code,
+    leg: 'delivery' as const,
+    destination: null,
+    stopOrder,
+  })
+
+  test('unmeasurable stops follow the office ward sequence, not the code', () => {
+    const out = sortRoute([j('MGE-C', 1), j('MGE-A', 3), j('MGE-B', 2)])
+    assert.deepEqual(
+      out.map((o) => o.code),
+      ['MGE-C', 'MGE-B', 'MGE-A'],
+      'the drive order should be the ward sequence 1,2,3 — not alphabetical',
+    )
+  })
+
+  test('and the code only breaks a genuine tie', () => {
+    const out = sortRoute([j('MGE-B', 2), j('MGE-A', 2)])
+    assert.deepEqual(
+      out.map((o) => o.code),
+      ['MGE-A', 'MGE-B'],
+      'equal stop orders must stay stable between refreshes',
+    )
+  })
+
+  test('a stop with no ward sequence at all sorts after ones that have it', () => {
+    const out = sortRoute([j('MGE-A', null), j('MGE-B', 9)])
+    assert.deepEqual(out.map((o) => o.code), ['MGE-B', 'MGE-A'])
+  })
+
+  /**
+   * THE RULE THAT MUST NOT REGRESS. A measured stop goes in its right place; an
+   * unmeasured one keeps its place at the END of its group. A rider must never
+   * lose a stop, and an unplaceable parcel must never jump the queue.
+   */
+  test('a pinned stop still outranks an unpinned one', () => {
+    const near = { id: 'n', code: 'MGE-Z', leg: 'delivery' as const, destination: { lat: 16.8409, lng: 96.1735 }, stopOrder: 99 }
+    const out = sortRoute([j('MGE-A', 1), near])
+    assert.deepEqual(
+      out.map((o) => o.code),
+      ['MGE-Z', 'MGE-A'],
+      'the measurable stop must come first even with a worse stop_order',
+    )
+  })
+})

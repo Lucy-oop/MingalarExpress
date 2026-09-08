@@ -508,8 +508,8 @@ export type Database = {
           dropoff_address: string
           dropoff_area_id: string | null
           dropoff_geog: unknown
-          dropoff_lat: number
-          dropoff_lng: number
+          dropoff_lat: number | null
+          dropoff_lng: number | null
           dropoff_note: string | null
           fail_reason: string | null
           fee_payer: string
@@ -569,8 +569,8 @@ export type Database = {
           dropoff_address: string
           dropoff_area_id?: string | null
           dropoff_geog?: unknown
-          dropoff_lat: number
-          dropoff_lng: number
+          dropoff_lat?: number | null
+          dropoff_lng?: number | null
           dropoff_note?: string | null
           fail_reason?: string | null
           fee_payer?: string
@@ -630,8 +630,8 @@ export type Database = {
           dropoff_address?: string
           dropoff_area_id?: string | null
           dropoff_geog?: unknown
-          dropoff_lat?: number
-          dropoff_lng?: number
+          dropoff_lat?: number | null
+          dropoff_lng?: number | null
           dropoff_note?: string | null
           fail_reason?: string | null
           fee_payer?: string

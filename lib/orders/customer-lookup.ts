@@ -29,8 +29,8 @@ export type PastOrderRow = {
   customer_phone_alt: string | null
   dropoff_address: string
   dropoff_area_id: string | null
-  dropoff_lat: number
-  dropoff_lng: number
+  dropoff_lat: number | null
+  dropoff_lng: number | null
   dropoff_note: string | null
   created_at: string
 }
@@ -110,7 +110,8 @@ export type ReusedCustomer = {
   phoneAlt: string
   address: string
   areaId: string
-  point: { lat: number; lng: number }
+  /** Null when that past order had no pin — see the note at the mapping. */
+  point: { lat: number; lng: number } | null
   note: string
 }
 
@@ -121,7 +122,17 @@ export function reuse(customer: PastOrderRow): ReusedCustomer {
     phoneAlt: customer.customer_phone_alt ?? '',
     address: customer.dropoff_address,
     areaId: customer.dropoff_area_id ?? '',
-    point: { lat: customer.dropoff_lat, lng: customer.dropoff_lng },
+    /*
+      NULL WHEN THAT PAST ORDER HAD NO PIN, which 0037 made possible. Reusing a
+      customer is still the BEST case for coordinates -- if anyone ever placed a
+      pin for this address, this is where it comes back from -- but it is no
+      longer a guarantee, and inventing `{ lat: null }` here would put half a
+      point into the form.
+    */
+    point:
+      customer.dropoff_lat === null || customer.dropoff_lng === null
+        ? null
+        : { lat: customer.dropoff_lat, lng: customer.dropoff_lng },
     note: customer.dropoff_note ?? '',
   }
 }

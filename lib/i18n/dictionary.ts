@@ -340,10 +340,6 @@ export const DICTIONARY = {
   'book.alreadyPaid': { en: 'Already paid — collect nothing', my: 'ငွေရှင်းပြီးသား — မကောက်ပါ' },
   // The map is the fallback for an address OSM does not know, not the first
   // step, so this names the suggestion list first.
-  'book.needPin': {
-    en: 'Pick a suggested address, or set it on the map.',
-    my: 'အကြံပြုလိပ်စာ ရွေးပါ၊ သို့မဟုတ် မြေပုံတွင် သတ်မှတ်ပါ။',
-  },
   'book.pinOutside': {
     en: 'That pin is outside the delivery area.',
     my: 'ဤအမှတ်သည် ပို့ဆောင်နယ်ပယ် အပြင် ဖြစ်ပါသည်။',

@@ -115,10 +115,34 @@ export function CustomerLookup({ onPick }: { onPick: (customer: ReusedCustomer) 
     })
   }
 
-  const showList = open && !short && (rows !== null)
+  const showList = open && !short && rows !== null
+
+  /*
+    CLOSE WHEN THE SHOP CLICKS ANYWHERE ELSE, and this was simply missing.
+
+    The input deliberately has no `onBlur` -- the note below explains why -- but
+    nothing ever replaced it, so `open` only cleared on Escape or on choosing a
+    row. The list therefore stayed up, `absolute` over the fields beneath it,
+    and the next thing the shop tried to click was behind a listbox. That is the
+    "cannot click it smoothly" symptom; the z-index was never the problem
+    (`z-1200` compiles, and Leaflet's panes top out below it).
+
+    `pointerdown` rather than `click` so the list is gone before the click lands
+    on whatever is underneath, and capture so a stopPropagation inside the form
+    cannot swallow it.
+  */
+  const boxRef = React.useRef<HTMLDivElement>(null)
+  React.useEffect(() => {
+    if (!showList) return
+    const away = (e: PointerEvent) => {
+      if (!boxRef.current?.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('pointerdown', away, true)
+    return () => document.removeEventListener('pointerdown', away, true)
+  }, [showList])
 
   return (
-    <div className="relative">
+    <div ref={boxRef} className="relative">
       <label htmlFor={`${listboxId}-input`} className="sr-only">
         {t('book.findCustomer')}
       </label>
@@ -144,9 +168,11 @@ export function CustomerLookup({ onPick }: { onPick: (customer: ReusedCustomer) 
           setOpen(true)
         }}
         onFocus={() => setOpen(true)}
-        // A blur that fires before a pointerdown on a row would close the list
-        // before the click lands, so rows use onPointerDown with preventDefault
-        // and this only needs the keyboard and the escape hatch.
+        // NO onBlur, deliberately: a blur firing before the click on a row
+        // would close the list and the click would land on whatever moved up
+        // underneath. The outside-pointerdown effect above closes it instead,
+        // and it checks containment, so a row click is safe. This handler only
+        // needs the keyboard.
         onKeyDown={(e) => {
           if (e.key === 'ArrowDown') {
             e.preventDefault()
@@ -198,10 +224,19 @@ export function CustomerLookup({ onPick }: { onPick: (customer: ReusedCustomer) 
                 id={`${listboxId}-opt-${i}`}
                 role="option"
                 aria-selected={i === active}
-                onPointerDown={(e) => {
-                  e.preventDefault()
-                  choose(c)
-                }}
+                /*
+                  ON CLICK, NOT ON POINTERDOWN. Choosing on pointerdown meant a
+                  SCROLL GESTURE selected a customer: this list is
+                  `max-h-72 overflow-y-auto`, so on a phone the finger that
+                  starts a scroll starts it on a row, and the shop booked a
+                  parcel for whoever they happened to touch first.
+
+                  The `preventDefault` that came with it existed to beat an
+                  `onBlur` on the input -- and there is no `onBlur`; the
+                  outside-pointerdown handler above closes the list instead, and
+                  it checks containment, so a click on a row survives it.
+                */
+                onClick={() => choose(c)}
                 onMouseEnter={() => setActive(i)}
                 className={cn(
                   'flex cursor-pointer items-start gap-2 px-3 py-2.5 text-sm',

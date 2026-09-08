@@ -40,7 +40,13 @@ export function JobSheet({
    * where they must not go yet.
    */
   pickup: LatLng | null
-  dropoff: LatLng
+  /**
+   * NULL since 0037, when the delivery pin became optional — most Yangon
+   * addresses do not geocode and requiring one required the shop to guess. The
+   * map hides rather than centring on a guess; `dropoff_area_id`, the address
+   * and the customer's phone are what the rider works from.
+   */
+  dropoff: LatLng | null
   codAmount: number
   kpayAccount: { name: string | null; phone: string | null; qrUrl: string }
 }) {

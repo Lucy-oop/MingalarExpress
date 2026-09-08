@@ -141,14 +141,28 @@ describe('reuse — what the form fills in', () => {
   })
 
   /**
-   * The coordinate is the real prize: dropoff_lat/lng are NOT NULL behind a
-   * geofence CHECK, and a reused point is somewhere a rider has actually been —
-   * better than a geocode guess or a VERIFY-CENTROID township placeholder.
+   * The coordinate is still the real prize. 0037 made the dropoff pin optional,
+   * so it is no longer guaranteed — but a reused point is somewhere a rider has
+   * ACTUALLY BEEN, which beats a geocode guess or a VERIFY-CENTROID township
+   * placeholder. Picking a returning customer remains the best case for a pin.
    */
-  test('the reused point is a real past delivery, ready for the NOT NULL columns', () => {
+  test('the reused point is a real past delivery', () => {
     const r = reuse(row())
-    assert.equal(typeof r.point.lat, 'number')
-    assert.equal(typeof r.point.lng, 'number')
+    assert.equal(typeof r.point?.lat, 'number')
+    assert.equal(typeof r.point?.lng, 'number')
+  })
+
+  /**
+   * And a past order booked WITHOUT a pin hands back no point rather than half
+   * of one. `{ lat: null }` in the form would reach `orders_dropoff_pin_complete`
+   * as a constraint violation instead of a clean absence.
+   */
+  test('a past order with no pin yields no point', () => {
+    const r = reuse(row({ dropoff_lat: null, dropoff_lng: null }))
+    assert.equal(r.point, null)
+    // Everything else about the customer still comes back.
+    assert.equal(r.name, row().customer_name)
+    assert.equal(r.address, row().dropoff_address)
   })
 
   test('nulls become empty strings, never the text "null" in an input', () => {
