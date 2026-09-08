@@ -274,6 +274,27 @@ export async function createOrder(
    * `cod_amount >= 0`. The schema cannot catch it because `deliveryFee` is
    * still a placeholder zero when it runs; the fee is only known here.
    */
+  /*
+    BOTH BOUNDS ON THE REAL FIGURE, in the one place that knows it.
+
+    The lower bound moved here from `orderCreateSchema`, which was testing the
+    GOODS value and calling it the collection -- so "the customer paid for the
+    product, collect the delivery fee" was refused for having goods of zero,
+    on a field that case does not render. `codTotal` is what
+    `orders_cod_consistent` actually constrains, and it only exists once the
+    fee is resolved.
+  */
+  if (v.paymentMethod === 'cod' && codTotal < 1) {
+    return {
+      error: 'A cash-on-delivery parcel needs something to collect.',
+      fieldErrors: {
+        codAmount: [
+          'Enter what the customer owes, or say they have already paid for everything.',
+        ],
+      },
+    }
+  }
+
   if (codTotal > MAX_MMK) {
     return {
       error: 'That collection amount is too large.',

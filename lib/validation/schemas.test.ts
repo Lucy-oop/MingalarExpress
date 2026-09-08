@@ -1,5 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
+import { bookingPayment, parseAmount } from '@/lib/orders/booking'
 import { readFileSync } from 'node:fs'
 import { dbId, orderCreateSchema,
   shopSetupSchema,
@@ -113,10 +114,29 @@ describe('orderCreateSchema — a real shop submission', () => {
     assert.ok(r.error!.flatten().fieldErrors.dropoffPoint)
   })
 
-  test('COD with no amount is refused, on the codAmount field', () => {
+  /**
+   * ZERO GOODS ON A COD PARCEL IS LEGAL, and this test used to assert the
+   * opposite.
+   *
+   * `codAmount` here is the GOODS value — `createOrder` reads it from the
+   * `goodsValue` input and derives the collectable as
+   * `codCollectable(goods, fee, feePayer)` once the fee is known. The two
+   * coincided while every COD parcel carried goods, so a refinement testing
+   * goods while claiming to mirror `orders_cod_consistent` looked right.
+   *
+   * "The customer paid for the product; collect the delivery fee" is where they
+   * part: goods 0, collectable = the fee. The old refinement refused it with
+   * "a COD order needs a collection amount greater than zero", on a field that
+   * case does not render — a phantom error with nothing to fix.
+   *
+   * The real lower bound is in `createOrder`, beside the ceiling check, because
+   * `deliveryFee` is a placeholder zero while this schema runs and the
+   * collectable is genuinely unknowable here.
+   */
+  test('COD with zero goods parses — the fee is the collection', () => {
     const r = orderCreateSchema.safeParse({ ...valid, codAmount: 0 })
-    assert.equal(r.success, false)
-    assert.ok(r.error!.flatten().fieldErrors.codAmount)
+    assert.equal(r.success, true)
+    assert.equal(r.data?.codAmount, 0)
   })
 
   /**
@@ -205,14 +225,25 @@ describe('orderCreateSchema — the four-field booking form', () => {
     assert.ok(orderCreateSchema.safeParse({ ...minimal, paymentMethod: 'cod', codAmount: 1 }).success)
   })
 
-  test('the impossible pairs are still refused', () => {
-    assert.equal(
-      orderCreateSchema.safeParse({ ...minimal, paymentMethod: 'cod', codAmount: 0 }).success,
-      false,
-    )
+  /**
+   * ONE IMPOSSIBLE PAIR, not two. A prepaid parcel with goods is still a
+   * contradiction — nothing is collected, so there is nothing to hold a value.
+   *
+   * COD with zero goods is no longer one: that is the fee-only parcel, and its
+   * collectable is checked in `createOrder` where the fee exists. See the note
+   * on 'COD with zero goods parses' above.
+   */
+  test('prepaid with an amount is still refused', () => {
     assert.equal(
       orderCreateSchema.safeParse({ ...minimal, paymentMethod: 'prepaid', codAmount: 500 }).success,
       false,
+    )
+  })
+
+  test('and COD with zero goods is now allowed through', () => {
+    assert.equal(
+      orderCreateSchema.safeParse({ ...minimal, paymentMethod: 'cod', codAmount: 0 }).success,
+      true,
     )
   })
 })
@@ -394,5 +425,84 @@ describe('shopSettingsSchema', () => {
       shopSettingsSchema.safeParse({ ...BASE, pickupAddress: '', pickupPoint: undefined }).success,
       false,
     )
+  })
+})
+
+// ---------------------------------------------------------------------------
+// The regression: "Please fix 1 field below" with no field to fix
+// ---------------------------------------------------------------------------
+
+describe('a “product only” submission, end to end', () => {
+  /** A complete order, as the booking form posts one. */
+  const base = {
+    shopId: 'aaaaaaaa-0000-0000-0000-000000000001',
+    pickupAddress: 'No. 24, Thitsar Road, San Pya Ward, Thingangyun, Yangon',
+    pickupPoint: { lat: 16.8478, lng: 96.1693 },
+    pickupContact: '',
+    pickupNote: '',
+    customerName: 'Daw Khin Myo',
+    customerPhone: '+959791234567',
+    customerPhoneAlt: '',
+    dropoffAddress: 'Shop 12, Sule Pagoda Road, Kyauktada, Yangon',
+    dropoffAreaId: '62a028e5-bcac-457d-889f-d0ea6bb7c728',
+    dropoffNote: '',
+    parcelDesc: 'Two coffee cartons',
+    parcelWeightG: 1800,
+    parcelValue: null,
+    isFragile: false,
+    deliveryFee: 0,
+  }
+
+  /**
+   * THE BUG THIS PINS, walked in the order it happened.
+   *
+   * A shop filled in the address, the area, the recipient and chose "The
+   * product only — collect the delivery fee", and got "Please fix 1 field
+   * below before submitting" with nothing highlighted. The chain:
+   *
+   *   1. that option renders NO amount input, so `formData.get('goodsValue')`
+   *      is null and the action maps it to 0
+   *   2. `bookingPayment('product', …)` posts `paymentMethod: 'cod'`
+   *   3. the schema refused `cod` + `codAmount: 0` — testing the GOODS value
+   *      while claiming to mirror `orders_cod_consistent`, which is about the
+   *      COLLECTABLE
+   *
+   * Goods 0 with a collectable of 4,000 is exactly what that option means, so
+   * step 3 was checking the wrong quantity. The collectable is now checked in
+   * `createOrder`, where the fee exists.
+   */
+  const FEE = 4000
+
+  test('the payload that option posts now parses', () => {
+    const posted = bookingPayment('product', parseAmount(''), 'shop')
+    assert.equal(posted.paymentMethod, 'cod')
+
+    const r = orderCreateSchema.safeParse({
+      ...base,
+      paymentMethod: posted.paymentMethod,
+      // The action's `num(formData.get('goodsValue')) ?? 0` for an input that
+      // is not rendered.
+      codAmount: 0,
+      feePayer: posted.feePayer,
+    })
+    assert.equal(r.success, true, r.success ? '' : JSON.stringify(r.error.flatten().fieldErrors))
+  })
+
+  test('and it collects the delivery fee, so the DB constraint holds', () => {
+    const posted = bookingPayment('product', parseAmount(''), 'shop')
+    const codTotal = codCollectable(0, FEE, posted.feePayer)
+    assert.equal(codTotal, FEE)
+    // `orders_cod_consistent`: a COD parcel needs cod_amount > 0.
+    assert.ok(codTotal > 0)
+  })
+
+  /**
+   * And the lower bound did not simply vanish. A COD parcel with no goods AND
+   * the SHOP paying the fee collects nothing at all — which `createOrder`
+   * refuses, because it is the one combination that would reach
+   * `orders_cod_consistent` as a 23514.
+   */
+  test('but nothing-to-collect is still impossible to store', () => {
+    assert.equal(codCollectable(0, FEE, 'shop'), 0)
   })
 })

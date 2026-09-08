@@ -173,12 +173,29 @@ export const orderCreateSchema = z
     deliveryFee: mmk,
     feePayer: z.enum(['customer', 'shop']).default('customer'),
   })
-  // Mirrors the SQL constraint `orders_cod_consistent`. Without this the user
-  // gets a raw 23514 from Postgres instead of a message on the right field.
-  .refine((v) => v.paymentMethod !== 'cod' || v.codAmount > 0, {
-    message: 'A COD order needs a collection amount greater than zero',
-    path: ['codAmount'],
-  })
+  /*
+    THE 'cod REQUIRES codAmount > 0' REFINEMENT WAS REMOVED, and it is worth
+    saying why rather than leaving a gap.
+
+    It claimed to mirror `orders_cod_consistent`, which is about `cod_amount` --
+    the money the rider collects. But `codAmount` HERE carries the GOODS VALUE:
+    `createOrder` reads it from the `goodsValue` input and derives the
+    collectable as `codCollectable(goods, fee, feePayer)` once the fee is known.
+    The two coincided while every COD parcel had goods, so the wrong quantity
+    passed unnoticed.
+
+    "The customer paid for the product; collect the delivery fee" is where they
+    part company: goods 0, collectable = the fee. The refinement rejected it as
+    "a COD order needs a collection amount greater than zero" on a field the
+    form does not even render in that case -- a phantom error with nothing to
+    fix.
+
+    AND IT CANNOT BE FIXED HERE. `deliveryFee` is a placeholder zero when this
+    schema runs (see `createOrder`), so the collectable is unknowable at this
+    point. The real check lives beside the ceiling check in `createOrder`, where
+    `codTotal` exists, and `orders_cod_consistent` remains the backstop with a
+    translated message.
+  */
   .refine((v) => v.paymentMethod !== 'prepaid' || v.codAmount === 0, {
     message: 'A prepaid order must have a COD amount of 0',
     path: ['codAmount'],
