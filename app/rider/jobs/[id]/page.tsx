@@ -105,10 +105,26 @@ export default async function RiderJobPage({ params }: { params: Promise<{ id: s
               {t('money.collect')}
             </p>
             <dl className="mt-1.5 space-y-1 text-sm">
-              <div className="flex items-baseline justify-between gap-3">
-                <dt className="text-muted-foreground">{t('money.goods')}</dt>
-                <dd className="tabular-nums">{formatMmk(money.goods)}</dd>
-              </div>
+              {/*
+                THE GOODS ROW GOES WHEN THERE ARE NO GOODS TO COLLECT.
+
+                A customer who paid the shop for the product and left the
+                delivery fee for the door produces `cod_amount = delivery_fee`
+                and goods 0 — a legitimate parcel, and one that rendered
+                "Goods 0" above a small total. A rider reading a zero beside
+                Goods assumes the screen has lost the amount and asks for the
+                product money as well, which is the one mistake this card
+                exists to prevent. The line below says why the figure is small
+                instead.
+              */}
+              {money.goods > 0 ? (
+                <div className="flex items-baseline justify-between gap-3">
+                  <dt className="text-muted-foreground">{t('money.goods')}</dt>
+                  <dd className="tabular-nums">{formatMmk(money.goods)}</dd>
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">{t('money.feeOnlyHint')}</p>
+              )}
               <div className="flex items-baseline justify-between gap-3">
                 <dt className="text-muted-foreground">
                   {t('money.fee')}

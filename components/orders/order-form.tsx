@@ -16,7 +16,12 @@ import { Field } from '@/components/ui/field'
 import { Alert } from '@/components/ui/alert'
 import { Overlay } from '@/components/ui/overlay'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { bookingBlocker, bookingPayment, parseAmount } from '@/lib/orders/booking'
+import {
+  bookingBlocker,
+  bookingPayment,
+  parseAmount,
+  type CustomerPaid,
+} from '@/lib/orders/booking'
 import { matchAreaFromAddress } from '@/lib/orders/area-match'
 import type { ReusedCustomer } from '@/lib/orders/customer-lookup'
 import { CustomerLookup } from '@/components/orders/customer-lookup'
@@ -169,10 +174,20 @@ export function OrderForm({ shop, areas, codLocked = false }: OrderFormProps) {
   const areaTouched = useRef(false)
   const [feePayer, setFeePayer] = useState<'customer' | 'shop'>('customer')
   const [collect, setCollect] = useState('')
-  /** Prepaid is this tick and only this tick — never an inferred empty field. */
-  // Starts, and stays, prepaid while COD is locked. Not merely defaulted: the
-  // checkbox below is disabled, so there is no path back to COD on this form.
-  const [prepaid, setPrepaid] = useState(codLocked)
+  /*
+    WHAT THE CUSTOMER HAS ALREADY PAID, stated rather than inferred.
+
+    This was a boolean `prepaid` tick, and a boolean could not say the middle
+    answer: a customer often pays the shop for the PRODUCT and leaves the
+    delivery fee to be collected at the door. The form offered "collect the full
+    amount" or "collect nothing", so that parcel could not be booked at all.
+
+    Starts at 'all' while COD is locked, and the other two are disabled — both
+    put cash in a rider's hand, and `tg_orders_shop_gate` raises
+    `cod_needs_review` for any `payment_method = 'cod'`. There is no path back
+    to COD on this form for an unreviewed shop.
+  */
+  const [paid, setPaid] = useState<CustomerPaid>(codLocked ? 'all' : 'nothing')
 
   /**
    * Bumped on "Book another", and used as the picker's `key`.
@@ -257,7 +272,7 @@ export function OrderForm({ shop, areas, codLocked = false }: OrderFormProps) {
     areaTouched.current = false
     setReused(false)
     setCollect('')
-    setPrepaid(false)
+    setPaid(codLocked ? 'all' : 'nothing')
     setFeePayer('customer')
     // Remounts LocationPicker so the pin auto-fills the address again.
     setResetSeq((n) => n + 1)
@@ -309,7 +324,7 @@ export function OrderForm({ shop, areas, codLocked = false }: OrderFormProps) {
    */
   const amount = useMemo(() => parseAmount(collect), [collect])
   const { paymentMethod, goodsValue, feePayer: postedFeePayer } = bookingPayment(
-    prepaid,
+    paid,
     amount,
     feePayer,
   )
@@ -342,7 +357,9 @@ export function OrderForm({ shop, areas, codLocked = false }: OrderFormProps) {
     pickupInServiceArea: !pickupOutside,
     addressLength: dropoffAddress.trim().length,
     hasArea: !!area,
-    prepaid,
+    // Only 'nothing' asks for a figure. 'product' collects the fee and nothing
+    // else; 'all' collects nothing. See `needsAmount` in lib/orders/booking.
+    needsAmount: paid === 'nothing',
     amount,
   })
   const canSubmit = blocker === null
@@ -575,10 +592,63 @@ export function OrderForm({ shop, areas, codLocked = false }: OrderFormProps) {
             <CardTitle className="text-base">{t('book.money')}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
+            {/*
+              WHAT THE CUSTOMER HAS ALREADY PAID — three answers, because there
+              are three. This was one checkbox, "Already paid — collect
+              nothing", which collapsed "they paid for the product" and "they
+              paid for everything" into the same thing. The first of those
+              leaves the DELIVERY FEE to collect at the door, and there was no
+              way to book it.
+
+              Radios rather than a select: three short options a shop reads at a
+              glance, and the choice changes what appears below it.
+            */}
+            <fieldset className="space-y-2">
+              <legend className="mb-1 text-sm font-medium">{t('book.paidQuestion')}</legend>
+              {(
+                [
+                  ['nothing', 'book.paidNothing'],
+                  ['product', 'book.paidProduct'],
+                  ['all', 'book.paidAll'],
+                ] as const
+              ).map(([value, key]) => {
+                // Both cash answers are barred for an unreviewed shop: either
+                // one puts a customer's money in a rider's hand.
+                const barred = codLocked && value !== 'all'
+                return (
+                  <label
+                    key={value}
+                    className={cn(
+                      'flex min-h-11 items-center gap-3 rounded-lg border bg-muted/30 px-3 text-base',
+                      paid === value && 'border-primary bg-primary/5 font-medium',
+                      barred && 'opacity-50',
+                    )}
+                  >
+                    <input
+                      type="radio"
+                      name="customerPaid"
+                      value={value}
+                      checked={paid === value}
+                      disabled={barred}
+                      onChange={() => {
+                        setPaid(value)
+                        // The figure belongs to 'nothing' alone; carrying it
+                        // across would post a goods value the shop cannot see.
+                        if (value !== 'nothing') setCollect('')
+                      }}
+                      className="size-5 accent-brand-red"
+                    />
+                    {t(key)}
+                  </label>
+                )
+              })}
+            </fieldset>
+
+            {paid === 'nothing' ? (
             <Field
               label={t('book.collect')}
               htmlFor="goodsValue"
-              hint={prepaid ? undefined : t('book.collectHint')}
+              hint={t('book.collectHint')}
               error={err('codAmount') ?? amountProblem}
             >
               {/*
@@ -597,34 +667,13 @@ export function OrderForm({ shop, areas, codLocked = false }: OrderFormProps) {
                 type="text"
                 inputMode="numeric"
                 autoComplete="off"
-                disabled={prepaid}
-                value={prepaid ? '' : collect}
+                value={collect}
                 onChange={(e) => setCollect(e.target.value)}
                 aria-invalid={!!(err('codAmount') ?? amountProblem)}
                 className="h-14 text-xl font-semibold tabular-nums"
               />
             </Field>
-
-            {/* The ONLY way to book a parcel with nothing to collect. Leaving
-                the amount blank is now a blocked submit, not a silent prepaid. */}
-            <label
-              className={cn(
-                'flex min-h-11 items-center gap-3 rounded-lg border bg-muted/30 px-3 text-base font-medium',
-                codLocked && 'opacity-70',
-              )}
-            >
-              <input
-                type="checkbox"
-                checked={prepaid}
-                disabled={codLocked}
-                onChange={(e) => {
-                  setPrepaid(e.target.checked)
-                  if (e.target.checked) setCollect('')
-                }}
-                className="size-5 accent-brand-red"
-              />
-              {t('book.alreadyPaid')}
-            </label>
+            ) : null}
 
             {/* Said before the amount field is filled in, not after the submit
                 is refused. The office unlocks it by reviewing the shop. */}
@@ -634,12 +683,17 @@ export function OrderForm({ shop, areas, codLocked = false }: OrderFormProps) {
               </p>
             ) : null}
 
-            {prepaid ? (
+            {/* One line per answer, saying what the rider will actually ask
+                for — before the shop books, not after a rider is at the door. */}
+            {paid === 'all' ? (
               <p className="text-sm text-muted-foreground">{t('book.prepaidNote')}</p>
+            ) : paid === 'product' ? (
+              <p className="text-sm text-muted-foreground">{t('book.paidProductNote')}</p>
             ) : null}
 
             <QuoteSummary
               area={area}
+              paid={paid}
               paymentMethod={paymentMethod}
               feePayer={postedFeePayer}
               goods={goodsValue}
@@ -687,11 +741,16 @@ export function OrderForm({ shop, areas, codLocked = false }: OrderFormProps) {
               >
                 <Input id="customerPhoneAlt" name="customerPhoneAlt" type="tel" inputMode="tel" />
               </Field>
-              {/* Hidden on a prepaid parcel, where it does nothing: cod_by_shop
-                  bills the shop the delivery fee on ANY non-COD order and never
-                  reads fee_payer. Leaving it enabled offered a choice the
-                  database ignores. */}
-              {prepaid ? null : (
+              {/*
+                A CHOICE IN ONE CASE ONLY. On 'all' it does nothing: cod_by_shop
+                bills the shop the delivery fee on ANY non-COD order and never
+                reads fee_payer, so offering it would offer a choice the
+                database ignores. On 'product' the answer is already given — the
+                customer is paying the fee at the door, which is what that
+                option means. Only 'nothing' leaves it genuinely open, because
+                the shop may still absorb the fee itself.
+              */}
+              {paid !== 'nothing' ? null : (
                 <Field label={t('book.feePayer')} htmlFor="feePayerSelect">
                   <Select
                     id="feePayerSelect"
@@ -936,12 +995,14 @@ function DetailRow({ label, children }: { label: string; children: React.ReactNo
  */
 function QuoteSummary({
   area,
+  paid,
   paymentMethod,
   feePayer,
   goods,
   codTotal,
 }: {
   area: AreaRoute | null
+  paid: CustomerPaid
   paymentMethod: 'cod' | 'prepaid'
   feePayer: 'customer' | 'shop'
   goods: number
@@ -971,24 +1032,50 @@ function QuoteSummary({
         <span className="truncate text-xs text-muted-foreground">{area.routeName}</span>
       </div>
 
-      {paymentMethod === 'cod' ? <Row label={t('quote.goods')} value={formatMmk(goods)} /> : null}
+      {/* The goods row belongs to 'nothing' alone. On 'product' it would read
+          "Goods 0" for a product the customer has already paid for, which
+          invites the shop to think we lost the amount. */}
+      {paid === 'nothing' ? <Row label={t('quote.goods')} value={formatMmk(goods)} /> : null}
+      {paid === 'product' ? (
+        <Row label={t('quote.goods')} value={t('quote.goodsPaid')} />
+      ) : null}
       <Row
         label={t('quote.fee')}
         value={formatMmk(area.fee)}
-        hint={feePayer === 'shop' ? t('quote.feeOnYou') : undefined}
+        /*
+          THE HINT IS FOR ONE CASE NOW, and it used to be for two.
+
+          It read "Deducted from your money" whenever the shop paid the fee,
+          which is every prepaid parcel -- `bookingPayment` forces
+          `feePayer: 'shop'` when nothing is collected at the door. So a shop
+          buying a delivery was told money was being taken off them, at the
+          moment of buying it. That is a penalty framing on an ordinary
+          purchase, and prepaid now gets a total of its own below instead.
+
+          What survives is the COD case, where "deducted" is literally what
+          happens -- but scoped honestly: `owed_to_shop = cod_amount -
+          delivery_fee`, so it comes off THIS PARCEL's collection, not off
+          their balance at large, which is what "your money" implied.
+        */
+        hint={paymentMethod === 'cod' && feePayer === 'shop' ? t('quote.feeNetted') : undefined}
       />
 
-      {paymentMethod === 'cod' ? (
-        <>
-          <hr className="my-1.5 border-brand-gold/40" />
-          {/* The number the rider will actually ask for. Largest thing here,
-              because it is the one a shop double-checks. */}
-          <div className="flex items-baseline justify-between gap-3">
-            <span className="font-medium">{t('quote.total')}</span>
-            <span className="text-xl font-bold tabular-nums">{formatMmk(codTotal)}</span>
-          </div>
-        </>
-      ) : null}
+      <hr className="my-1.5 border-brand-gold/40" />
+      {/*
+        ONE NUMBER, EITHER WAY. COD shows what the rider will ask for -- the
+        figure a shop double-checks. Prepaid shows what the delivery costs them,
+        which is the figure they are actually agreeing to and which the old
+        panel never stated: it listed a fee and a warning and left the shop to
+        work out that the warning WAS the total.
+      */}
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="font-medium">
+          {paymentMethod === 'cod' ? t('quote.total') : t('quote.youPay')}
+        </span>
+        <span className="text-xl font-bold tabular-nums">
+          {formatMmk(paymentMethod === 'cod' ? codTotal : area.fee)}
+        </span>
+      </div>
     </div>
   )
 }

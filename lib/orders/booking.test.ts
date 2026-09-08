@@ -1,5 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
+import { codCollectable } from '@/lib/pricing'
 import {
   bookingBlocker,
   bookingPayment,
@@ -15,7 +16,7 @@ const READY: BookingGate = {
   pickupInServiceArea: true,
   addressLength: 24,
   hasArea: true,
-  prepaid: false,
+  needsAmount: true,
   amount: { ok: true, value: 45_000 },
 }
 
@@ -39,8 +40,8 @@ describe('bookingReady — the regression this module exists for', () => {
   })
 
   /** Prepaid is the tick, and only the tick. */
-  test('an empty amount WITH prepaid ticked is fine', () => {
-    const gate = { ...READY, prepaid: true, amount: parseAmount('') }
+  test('an empty amount is fine when none is asked for', () => {
+    const gate = { ...READY, needsAmount: false, amount: parseAmount('') }
     assert.equal(bookingReady(gate), true)
     assert.equal(bookingBlocker(gate), null)
   })
@@ -76,7 +77,7 @@ describe('bookingBlocker — one reason, in the order a shop would fix them', ()
       pickupInServiceArea: false,
       addressLength: 0,
       hasArea: false,
-      prepaid: false,
+      needsAmount: true,
       amount: parseAmount(''),
     }
     assert.equal(bookingBlocker(everythingWrong), 'pickup_outside')
@@ -143,12 +144,12 @@ describe('parseAmount — what the shop typed, or why it will not do', () => {
 
 describe('bookingPayment — what actually gets posted', () => {
   test('a COD parcel posts the goods value and keeps the chosen fee payer', () => {
-    assert.deepEqual(bookingPayment(false, parseAmount('45000'), 'customer'), {
+    assert.deepEqual(bookingPayment('nothing', parseAmount('45000'), 'customer'), {
       paymentMethod: 'cod',
       goodsValue: 45_000,
       feePayer: 'customer',
     })
-    assert.deepEqual(bookingPayment(false, parseAmount('45000'), 'shop').feePayer, 'shop')
+    assert.deepEqual(bookingPayment('nothing', parseAmount('45000'), 'shop').feePayer, 'shop')
   })
 
   /**
@@ -157,7 +158,7 @@ describe('bookingPayment — what actually gets posted', () => {
    * contradicts the query that reads it.
    */
   test('a prepaid parcel records that the shop pays the fee, because it does', () => {
-    assert.deepEqual(bookingPayment(true, parseAmount(''), 'customer'), {
+    assert.deepEqual(bookingPayment('all', parseAmount(''), 'customer'), {
       paymentMethod: 'prepaid',
       goodsValue: 0,
       feePayer: 'shop',
@@ -165,8 +166,8 @@ describe('bookingPayment — what actually gets posted', () => {
   })
 
   test('ticking prepaid discards whatever was typed', () => {
-    assert.equal(bookingPayment(true, parseAmount('45000'), 'customer').goodsValue, 0)
-    assert.equal(bookingPayment(true, parseAmount('45000'), 'customer').paymentMethod, 'prepaid')
+    assert.equal(bookingPayment('all', parseAmount('45000'), 'customer').goodsValue, 0)
+    assert.equal(bookingPayment('all', parseAmount('45000'), 'customer').paymentMethod, 'prepaid')
   })
 
   /**
@@ -175,21 +176,73 @@ describe('bookingPayment — what actually gets posted', () => {
    * this function returns has to satisfy both, or the shop gets a validation
    * error about a field they never saw.
    */
-  test('every output satisfies orders_cod_consistent', () => {
-    for (const prepaid of [true, false]) {
+  /**
+   * THE CONSTRAINT IS ON `cod_amount`, NOT ON THE GOODS VALUE, and this test
+   * used to conflate them — `goodsValue > 0` was a fine proxy while a COD
+   * parcel always carried goods.
+   *
+   * The 'product' case is exactly where they part company: goods 0, and
+   * `cod_amount = codCollectable(0, fee, 'customer') = fee`. That is what makes
+   * it legal under `orders_cod_consistent` (`cod` demands `cod_amount > 0`) and
+   * why it needs no migration, so the real figure is what has to be checked.
+   */
+  test('every reachable output satisfies orders_cod_consistent', () => {
+    const FEE = 4000
+    for (const paid of ['nothing', 'product', 'all'] as const) {
       for (const raw of ['', '0', '1', '45000', 'abc', '-5']) {
-        const p = bookingPayment(prepaid, parseAmount(raw), 'customer')
+        const p = bookingPayment(paid, parseAmount(raw), 'customer')
+        const codAmount =
+          p.paymentMethod === 'cod' ? codCollectable(p.goodsValue, FEE, p.feePayer) : 0
         const consistent =
-          (p.paymentMethod === 'cod' && p.goodsValue > 0) ||
-          (p.paymentMethod === 'prepaid' && p.goodsValue === 0)
-        // A COD parcel with an unusable amount is blocked by bookingBlocker
-        // before it can be posted, so only the reachable pairs must hold.
-        const reachable = bookingReady({ ...READY, prepaid, amount: parseAmount(raw) })
+          (p.paymentMethod === 'cod' && codAmount > 0) ||
+          (p.paymentMethod === 'prepaid' && codAmount === 0)
+        // An unusable amount is blocked by bookingBlocker before it can be
+        // posted, so only the reachable combinations must hold.
+        const reachable = bookingReady({
+          ...READY,
+          needsAmount: paid === 'nothing',
+          amount: parseAmount(raw),
+        })
         if (reachable) {
-          assert.ok(consistent, `prepaid=${prepaid} raw=${JSON.stringify(raw)} -> ${JSON.stringify(p)}`)
+          assert.ok(
+            consistent,
+            `paid=${paid} raw=${JSON.stringify(raw)} -> ${JSON.stringify(p)} cod=${codAmount}`,
+          )
         }
       }
     }
+  })
+
+  /**
+   * THE CASE THE BOOLEAN COULD NOT SAY. A customer pays the shop for the
+   * product and leaves the delivery fee for the door. The rider collects the
+   * fee and nothing else.
+   */
+  test("'product' posts a COD parcel that collects the fee alone", () => {
+    const p = bookingPayment('product', parseAmount(''), 'shop')
+    assert.deepEqual(p, { paymentMethod: 'cod', goodsValue: 0, feePayer: 'customer' })
+    // fee_payer is 'customer' whatever the shop's select said, because that IS
+    // what this option means — they are paying it at the door.
+    assert.equal(codCollectable(p.goodsValue, 4000, p.feePayer), 4000)
+  })
+
+  test("and it needs no amount, while 'nothing' still does", () => {
+    assert.equal(bookingBlocker({ ...READY, needsAmount: false, amount: parseAmount('') }), null)
+    assert.notEqual(bookingBlocker({ ...READY, needsAmount: true, amount: parseAmount('') }), null)
+  })
+
+  /**
+   * The settlement identity this rests on, asserted here so the arithmetic is
+   * pinned next to the thing that produces it: with fee_payer 'customer',
+   * `owed_to_shop` and `goods_value` are both `cod_amount - delivery_fee`, so a
+   * fee-only collection owes the shop nothing and books the whole amount as our
+   * fee.
+   */
+  test('a fee-only collection leaves the shop owed nothing', () => {
+    const FEE = 4000
+    const p = bookingPayment('product', parseAmount(''), 'customer')
+    const codAmount = codCollectable(p.goodsValue, FEE, p.feePayer)
+    assert.equal(codAmount - FEE, 0, 'goods_value and owed_to_shop must both be zero')
   })
 })
 

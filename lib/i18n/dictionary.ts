@@ -74,6 +74,12 @@ export const DICTIONARY = {
   'money.total': { en: 'Total at the door', my: 'စုစုပေါင်း' },
   'money.prepaid': { en: 'Prepaid', my: 'ငွေရှင်းပြီး' },
   'money.collectNothing': { en: 'Collect nothing at the door.', my: 'ငွေ ကောက်ခံရန် မလိုပါ။' },
+  /* The rider is collecting the delivery fee only — the customer already paid
+     the shop for the product. Said so a small total does not look like a bug. */
+  'money.feeOnlyHint': {
+    en: 'Delivery fee only — the product is already paid.',
+    my: 'ပို့ဆောင်ခ သာ — ကုန်ဖိုးကို ရှင်းပြီးပါပြီ။',
+  },
   'money.youEarn': { en: 'You earn', my: 'သင်ရမည့်ငွေ' },
 
   // ---- actions --------------------------------------------------------------
@@ -325,6 +331,33 @@ export const DICTIONARY = {
     en: 'This parcel must be prepaid. Cash on delivery unlocks once the office has reviewed your shop — you can keep booking in the meantime.',
     my: 'ဒီပါဆယ်ကို ငွေရှင်းပြီးသား ဖြစ်ရပါမည်။ ရုံးမှ ဆိုင်ကို စစ်ပြီးလျှင် COD ဖွင့်ပါမည် — အခုအချိန်တွင် ဆက်တင်နိုင်ပါသည်။',
   },
+  /*
+    THREE ANSWERS, because there are three. This was one checkbox — "Already
+    paid, collect nothing" — which collapsed "they paid for the product" and
+    "they paid for everything" into the same thing. The first of those leaves
+    the DELIVERY FEE to be collected at the door, and there was no way to book
+    it: the amount field demanded a goods figure, and ticking the box zeroed
+    the collection entirely.
+  */
+  'book.paidQuestion': {
+    en: 'What has the customer already paid?',
+    my: 'ဝယ်သူ ဘာကို ရှင်းပြီးပြီလဲ',
+  },
+  'book.paidNothing': { en: 'Nothing yet', my: 'မရှင်းရသေးပါ' },
+  'book.paidProduct': {
+    en: 'The product only — collect the delivery fee',
+    my: 'ကုန်ဖိုးသာ — ပို့ဆောင်ခ ကောက်ပါ',
+  },
+  'book.paidAll': {
+    en: 'Everything — collect nothing',
+    my: 'အားလုံး — ငွေ မကောက်ပါ',
+  },
+  /* Shown under the 'product' choice, so the shop can see what the rider will
+     actually ask for before it books. */
+  'book.paidProductNote': {
+    en: 'The rider collects the delivery fee only. The product is already paid.',
+    my: 'ရိုက်ဒါ ပို့ဆောင်ခ ကိုသာ ကောက်ပါမည်။ ကုန်ဖိုးကို ရှင်းပြီးပါပြီ။',
+  },
   'book.prepaidNote': { en: 'Already paid — the rider collects nothing.', my: 'ငွေရှင်းပြီး — ရိုက်ဒါ ငွေမကောက်ပါ။' },
   'book.more': { en: 'More details', my: 'အခြား အချက်အလက်' },
   'book.moreHint': { en: 'optional', my: 'မထည့်လည်းရ' },
@@ -386,7 +419,28 @@ export const DICTIONARY = {
   'quote.fee': { en: 'Delivery fee', my: 'ပို့ဆောင်ခ' },
   'quote.total': { en: 'Rider collects', my: 'ရိုက်ဒါ ကောက်ခံမည်' },
   'quote.route': { en: 'Route', my: 'လမ်းကြောင်း' },
-  'quote.feeOnYou': { en: 'Deducted from your money', my: 'သင့်ငွေမှ ဖြတ်ပါမည်' },
+  /*
+    WAS 'Deducted from your money', which was true and badly framed.
+
+    It appeared in two different situations and described neither well. On a
+    PREPAID parcel the shop is simply buying a delivery -- nothing is collected
+    at the door and nothing is taken away -- so it read as a penalty on an
+    ordinary purchase; that case now gets `quote.youPay` and a total of its own
+    instead. On a COD parcel where the shop pays the fee, the fee is netted
+    against THIS PARCEL's collection (`owed_to_shop = cod_amount -
+    delivery_fee`), not against their balance at large -- which is what "your
+    money" sounded like.
+  */
+  'quote.feeNetted': {
+    en: 'Taken from this parcel’s collection',
+    my: 'ဒီပါဆယ်၏ ကောက်ခံငွေမှ ခုပါမည်',
+  },
+  /* The prepaid total, mirroring `quote.total` for COD: one clear number the
+     shop is agreeing to, rather than a fee row with a warning beside it. */
+  'quote.youPay': { en: 'You pay', my: 'သင် ပေးရမည်' },
+  /* Not "0". A zero beside "Goods" reads as a lost amount; this says why the
+     collection is only the fee. */
+  'quote.goodsPaid': { en: 'already paid', my: 'ရှင်းပြီး' },
   'quote.pickArea': { en: 'Choose an area to see the fee.', my: 'ပို့ဆောင်ခ ကြည့်ရန် မြို့နယ် ရွေးပါ။' },
 
   // ---- created --------------------------------------------------------------

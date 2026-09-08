@@ -82,8 +82,18 @@ export type BookingGate = {
   /** Trimmed length of the delivery address. */
   addressLength: number
   hasArea: boolean
-  /** The shop ticked "already paid — collect nothing". */
-  prepaid: boolean
+  /**
+   * The shop has to type a goods figure, which is true for ONE of the three
+   * things a customer may have paid.
+   *
+   * WAS `prepaid: boolean`, and a boolean could only say two things where there
+   * are three. "Nothing paid" needs an amount; "the product only" does not,
+   * because the rider collects the delivery fee and nothing else; "everything
+   * paid" does not either. The old flag lumped the middle case in with the
+   * first and demanded a figure it has no field for -- `amount_empty` fires on
+   * anything under 1, so that case could not be booked at all.
+   */
+  needsAmount: boolean
   amount: AmountParse
 }
 
@@ -110,10 +120,13 @@ export function bookingBlocker(g: BookingGate): BookingBlocker | null {
   if (g.addressLength < MIN_ADDRESS_LENGTH) return 'no_address'
   if (!g.hasArea) return 'no_area'
 
-  // THE CLAUSE THAT WAS MISSING. A prepaid parcel needs no amount; anything
-  // else does, and "they left it blank" must never be read as "already paid".
-  if (!g.prepaid && !g.amount.ok) return `amount_${g.amount.reason}`
-  if (!g.prepaid && g.amount.ok && g.amount.value < 1) return 'amount_empty'
+  /*
+    THE CLAUSE THAT WAS MISSING, and it still is the one that matters: "they
+    left it blank" must never be read as "already paid". It now applies only
+    where an amount is actually asked for -- see `needsAmount`.
+  */
+  if (g.needsAmount && !g.amount.ok) return `amount_${g.amount.reason}`
+  if (g.needsAmount && g.amount.ok && g.amount.value < 1) return 'amount_empty'
 
   return null
 }
@@ -123,23 +136,49 @@ export function bookingReady(g: BookingGate): boolean {
 }
 
 /**
+ * WHAT THE CUSTOMER HAS ALREADY PAID — the three real answers.
+ *
+ * This was a boolean, and a boolean could not say the middle one. A customer
+ * often pays the shop for the PRODUCT and leaves the delivery fee to be
+ * collected at the door; the form offered only "collect the full amount" or
+ * "collect nothing", so that parcel could not be booked.
+ *
+ *   'nothing'   the rider collects the goods, and the fee too if the customer
+ *               is paying it
+ *   'product'   the rider collects the DELIVERY FEE and nothing else
+ *   'all'       the rider collects nothing
+ */
+export type CustomerPaid = 'nothing' | 'product' | 'all'
+
+/**
  * What actually gets posted, derived from the same inputs the preview uses.
  *
  * The old form derived `paymentMethod` from whether the amount happened to be
  * zero, so a blank field and a genuinely prepaid parcel were indistinguishable.
- * It is now the tick, and only the tick.
+ * It is now the stated answer, and only that.
  *
- * `feePayer` is forced to 'shop' on a prepaid parcel because that is what
- * actually happens: `cod_by_shop` ignores fee_payer when payment_method is not
- * 'cod' and bills the shop regardless. Storing 'customer' there would be a row
- * that contradicts the query reading it.
+ * NO MIGRATION HOLDS THIS UP: all three shapes were already legal.
+ * `codCollectable(0, fee, 'customer')` is `fee`, and `orders_cod_consistent`
+ * wants `cod_amount > 0` for a COD parcel — which a positive fee satisfies. The
+ * settlement query lands right on its own too: with `fee_payer = 'customer'`,
+ * `goods_value` and `owed_to_shop` are both `cod_amount - delivery_fee` = 0,
+ * `platform_fees` is the fee, and the parts still sum to the collection.
+ *
+ * `feePayer` IS ONLY A CHOICE IN ONE CASE:
+ *
+ *   'product'  ->  'customer', by definition — they are paying it at the door
+ *   'all'      ->  'shop', because `cod_by_shop` ignores fee_payer off COD and
+ *                  bills the shop regardless; storing 'customer' would be a row
+ *                  contradicting the query that reads it
+ *   'nothing'  ->  the shop's, because it may still absorb the fee itself
  */
 export function bookingPayment(
-  prepaid: boolean,
+  paid: CustomerPaid,
   amount: AmountParse,
   feePayer: 'customer' | 'shop',
 ): { paymentMethod: 'cod' | 'prepaid'; goodsValue: number; feePayer: 'customer' | 'shop' } {
-  if (prepaid) return { paymentMethod: 'prepaid', goodsValue: 0, feePayer: 'shop' }
+  if (paid === 'all') return { paymentMethod: 'prepaid', goodsValue: 0, feePayer: 'shop' }
+  if (paid === 'product') return { paymentMethod: 'cod', goodsValue: 0, feePayer: 'customer' }
   return {
     paymentMethod: 'cod',
     goodsValue: amount.ok ? amount.value : 0,

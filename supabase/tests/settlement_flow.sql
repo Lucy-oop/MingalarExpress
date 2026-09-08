@@ -252,5 +252,104 @@ begin
 end $$;
 reset role;
 
+\echo '=== S9. the customer paid the product; the rider collects the fee alone ==='
+--  THE OFFICE, EXPLICITLY. `reset role` above restores the Postgres role but
+--  NOT `request.jwt.claims`, which the block before this one set to the shop
+--  owner -- so `assign_order` raised `forbidden` until this line existed.
+--  Session state outlives the role.
+select set_config('request.jwt.claims','{"sub":"11111111-1111-1111-1111-111111111111","role":"authenticated"}',false);
+--  A customer often pays the shop for the PRODUCT and leaves the delivery fee
+--  to be collected at the door. The booking form could not express it -- one
+--  checkbox collapsed "paid for the product" and "paid for everything" into
+--  "collect nothing" -- and the fix needed no migration, because the shape was
+--  already legal:
+--
+--      payment_method = 'cod'
+--      fee_payer      = 'customer'
+--      cod_amount     = delivery_fee          (goods 0)
+--
+--  This asserts the MONEY, which was read off cod_by_shop rather than observed.
+--  The rider hands in the fee, we keep all of it, and the shop is owed nothing
+--  -- and the parts still sum to the collection, which this whole page depends
+--  on: a money page whose parts do not sum to its total is one nobody believes.
+do $$
+declare oid uuid; fee bigint := 4000; r record;
+begin
+  insert into public.orders (shop_id, pickup_address, pickup_lat, pickup_lng,
+    customer_name, customer_phone, dropoff_address, dropoff_area_id,
+    dropoff_lat, dropoff_lng, parcel_desc, payment_method, cod_amount,
+    delivery_fee, fee_payer, created_by)
+  select s.id, s.pickup_address, s.pickup_lat, s.pickup_lng, 'Fee Only Customer',
+    '+959791110093', 'Waizayanta Road, South Okkalapa',
+    (select id from public.service_areas where name = 'South Okkalapa'),
+    16.8300, 96.1950, 'product already paid', 'cod', fee, fee, 'customer',
+    s.owner_id
+  from public.shops s where s.id = 'aaaaaaaa-0000-0000-0000-000000000001'
+  returning id into oid;
+  raise notice 'PASS: a fee-only COD parcel is accepted (cod_amount = the fee)';
+
+  perform public.assign_order(oid, '44444444-4444-4444-4444-444444444444');
+  perform public.advance_order(oid, 'picked_up', 16.8478, 96.1693);
+  perform public.advance_order(oid, 'delivered', 16.8300, 96.1950,
+                               oid::text || '/p.webp', 'The customer');
+
+  select * into r from public.cod_by_shop() where shop_id = 'aaaaaaaa-0000-0000-0000-000000000001';
+
+  -- The rider took the fee and nothing else.
+  if r.cod_collected < fee then
+    raise exception 'FAIL: cod_collected % did not include the fee-only parcel', r.cod_collected;
+  end if;
+  raise notice 'PASS: the fee reaches cod_collected';
+
+  -- THE PART THAT MATTERS TO THE SHOP: it is owed nothing for this parcel. The
+  -- customer paid it directly for the product, so there is nothing to pass on.
+  -- Asserted as a DELTA against a second identical parcel, so the figure does
+  -- not depend on whatever the rest of this suite booked.
+  declare
+    owed_before bigint := r.owed_to_shop;
+    fees_before bigint := r.platform_fees;
+    oid2 uuid;
+  begin
+    insert into public.orders (shop_id, pickup_address, pickup_lat, pickup_lng,
+      customer_name, customer_phone, dropoff_address, dropoff_area_id,
+      dropoff_lat, dropoff_lng, parcel_desc, payment_method, cod_amount,
+      delivery_fee, fee_payer, created_by)
+    select s.id, s.pickup_address, s.pickup_lat, s.pickup_lng, 'Fee Only Two',
+      '+959791110094', 'Waizayanta Road, South Okkalapa',
+      (select id from public.service_areas where name = 'South Okkalapa'),
+      16.8300, 96.1950, 'product already paid 2', 'cod', fee, fee, 'customer',
+      s.owner_id
+    from public.shops s where s.id = 'aaaaaaaa-0000-0000-0000-000000000001'
+    returning id into oid2;
+
+    perform public.assign_order(oid2, '44444444-4444-4444-4444-444444444444');
+    perform public.advance_order(oid2, 'picked_up', 16.8478, 96.1693);
+    perform public.advance_order(oid2, 'delivered', 16.8300, 96.1950,
+                                 oid2::text || '/p.webp', 'The customer');
+
+    select * into r from public.cod_by_shop()
+     where shop_id = 'aaaaaaaa-0000-0000-0000-000000000001';
+
+    if r.owed_to_shop <> owed_before then
+      raise exception 'FAIL: a fee-only parcel changed owed_to_shop by %',
+        r.owed_to_shop - owed_before;
+    end if;
+    raise notice 'PASS: the shop is owed nothing more for a fee-only parcel';
+
+    if r.platform_fees <> fees_before + fee then
+      raise exception 'FAIL: platform_fees moved by %, expected %',
+        r.platform_fees - fees_before, fee;
+    end if;
+    raise notice 'PASS: the whole collection is booked as our fee';
+  end;
+
+  -- And the page still adds up: collected = goods + fees.
+  if r.cod_collected <> r.goods_value + r.platform_fees then
+    raise exception 'FAIL: % collected <> % goods + % fees',
+      r.cod_collected, r.goods_value, r.platform_fees;
+  end if;
+  raise notice 'PASS: collected = goods + fees still holds';
+end $$;
+
 \echo ''
 \echo '####  ALL SETTLEMENT CHECKS PASSED  ####'
