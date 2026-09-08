@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Coins, Navigation, PackageOpen, Phone, RefreshCw } from 'lucide-react'
+import { Coins, Navigation, PackageCheck, PackageOpen, Phone, RefreshCw } from 'lucide-react'
 import { OnlineToggle } from '@/components/rider/online-toggle'
 import { JobCard } from '@/components/rider/job-card'
 import { CollectionCard } from '@/components/rider/collection-card'
@@ -79,7 +79,15 @@ export function RiderDashboard({
   }, [riderId, router])
 
   const deliveries = useMemo(() => feed.active.filter((j) => j.leg !== 'pickup'), [feed.active])
-  const pickups = useMemo(() => feed.active.filter((j) => j.leg === 'pickup'), [feed.active])
+  /*
+    STILL TO FETCH, not "on a pickup leg". This counted parcels already on the
+    bike, so the footer told a rider they had three to collect while all three
+    were behind them — the same predicate `planCollections` uses for its groups.
+  */
+  const pickups = useMemo(
+    () => feed.active.filter((j) => j.leg === 'pickup' && j.status === 'assigned'),
+    [feed.active],
+  )
 
   /*
     ONE CARD PER SHOP, then the stops. `planCollections` groups everything still
@@ -152,6 +160,27 @@ export function RiderDashboard({
         <CollectionCard key={group.key} group={group} pickupRate={feed.rates.pickupRate} />
       ))}
 
+      {/*
+        WHAT IS ALREADY ON THE BIKE, in one line.
+
+        These used to be STOPS — each collected parcel became its own "Next
+        stop" card with a green DONE — DELIVERED button, which 0029 refuses
+        (`collection_not_deliverable`). A rider carrying ten scrolled past ten
+        cards that needed nothing from them, and the counter said 1/10 while the
+        footer said "0 to deliver".
+
+        They are not ten places to go; they are one hub run. Still shown,
+        because a rider should be able to see what they are carrying.
+      */}
+      {plan.aboard.length > 0 ? (
+        <p className="flex items-center gap-2 rounded-lg bg-emerald-50 px-3 py-2.5 text-sm font-medium text-emerald-900">
+          <PackageCheck className="size-5 shrink-0" aria-hidden="true" />
+          <span>
+            {t('pickup.aboard')} · {n(plan.aboard.length)}
+          </span>
+        </p>
+      ) : null}
+
       {/* ---- the next stop ------------------------------------------------ */}
       {next ? (
         <section className="space-y-2 rounded-xl border-2 border-primary bg-card p-4">
@@ -165,7 +194,24 @@ export function RiderDashboard({
           ) : null}
           <p className="text-sm font-medium">{next.customerName}</p>
 
-          {next.paymentMethod === 'cod' ? (
+          {/*
+            MONEY ONLY WHERE THE LEG ENDS AT A CUSTOMER.
+
+            A RETURN carries a parcel back to the shop and collects nothing, and
+            neither branch here was true of it: "collect 12,000" in the gold box
+            is money the rider must not ask for, and "Prepaid" is not what
+            happened either. `money.collectNothing` is what `JobActions` says in
+            the same situation.
+
+            Aboard collections cannot reach this any more — they are no longer
+            stops — but the guard is on the LEG rather than on that, so it stays
+            correct if one ever does.
+          */}
+          {next.leg === 'return' || next.leg === 'pickup' ? (
+            <p className="rounded-lg bg-muted px-3 py-2 text-base font-semibold">
+              {t('money.collectNothing')}
+            </p>
+          ) : next.paymentMethod === 'cod' ? (
             <p className="flex items-center gap-2 rounded-lg bg-brand-gold/15 px-3 py-2">
               <Coins className="size-6 shrink-0 text-brand-gold" aria-hidden="true" />
               <span className="text-2xl font-bold tabular-nums">{formatMmk(next.codAmount)}</span>
@@ -224,10 +270,15 @@ export function RiderDashboard({
                 : t('action.markDelivered')}
           </Link>
         </section>
-      ) : plan.groups.length > 0 ? (
-        // Collections to make, nothing aboard yet. "Nothing to do right now"
-        // above a shop card telling them to collect ten parcels would be a
-        // straight contradiction.
+      ) : plan.groups.length > 0 || plan.aboard.length > 0 ? (
+        /*
+          Work in hand, just not a STOP. "Nothing to do right now" above a shop
+          card telling them to collect ten parcels would be a straight
+          contradiction — and `plan.aboard` is the same trap from the other
+          side: once collected parcels stopped being stops, a rider driving ten
+          of them to the hub had no stops and no groups, and this branch would
+          have told them their day was empty.
+        */
         null
       ) : (
         <div className="flex flex-col items-center gap-2 rounded-xl border-2 border-dashed p-10 text-center">

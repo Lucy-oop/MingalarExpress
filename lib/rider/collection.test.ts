@@ -65,24 +65,28 @@ describe('planCollections — the ten-parcels-one-shop case', () => {
    * A collection empties itself as the run proceeds: once a parcel is aboard it
    * is a delivery stop, and the card disappears when the last one is collected.
    */
-  test('a parcel already picked up is a stop, not a collection', () => {
-    const plan = planCollections([
-      job({ id: '1', status: 'picked_up' }),
-      job({ id: '2' }),
-    ])
+  /**
+   * A COLLECTED PARCEL IS ABOARD, AND ABOARD IS NOT A STOP. This used to assert
+   * `stops`, which is what put each collected parcel on the dashboard as its
+   * own "Next stop" card with a green DONE — DELIVERED button — an action 0029
+   * refuses outright (`collection_not_deliverable`). The rider's next stop is
+   * the hub, once, not one per parcel.
+   */
+  test('a parcel already picked up is aboard, not a stop', () => {
+    const plan = planCollections([job({ id: '1', status: 'picked_up' }), job({ id: '2' })])
     assert.equal(plan.groups.length, 1)
     assert.equal(plan.groups[0]?.jobs.length, 1)
-    assert.equal(plan.stops.length, 1)
-    assert.equal(plan.stops[0]?.id, '1')
+    assert.equal(plan.aboard.length, 1)
+    assert.equal(plan.aboard[0]?.id, '1')
+    assert.equal(plan.stops.length, 0, 'a collected parcel must not become a stop')
   })
 
-  test('a fully collected run has no collection card at all', () => {
-    const jobs = Array.from({ length: 3 }, (_, i) =>
-      job({ id: String(i), status: 'picked_up' }),
-    )
+  test('a fully collected run has no collection card and no stops', () => {
+    const jobs = Array.from({ length: 3 }, (_, i) => job({ id: String(i), status: 'picked_up' }))
     const plan = planCollections(jobs)
     assert.equal(plan.groups.length, 0)
-    assert.equal(plan.stops.length, 3)
+    assert.equal(plan.aboard.length, 3)
+    assert.equal(plan.stops.length, 0)
   })
 
   /**
@@ -163,7 +167,7 @@ describe('planCollections — the Directions point', () => {
 
 describe('planCollections — nothing to do', () => {
   test('an empty run', () => {
-    assert.deepEqual(planCollections([]), { groups: [], stops: [] })
+    assert.deepEqual(planCollections([]), { groups: [], aboard: [], stops: [] })
   })
 })
 
@@ -195,5 +199,78 @@ describe('planCollections — what 0028 made collectable, and what it did not', 
     const plan = planCollections([job({ id: 'x', leg: null })])
     assert.equal(plan.groups.length, 0)
     assert.equal(plan.stops.length, 1)
+  })
+})
+
+describe('the three buckets, and what must never move between them', () => {
+  /**
+   * `planCollections` sorts a run into three things a rider does differently:
+   *
+   *   groups   shops still to visit, one card each
+   *   aboard   collected, riding to the hub — nothing to do on the way
+   *   stops    somewhere the rider is actually going
+   *
+   * The dashboard renders each differently, so a parcel in the wrong bucket is
+   * either a wasted journey or a hidden job.
+   */
+  test('still to collect goes to groups', () => {
+    const plan = planCollections([job({ id: 'a', leg: 'pickup', status: 'assigned' })])
+    assert.equal(plan.groups.length, 1)
+    assert.equal(plan.aboard.length, 0)
+    assert.equal(plan.stops.length, 0)
+  })
+
+  test('collected goes to aboard, never to stops', () => {
+    const plan = planCollections([job({ id: 'a', leg: 'pickup', status: 'picked_up' })])
+    assert.equal(plan.aboard.length, 1)
+    assert.equal(plan.stops.length, 0)
+    assert.equal(plan.groups.length, 0)
+  })
+
+  /**
+   * THE BUG CLASS THAT PRODUCED THE ORIGINAL `leg !== 'return'` ERROR, now
+   * approached from the other side.
+   *
+   * A retried failed delivery is `leg = 'delivery'`, `status = 'assigned'`. The
+   * old predicate swept it into a COLLECTION and would have sent a rider across
+   * Yangon for a parcel on our own hub shelf. The mirror-image mistake would be
+   * sweeping it into ABOARD, which hides a live delivery from the rider
+   * entirely — worse, because nothing on screen would say the parcel exists.
+   */
+  test('a retried failed delivery is a stop — not aboard, not a group', () => {
+    const plan = planCollections([job({ id: 'retry', leg: 'delivery', status: 'assigned' })])
+    assert.equal(plan.stops.length, 1)
+    assert.equal(plan.stops[0]?.id, 'retry')
+    assert.equal(plan.aboard.length, 0, 'a live delivery must never be hidden as aboard')
+    assert.equal(plan.groups.length, 0)
+  })
+
+  /** A return travels TO the shop, so the rider IS going there. */
+  test('a return is a stop', () => {
+    const plan = planCollections([job({ id: 'r', leg: 'return', status: 'picked_up' })])
+    assert.equal(plan.stops.length, 1)
+    assert.equal(plan.aboard.length, 0)
+  })
+
+  /** A delivery in flight is a stop too — the doorstep is still ahead. */
+  test('a delivery in flight is a stop', () => {
+    const plan = planCollections([job({ id: 'd', leg: 'delivery', status: 'picked_up' })])
+    assert.equal(plan.stops.length, 1)
+    assert.equal(plan.aboard.length, 0)
+  })
+
+  /** Every parcel lands somewhere: a rider must never lose one to bucketing. */
+  test('nothing is dropped', () => {
+    const jobs = [
+      job({ id: '1', leg: 'pickup', status: 'assigned' }),
+      job({ id: '2', leg: 'pickup', status: 'picked_up' }),
+      job({ id: '3', leg: 'delivery', status: 'assigned' }),
+      job({ id: '4', leg: 'delivery', status: 'picked_up' }),
+      job({ id: '5', leg: 'return', status: 'picked_up' }),
+    ]
+    const plan = planCollections(jobs)
+    const counted =
+      plan.groups.reduce((n, g) => n + g.jobs.length, 0) + plan.aboard.length + plan.stops.length
+    assert.equal(counted, jobs.length)
   })
 })

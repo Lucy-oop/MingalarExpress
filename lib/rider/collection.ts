@@ -47,7 +47,22 @@ export type CollectionGroup = {
 export type CollectionPlan = {
   /** One per distinct pickup address with parcels still to collect. */
   groups: CollectionGroup[]
-  /** Everything already in hand, in the order sortRoute put them. */
+  /**
+   * Collected, on the bike, riding to the hub — `leg = 'pickup'` with any
+   * status but `assigned`.
+   *
+   * NOT A STOP, which is the whole reason this bucket exists. These used to
+   * fall into `stops`, so each one became a "Next stop" card on the dashboard
+   * with a green DONE — DELIVERED button. 0029 raises
+   * `collection_not_deliverable` for exactly that, so the card advertised an
+   * action the database refuses — and the rider's actual next stop was the hub,
+   * once, not ten parcels.
+   *
+   * Kept rather than dropped: a rider carrying ten parcels should still be able
+   * to see them. They are simply not ten places to go.
+   */
+  aboard: RiderJob[]
+  /** Somewhere the rider is actually going, in the order sortRoute put them. */
   stops: RiderJob[]
 }
 
@@ -68,6 +83,7 @@ export function planCollections(
   pickupPointFor?: (job: RiderJob) => { lat: number; lng: number } | null,
 ): CollectionPlan {
   const groups = new Map<string, CollectionGroup>()
+  const aboard: RiderJob[] = []
   const stops: RiderJob[] = []
 
   for (const job of jobs) {
@@ -84,7 +100,20 @@ export function planCollections(
     */
     const collectable = job.status === 'assigned' && job.leg === 'pickup'
     if (!collectable) {
-      stops.push(job)
+      /*
+        A PICKUP LEG THAT IS NOT COLLECTABLE IS ABOARD, not a stop. It has been
+        collected and rides to the hub until `close_trip` releases it; there is
+        nothing to do with it on the way.
+
+        Note how narrow this stays: `leg === 'pickup'` and nothing else. A
+        RETRIED FAILED DELIVERY is `leg = 'delivery'`, `status = 'assigned'` and
+        must remain a stop — the rider genuinely is going to that customer. That
+        is the same distinction the predicate above exists for, from the other
+        side, and getting it wrong here would hide a live delivery from the
+        rider instead of sending them to the wrong place.
+      */
+      if (job.leg === 'pickup') aboard.push(job)
+      else stops.push(job)
       continue
     }
 
@@ -116,6 +145,7 @@ export function planCollections(
     groups: [...groups.values()].sort(
       (a, b) => b.jobs.length - a.jobs.length || a.address.localeCompare(b.address),
     ),
+    aboard,
     stops,
   }
 }
