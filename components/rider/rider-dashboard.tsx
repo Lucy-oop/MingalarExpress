@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
+  ChevronDown,
   Coins,
   Navigation,
   PackageCheck,
@@ -114,6 +115,12 @@ export function RiderDashboard({
   // Already in drive order, so "next" is simply the first one.
   const next = plan.stops[0]
   const canNavigate = next?.dropoffLat !== null && next?.dropoffLng !== null
+  /*
+    Collapsed by default: the whole point of the aboard bucket is that these
+    need nothing from the rider on the way to the hub. Open is for the moment
+    they want to check what they are carrying.
+  */
+  const [aboardOpen, setAboardOpen] = useState(false)
   const rest = plan.stops.slice(1)
   const n = (v: number) => localeNumber(locale, v)
 
@@ -194,12 +201,46 @@ export function RiderDashboard({
         because a rider should be able to see what they are carrying.
       */}
       {plan.aboard.length > 0 ? (
-        <p className="flex items-center gap-2 rounded-lg bg-emerald-50 px-3 py-2.5 text-sm font-medium text-emerald-900">
-          <PackageCheck className="size-5 shrink-0" aria-hidden="true" />
-          <span>
-            {t('pickup.aboard')} · {n(plan.aboard.length)}
-          </span>
-        </p>
+        <section className="space-y-2">
+          {/*
+            TAPPABLE, and it was not — which was a real regression. Collapsing
+            these to a count was right: they are one hub run, not N stops, and
+            each used to render a card offering DONE — DELIVERED on a parcel
+            0029 refuses. But making it plain TEXT went too far. A rider
+            carrying ten parcels could no longer open one to check a code or an
+            address, and for a rider whose whole run is aboard it left the
+            dashboard with no way into any parcel at all.
+
+            So: one line by default, expanding to the parcels themselves.
+            `JobCard` already links to the detail and already badges a pickup
+            leg, so there is nothing new to render.
+          */}
+          <button
+            type="button"
+            onClick={() => setAboardOpen((v) => !v)}
+            aria-expanded={aboardOpen}
+            className="flex min-h-11 w-full items-center gap-2 rounded-lg bg-emerald-50 px-3 py-2.5 text-left text-sm font-medium text-emerald-900 active:bg-emerald-100"
+          >
+            <PackageCheck className="size-5 shrink-0" aria-hidden="true" />
+            <span className="flex-1">
+              {t('pickup.aboard')} · {n(plan.aboard.length)}
+            </span>
+            <ChevronDown
+              className={cn('size-5 shrink-0 transition-transform', aboardOpen && 'rotate-180')}
+              aria-hidden="true"
+            />
+          </button>
+
+          {aboardOpen ? (
+            <ul className="space-y-2">
+              {plan.aboard.map((job) => (
+                <li key={job.id}>
+                  <JobCard job={job} />
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </section>
       ) : null}
 
       {/* ---- the next stop ------------------------------------------------ */}
