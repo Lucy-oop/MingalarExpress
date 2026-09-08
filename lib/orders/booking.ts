@@ -56,7 +56,18 @@ export type BookingGate = {
   hasPin: boolean
   /** ...and it is inside the delivery geofence. */
   pinInServiceArea: boolean
-  /** The shop's own saved location is inside it too — they cannot fix that here. */
+  /**
+   * The shop's own saved location is not known to be OUTSIDE the geofence.
+   *
+   * TRUE WHEN THERE IS NO PIN AT ALL, which reads oddly until you ask what the
+   * gate is for. Since 0036 a shop can book with no coordinates, and "we do not
+   * know where this shop is" must not be answered with 'pickup_outside' — that
+   * told the merchant their own shop was outside our delivery area and refused
+   * a submit they could not fix from the booking screen.
+   *
+   * They cannot fix a genuinely out-of-area pin here either; that one is a real
+   * block, and `shops_pickup_in_service_area` would refuse the row regardless.
+   */
   pickupInServiceArea: boolean
   /** Trimmed length of the delivery address. */
   addressLength: number

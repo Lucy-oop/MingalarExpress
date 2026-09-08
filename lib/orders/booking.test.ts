@@ -195,3 +195,41 @@ describe('bookingPayment — what actually gets posted', () => {
     }
   })
 })
+
+describe('a shop with no map pin can still book', () => {
+  /**
+   * THE DEAD END THIS PINS.
+   *
+   * 0034 let a shop register with no map pin and 0036 let it book, because two
+   * thirds of Yangon addresses do not geocode and the alternative was a
+   * merchant who could never sell anything. The booking form then computed
+   * `pickupOutside = !isInServiceArea(pickup)` on a null pickup, which is
+   * false-y in the wrong direction — so this gate answered 'pickup_outside'
+   * before every other clause, and the shop was told IT was outside our
+   * delivery area with no way to fix it from that screen.
+   *
+   * The form now passes `pickupInServiceArea: true` when there is no pin: not
+   * knowing where a shop is is not the same as knowing it is outside.
+   */
+  test('no pin is not "pickup outside"', () => {
+    assert.equal(bookingBlocker({ ...READY, pickupInServiceArea: true }), null)
+  })
+
+  /** And a pin that IS outside still blocks, because that one is real. */
+  test('but a pin genuinely outside the area still does', () => {
+    assert.equal(
+      bookingBlocker({ ...READY, pickupInServiceArea: false }),
+      'pickup_outside',
+    )
+  })
+
+  /**
+   * The DROPOFF is untouched by any of this: the customer's location is chosen
+   * on a map at booking time, `orders.dropoff_lat` is still NOT NULL, and a
+   * delivery with nowhere to go is not a parcel.
+   */
+  test('the customer still needs a pin, inside the area', () => {
+    assert.equal(bookingBlocker({ ...READY, hasPin: false }), 'no_pin')
+    assert.equal(bookingBlocker({ ...READY, pinInServiceArea: false }), 'pin_outside')
+  })
+})

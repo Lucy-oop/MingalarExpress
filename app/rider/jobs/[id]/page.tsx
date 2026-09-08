@@ -204,7 +204,11 @@ export default async function RiderJobPage({ params }: { params: Promise<{ id: s
         status={job.status}
         leg={job.leg}
         customerName={job.customerName}
-        pickup={{ lat: raw.pickup_lat, lng: raw.pickup_lng }}
+        pickup={
+          raw.pickup_lat === null || raw.pickup_lng === null
+            ? null
+            : { lat: raw.pickup_lat, lng: raw.pickup_lng }
+        }
         dropoff={{ lat: raw.dropoff_lat, lng: raw.dropoff_lng }}
         codAmount={money.total}
         kpayAccount={kpayAccount}
@@ -231,8 +235,14 @@ function Leg({
   note?: string | null
   phone?: string | null
   altPhone?: string | null
-  lat: number
-  lng: number
+  /**
+   * NULL when nobody has placed a pin for this place — a shop that registered
+   * on its address alone (0034/0036). The two map links then do not render:
+   * `geo:null,null` opens a maps app on nothing, which is worse than an absent
+   * button because the rider taps it and learns nothing.
+   */
+  lat: number | null
+  lng: number | null
 }) {
   return (
     <div className="rounded-lg border bg-card p-3">
@@ -269,21 +279,29 @@ function Leg({
           coverage differs sharply between apps. The OSM link is the fallback for
           devices with no geo: handler.
         */}
-        <a
-          href={`geo:${lat},${lng}?q=${lat},${lng}`}
-          className="inline-flex min-h-10 items-center gap-1.5 rounded-md bg-secondary px-3 text-sm font-medium"
-        >
-          <Navigation className="size-4" />
-          Navigate
-        </a>
-        <a
-          href={`https://www.openstreetmap.org/?mlat=${lat}&mlon=${lng}#map=18/${lat}/${lng}`}
-          target="_blank"
-          rel="noreferrer"
-          className="inline-flex min-h-10 items-center gap-1.5 rounded-md px-2 text-xs text-muted-foreground"
-        >
-          Map
-        </a>
+        {lat !== null && lng !== null ? (
+          <>
+            <a
+              href={`geo:${lat},${lng}?q=${lat},${lng}`}
+              className="inline-flex min-h-10 items-center gap-1.5 rounded-md bg-secondary px-3 text-sm font-medium"
+            >
+              <Navigation className="size-4" />
+              Navigate
+            </a>
+            <a
+              href={`https://www.openstreetmap.org/?mlat=${lat}&mlon=${lng}#map=18/${lat}/${lng}`}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex min-h-10 items-center gap-1.5 rounded-md px-2 text-xs text-muted-foreground"
+            >
+              Map
+            </a>
+          </>
+        ) : (
+          /* The address above and the CALL button are the whole answer here,
+             and calling the shop is how this is actually done in Yangon. */
+          <span className="text-xs text-muted-foreground">No map pin — call to find it</span>
+        )}
       </div>
     </div>
   )

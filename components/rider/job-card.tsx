@@ -17,8 +17,14 @@ export type RiderJob = {
   dropoffAddress: string
   dropoffArea: string | null
   /** Where the rider is actually going — already flipped for a return leg. */
-  dropoffLat: number
-  dropoffLng: number
+  /**
+   * Where this stop actually is. On a pickup or return leg `toJob` flips these
+   * to the SHOP's coordinates — and they are NULL when that shop has no map pin
+   * (0034/0036), because the alternative was falling back to the customer's,
+   * which is precisely where a rider collecting must not go.
+   */
+  dropoffLat: number | null
+  dropoffLng: number | null
   parcelDesc: string
   isFragile: boolean
   paymentMethod: 'cod' | 'prepaid'

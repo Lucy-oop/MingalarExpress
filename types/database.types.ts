@@ -528,8 +528,8 @@ export type Database = {
           pickup_address: string
           pickup_contact: string | null
           pickup_geog: unknown
-          pickup_lat: number
-          pickup_lng: number
+          pickup_lat: number | null
+          pickup_lng: number | null
           pickup_note: string | null
           platform_fee_amount: number | null
           proof_photo_path: string | null
@@ -589,8 +589,8 @@ export type Database = {
           pickup_address: string
           pickup_contact?: string | null
           pickup_geog?: unknown
-          pickup_lat: number
-          pickup_lng: number
+          pickup_lat?: number | null
+          pickup_lng?: number | null
           pickup_note?: string | null
           platform_fee_amount?: number | null
           proof_photo_path?: string | null
@@ -650,8 +650,8 @@ export type Database = {
           pickup_address?: string
           pickup_contact?: string | null
           pickup_geog?: unknown
-          pickup_lat?: number
-          pickup_lng?: number
+          pickup_lat?: number | null
+          pickup_lng?: number | null
           pickup_note?: string | null
           platform_fee_amount?: number | null
           proof_photo_path?: string | null

@@ -257,4 +257,62 @@ begin
 end $$;
 reset role;
 
+\echo '=== E9. a parcel can be booked with no pickup pin, but not half of one ==='
+--  0036. 0034 let a SHOP register with no map pin, and this migration lets it
+--  BOOK -- otherwise the dead end simply moved one screen later and a merchant
+--  the geocoder cannot place still could not sell anything.
+--
+--  What must NOT have gone with it: the geofence on a pin that IS given, the
+--  both-or-neither rule, and the DROPOFF still being mandatory. A delivery with
+--  nowhere to go is not a parcel.
+do $$
+declare oid uuid; g text;
+begin
+  insert into public.orders (shop_id, pickup_address,
+    customer_name, customer_phone, dropoff_address, dropoff_lat, dropoff_lng,
+    parcel_desc, payment_method, cod_amount, delivery_fee, created_by)
+  select id, pickup_address, 'No Pin Customer', '+959791110091',
+    'Kyaung Kone Rd, Thingangyun', 16.8500, 96.1880, 'pinless pickup', 'cod',
+    5000, 4000, owner_id
+  from public.shops where id = 'aaaaaaaa-0000-0000-0000-000000000001'
+  returning id into oid;
+
+  -- The generated geography must be NULL, not a point at (0,0) in the Gulf of
+  -- Guinea. st_makepoint is strict; this asserts it stays that way.
+  select coalesce(pickup_geog::text, '(null)') into g from public.orders where id = oid;
+  if g <> '(null)' then
+    raise exception 'FAIL: a pinless parcel got a pickup geography of %', g;
+  end if;
+  raise notice 'PASS: a parcel books on the pickup address alone, geog null';
+
+  begin
+    update public.orders set pickup_lat = 16.8478 where id = oid;
+    raise exception 'FAIL: stored a pickup latitude with no longitude';
+  exception when check_violation then
+    raise notice 'PASS: half a pickup pin is refused';
+  end;
+
+  update public.orders set pickup_lat = 16.8478, pickup_lng = 96.1693 where id = oid;
+  raise notice 'PASS: the pickup pin can be filled in later';
+
+  -- THE GEOFENCE IS STILL THE GEOFENCE. Mandalay is 21.96 N.
+  begin
+    update public.orders set pickup_lat = 21.9588, pickup_lng = 96.0891 where id = oid;
+    raise exception 'FAIL: a Mandalay pickup was accepted';
+  exception when check_violation then
+    raise notice 'PASS: an out-of-area pickup is still refused';
+  end;
+
+  -- AND THE DROPOFF IS UNTOUCHED. This is the half that was never optional:
+  -- the customer's location is chosen on a map at booking time.
+  begin
+    update public.orders set dropoff_lat = null, dropoff_lng = null where id = oid;
+    raise exception 'FAIL: a parcel was left with nowhere to go';
+  exception when not_null_violation then
+    raise notice 'PASS: the dropoff is still mandatory';
+  end;
+
+  delete from public.orders where id = oid;
+end $$;
+
 \echo '####  ALL EDGE CHECKS PASSED  ####'

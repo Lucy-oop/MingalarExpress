@@ -133,14 +133,29 @@ export async function createOrder(
   }
   const str = (value: FormDataEntryValue | null): string =>
     typeof value === 'string' ? value : ''
+  /** A point only when BOTH sides are real numbers; otherwise absent. */
+  const pickupPointOf = (lat: number | null | undefined, lng: number | null | undefined) =>
+    typeof lat === 'number' && Number.isFinite(lat) && typeof lng === 'number' && Number.isFinite(lng)
+      ? { lat, lng }
+      : undefined
 
   const parsed = orderCreateSchema.safeParse({
     shopId: shop.id,
     pickupAddress: str(formData.get('pickupAddress')) || shop.pickup_address,
-    pickupPoint: {
-      lat: num(formData.get('pickupLat')) ?? shop.pickup_lat,
-      lng: num(formData.get('pickupLng')) ?? shop.pickup_lng,
-    },
+    /*
+      BOTH OR NEITHER, and never half.
+
+      The form posts the shop's saved pin, and the shop may not have one (0034).
+      Building the object unconditionally produced `{ lat: null, lng: null }`
+      cast through `servicePoint`, which read as a broken point rather than an
+      absent one -- and `orders_pickup_pin_complete` (0036) refuses half a pin
+      outright, so a single missing side would surface as a 23514 rather than a
+      field error.
+    */
+    pickupPoint: pickupPointOf(
+      num(formData.get('pickupLat')) ?? shop.pickup_lat,
+      num(formData.get('pickupLng')) ?? shop.pickup_lng,
+    ),
     pickupContact: str(formData.get('pickupContact')),
     pickupNote: str(formData.get('pickupNote')),
 
@@ -216,9 +231,17 @@ export async function createOrder(
   }
   const fee = route.fee
 
-  // Kept as information, not as a price. A shop still finds "how far is this"
-  // useful, and dispatch uses it when ordering stops.
-  const crowKm = haversineKm(v.pickupPoint, v.dropoffPoint)
+  /*
+    Kept as information, not as a price. A shop still finds "how far is this"
+    useful, and dispatch uses it when ordering stops.
+
+    NULL WHEN THERE IS NO PICKUP PIN, because the distance from an unknown place
+    is not zero. `route_distance_km` is `numeric(6,2) check (>= 0)` with no NOT
+    NULL and its own comment calls it dispatch-quality analytics, so a blank is
+    the honest value -- a 0 there would read as "same building" and quietly
+    skew every average it appears in.
+  */
+  const crowKm = v.pickupPoint ? haversineKm(v.pickupPoint, v.dropoffPoint) : null
 
   /*
     COD WAITS FOR A HUMAN. Checked after parsing so the shop gets this instead
@@ -264,8 +287,13 @@ export async function createOrder(
       status: 'pending',
 
       pickup_address: v.pickupAddress,
-      pickup_lat: v.pickupPoint.lat,
-      pickup_lng: v.pickupPoint.lng,
+      // Null when the shop has no pin. The rider then works from the address,
+      // the note and `pickup_contact` below, and gets no Directions link --
+      // which is what 0036 traded for letting that shop sell at all.
+      pickup_lat: v.pickupPoint?.lat ?? null,
+      pickup_lng: v.pickupPoint?.lng ?? null,
+      // Which makes the phone number matter more than it did: it is now the
+      // rider's fallback for finding the place, not just for being let in.
       pickup_contact: v.pickupContact || shop.phone,
       pickup_note: v.pickupNote || null,
 
@@ -287,7 +315,7 @@ export async function createOrder(
       cod_amount: codTotal,
       delivery_fee: fee,
       fee_payer: v.feePayer,
-      route_distance_km: Math.round(crowKm * 100) / 100,
+      route_distance_km: crowKm === null ? null : Math.round(crowKm * 100) / 100,
       // Snapshot, for the same reason the commission split is one (D5): a later
       // remap of route_areas must not change the answer to "what was this shop
       // charged, and why".

@@ -97,6 +97,7 @@ export function RiderDashboard({
 
   // Already in drive order, so "next" is simply the first one.
   const next = plan.stops[0]
+  const canNavigate = next?.dropoffLat !== null && next?.dropoffLng !== null
   const rest = plan.stops.slice(1)
   const n = (v: number) => localeNumber(locale, v)
 
@@ -175,8 +176,17 @@ export function RiderDashboard({
             </p>
           )}
 
-          {/* The two things done at every doorstep, at full width. */}
-          <div className="grid grid-cols-2 gap-2 pt-1">
+          {/*
+            The two things done at every doorstep, at full width.
+
+            DIRECTIONS ONLY WHERE THERE IS SOMEWHERE TO GO. On a pickup or
+            return leg these coordinates are the SHOP's, and a shop that
+            registered on its address alone has none (0034/0036) — a template
+            would happily build `destination=null,null` and open a maps app on
+            nothing, because TypeScript does not object to interpolating null.
+            Call then takes the full width: it is the whole answer in that case.
+          */}
+          <div className={cn('grid gap-2 pt-1', canNavigate ? 'grid-cols-2' : 'grid-cols-1')}>
             <a
               href={`tel:${next.customerPhone}`}
               className={cn(buttonVariants({ size: 'touch', block: true }), 'text-base font-bold')}
@@ -184,18 +194,20 @@ export function RiderDashboard({
               <Phone />
               {t('action.call')}
             </a>
-            <a
-              href={`https://www.google.com/maps/dir/?api=1&destination=${next.dropoffLat},${next.dropoffLng}`}
-              target="_blank"
-              rel="noreferrer"
-              className={cn(
-                buttonVariants({ variant: 'outline', size: 'touch', block: true }),
-                'text-base font-bold',
-              )}
-            >
-              <Navigation />
-              {t('action.navigate')}
-            </a>
+            {canNavigate ? (
+              <a
+                href={`https://www.google.com/maps/dir/?api=1&destination=${next.dropoffLat},${next.dropoffLng}`}
+                target="_blank"
+                rel="noreferrer"
+                className={cn(
+                  buttonVariants({ variant: 'outline', size: 'touch', block: true }),
+                  'text-base font-bold',
+                )}
+              >
+                <Navigation />
+                {t('action.navigate')}
+              </a>
+            ) : null}
           </div>
 
           <Link

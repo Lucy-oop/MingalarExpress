@@ -109,7 +109,14 @@ export const orderCreateSchema = z
     shopId: dbId('Select a shop'),
 
     pickupAddress: z.string().trim().min(5, 'Pickup address is required').max(300),
-    pickupPoint: servicePoint,
+    /*
+      OPTIONAL since 0036, so a shop the geocoder cannot place is not shut out
+      of selling. The ADDRESS above stays required -- it is what the rider
+      reads -- and the DROPOFF point below stays required, because the customer's
+      location is chosen on a map at booking and a delivery with nowhere to go
+      is not a parcel.
+    */
+    pickupPoint: servicePoint.optional(),
     pickupContact: z.string().trim().max(120).optional().or(z.literal('')),
     pickupNote: z.string().trim().max(300).optional().or(z.literal('')),
 
@@ -196,10 +203,10 @@ export const shopSettingsSchema = z.object({
     geocoder has never heard of is not turned away, and this was the one form
     still insisting.
 
-    A pinless shop still cannot BOOK: `orders.pickup_lat` is NOT NULL because it
-    is the rider's navigation target, and that block lives on the booking page
-    where it can be explained and fixed. It does not belong on a form whose main
-    job is a phone number.
+    0036 went further and made the ORDER's pickup point optional too, so a
+    pinless shop can book as well -- the rider works from the address, the note
+    and the shop's phone, and gets no Directions link. There is no longer any
+    screen this absence blocks.
   */
   pickupPoint: servicePoint.optional(),
   pickupNote: z.string().trim().max(300).optional().or(z.literal('')),

@@ -97,29 +97,21 @@ export default async function NewOrderPage() {
   }
 
   /*
-    WHERE THE REGISTRATION BLOCK WENT.
+    NO PIN GATE HERE ANY MORE.
 
-    0034 let a shop register with no pickup pin, because two thirds of Yangon
-    addresses do not geocode and the alternative was turning those merchants
-    away on their first screen. `orders.pickup_lat/lng` are still NOT NULL --
-    they are the rider's navigation target -- so the parcel is what cannot be
-    created, not the account.
+    0034 let a shop register without a map pin, and this page then refused to
+    book for it -- the block had moved, not gone. But a merchant whose street
+    the geocoder cannot find could still not sell anything, which is the same
+    dead end one screen later. 0036 made `orders.pickup_lat/lng` nullable, so
+    the parcel is created and the rider works from the address, the pickup note
+    and the shop's phone.
 
-    Stated here rather than caught as a constraint violation after they have
-    filled in a customer's name and address, and with the fix one tap away.
-    `ShopSettingsForm` has the map and the locate button, so this is a
-    two-minute detour rather than a phone call to the office.
+    What the rider loses is the Directions link, and only that. `sortRoute`
+    already sorts an unmeasurable stop to the end of its own group rather than
+    dropping it, and `planCollections` already renders a group with no point
+    without a map link rather than with a wrong one -- both written for bad
+    data, both now with a legitimate case.
   */
-  if (shop.pickup_lat === null || shop.pickup_lng === null) {
-    return (
-      <Alert tone="warning" title={t('shop.noPin.bookTitle')}>
-        <span className="block">{t('shop.noPin.bookBody')}</span>
-        <Link href="/shop/settings" className={cn(buttonVariants({ size: 'sm' }), 'mt-3')}>
-          {t('shop.noPin.cta')}
-        </Link>
-      </Alert>
-    )
-  }
 
   return (
     <div className="space-y-4">
@@ -127,11 +119,9 @@ export default async function NewOrderPage() {
         <h1 className="text-xl font-semibold">{t('book.title')}</h1>
         <p className="text-sm text-muted-foreground">{t('book.subtitle')}</p>
       </div>
-      <OrderForm
-        shop={{ ...shop, pickup_lat: shop.pickup_lat, pickup_lng: shop.pickup_lng }}
-        areas={areas}
-        codLocked={!shopCanUseCod(shopState)}
-      />
+      {/* The coordinates may be null; `OrderForm` takes them that way now, so
+          the spread no longer needs narrowing to get past the type. */}
+      <OrderForm shop={shop} areas={areas} codLocked={!shopCanUseCod(shopState)} />
     </div>
   )
 }

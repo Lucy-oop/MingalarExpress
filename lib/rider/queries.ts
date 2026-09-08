@@ -28,8 +28,13 @@ export type RawJob = {
   code: string
   status: RiderJob['status']
   pickup_address: string
-  pickup_lat: number
-  pickup_lng: number
+  /**
+   * NULL WHEN THE SHOP HAS NO MAP PIN (0034 for shops, 0036 for orders). This
+   * type is hand-written, so nothing warned when the column became nullable --
+   * the compiler cannot see a Supabase row shape it was told about.
+   */
+  pickup_lat: number | null
+  pickup_lng: number | null
   pickup_contact: string | null
   pickup_note: string | null
   customer_name: string
@@ -96,8 +101,14 @@ function toJob(row: RawJob, extra?: Partial<RiderJob>): RiderJob {
       ? {
           dropoffAddress: row.pickup_address,
           dropoffArea: null,
-          // The map link and the CALL button must point at the shop too, or a
-          // rider taps Directions and is sent to the customer they just failed.
+          /*
+            The map link and the CALL button must point at the shop too, or a
+            rider taps Directions and is sent to the customer they just failed.
+
+            NULL RATHER THAN THE CUSTOMER'S when the shop has no pin. Falling
+            back to the customer's coordinates here would be the precise bug
+            this block exists to prevent, dressed up as a convenience.
+          */
           dropoffLat: row.pickup_lat,
           dropoffLng: row.pickup_lng,
           customerName: row.shops?.name ?? 'the shop',
@@ -275,9 +286,18 @@ export async function getRiderFeed(riderId: string): Promise<RiderFeed> {
       // Same rule as toJob above: a pickup leg is measured to the SHOP, not to
       // a customer it never visits. Getting this wrong put collections in the
       // drive order by an address the rider will never go to.
+      /*
+        NULL, NOT NaN, when a collection's shop has no pin. `sortRoute` already
+        expects that -- `j.destination ? haversineKm(...) : null` -- and keeps an
+        unmeasurable stop at the end of its own group rather than dropping it.
+        Passing `{ lat: null }` instead would have reached haversineKm and come
+        back NaN, which sorts unpredictably and silently scrambles a drive order.
+      */
       destination:
         r.trip_leg === 'return' || r.trip_leg === 'pickup'
-          ? { lat: r.pickup_lat, lng: r.pickup_lng }
+          ? r.pickup_lat === null || r.pickup_lng === null
+            ? null
+            : { lat: r.pickup_lat, lng: r.pickup_lng }
           : { lat: r.dropoff_lat, lng: r.dropoff_lng },
     })),
     hub,
@@ -295,8 +315,8 @@ export async function getRiderFeed(riderId: string): Promise<RiderFeed> {
   for (const row of all) {
     if (!Number.isFinite(row.pickup_lat) || !Number.isFinite(row.pickup_lng)) continue
     pickupPoints[row.pickup_address.trim().toLowerCase()] ??= {
-      lat: row.pickup_lat,
-      lng: row.pickup_lng,
+      lat: row.pickup_lat as number,
+      lng: row.pickup_lng as number,
     }
   }
 

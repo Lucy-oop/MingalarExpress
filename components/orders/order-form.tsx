@@ -28,7 +28,18 @@ import { useLocale, useT } from '@/components/shared/i18n-provider'
 import type { LatLng } from '@/types/domain'
 
 export type OrderFormProps = {
-  shop: { id: string; pickup_address: string; pickup_lat: number; pickup_lng: number }
+  shop: {
+    id: string
+    /** `text not null` in the database — always present, never a fallback. */
+    pickup_address: string
+    /**
+     * NULL WHEN THE SHOP HAS NO MAP PIN, which 0034 made possible and 0036 made
+     * bookable. Two thirds of Yangon addresses do not geocode, so this is the
+     * ordinary case for a newly registered shop rather than a strange one.
+     */
+    pickup_lat: number | null
+    pickup_lng: number | null
+  }
   /** Deliverable areas WITH the route that prices each one. */
   areas: AreaRoute[]
   /**
@@ -176,7 +187,14 @@ export function OrderForm({ shop, areas, codLocked = false }: OrderFormProps) {
   const [resetSeq, setResetSeq] = useState(0)
 
   const formRef = useRef<HTMLFormElement>(null)
-  const pickup: LatLng = { lat: shop.pickup_lat, lng: shop.pickup_lng }
+  /*
+    NULL IS A STATE, not a broken point. Both sides or neither: half a pin is
+    not a location, and `orders_pickup_pin_complete` refuses one anyway.
+  */
+  const pickup: LatLng | null =
+    shop.pickup_lat === null || shop.pickup_lng === null
+      ? null
+      : { lat: shop.pickup_lat, lng: shop.pickup_lng }
 
   /** Set when the customer half was filled from a past parcel, cleared on reset. */
   const [reused, setReused] = useState(false)
@@ -300,7 +318,18 @@ export function OrderForm({ shop, areas, codLocked = false }: OrderFormProps) {
 
   // The gate lives in lib/orders/booking so a missing clause is a failing test
   // rather than an invisible boolean — see the note at the top of that file.
-  const pickupOutside = !isInServiceArea(pickup)
+  /*
+    NOT KNOWING WHERE THE SHOP IS ≠ THE SHOP BEING OUTSIDE, and conflating them
+    was a real dead end. `pickup` became null when 0036 let a pinless shop book,
+    and `!isInServiceArea(null-ish)` read as false — so `bookingBlocker`
+    returned 'pickup_outside' first of all, and the merchant was told their own
+    shop was outside our delivery area and refused a submit they could not fix
+    from this screen.
+
+    A missing pin blocks nothing here. The parcel is created without one and the
+    rider works from the address, the note and the shop's phone.
+  */
+  const pickupOutside = pickup !== null && !isInServiceArea(pickup)
   const blocker = bookingBlocker({
     hasPin: !!dropoff,
     pinInServiceArea: !!dropoff && isInServiceArea(dropoff),
@@ -368,8 +397,15 @@ export function OrderForm({ shop, areas, codLocked = false }: OrderFormProps) {
         <input type="hidden" name="feePayer" value={postedFeePayer} />
         {/* The shop's own saved location. Changed in shop settings, not here. */}
         <input type="hidden" name="pickupAddress" value={shop.pickup_address} />
-        <input type="hidden" name="pickupLat" value={shop.pickup_lat} />
-        <input type="hidden" name="pickupLng" value={shop.pickup_lng} />
+        {/*
+          EMPTY STRING, NOT NULL. React warns `value prop on input should not be
+          null` and then renders it uncontrolled, so the field silently stops
+          tracking the prop. `createOrder`'s `num()` reads '' as undefined, which
+          is exactly the absence it needs — a 0 there would be the Gulf of
+          Guinea, as it was on the settings form.
+        */}
+        <input type="hidden" name="pickupLat" value={shop.pickup_lat ?? ''} />
+        <input type="hidden" name="pickupLng" value={shop.pickup_lng ?? ''} />
 
         {pickupOutside ? (
           <Alert tone="warning">{t('book.pickupOutside')}</Alert>

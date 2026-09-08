@@ -32,7 +32,14 @@ export function JobSheet({
   status: OrderStatus
   leg?: 'delivery' | 'pickup' | 'return' | null
   customerName: string
-  pickup: LatLng
+  /**
+   * NULL when the shop has no map pin (0034/0036). The map is HIDDEN in that
+   * case rather than centred somewhere plausible: a map of the right ward with
+   * no shop on it invites a rider to trust a pin that is not there, and on a
+   * collection leg the only other point available is the customer — exactly
+   * where they must not go yet.
+   */
+  pickup: LatLng | null
   dropoff: LatLng
   codAmount: number
   kpayAccount: { name: string | null; phone: string | null; qrUrl: string }
@@ -65,31 +72,62 @@ export function JobSheet({
         ? dropoff
         : pickup
 
+  /*
+    NOTHING TO CENTRE ON. Only reachable on a collection or a return whose shop
+    has no pin: an outbound delivery always has a dropoff, which is still NOT
+    NULL. The address, the note and the CALL button are above this; a blank map
+    would be the only thing lost, and a wrongly-centred one would be worse.
+  */
+  const mappable = focus !== null
+
+  /*
+    Built here rather than inline so a null point DROPS OUT instead of being
+    passed to MapCanvas as `{ lat: null }`. `pickup` may be null even when
+    `focus` is not -- an outbound delivery whose shop has no pin still centres
+    on the customer -- so narrowing `focus` alone would not have been enough,
+    and the marker would have rendered at the equator.
+  */
+  const destination = leg === 'return' ? pickup : dropoff
+  const markers = [
+    // The shop pin goes once the parcel is aboard: the rider is delivering
+    // now, and on a return leg the shop is already the destination pin below.
+    ...(leg !== 'return' && status === 'assigned' && pickup
+      ? [
+          {
+            id: 'pickup',
+            point: pickup,
+            kind: 'pickup' as const,
+            label: t('parcel.pickUp'),
+            emphasis: true,
+          },
+        ]
+      : []),
+    ...(destination
+      ? [
+          {
+            id: 'dropoff',
+            point: destination,
+            kind: 'dropoff' as const,
+            label: leg === 'return' ? t('parcel.returnTo') : t('parcel.deliverTo'),
+            emphasis: status === 'picked_up' || leg === 'return',
+          },
+        ]
+      : []),
+    ...(position ? [{ id: 'me', point: position, kind: 'rider' as const, label: 'You' }] : []),
+  ]
+
   return (
     <div className="space-y-3">
+      {mappable ? (
       <div className="h-48 overflow-hidden rounded-lg border">
         <MapCanvas
           center={focus}
           zoom={16}
           clampToServiceArea={false}
-          markers={[
-            // The shop pin goes once the parcel is aboard: the rider is
-            // delivering now, and on a return leg the shop is already the
-            // destination pin below.
-            ...(leg !== 'return' && status === 'assigned'
-              ? [{ id: 'pickup', point: pickup, kind: 'pickup' as const, label: t('parcel.pickUp'), emphasis: true }]
-              : []),
-            {
-              id: 'dropoff',
-              point: leg === 'return' ? pickup : dropoff,
-              kind: 'dropoff' as const,
-              label: leg === 'return' ? t('parcel.returnTo') : t('parcel.deliverTo'),
-              emphasis: status === 'picked_up' || leg === 'return',
-            },
-            ...(position ? [{ id: 'me', point: position, kind: 'rider' as const, label: 'You' }] : []),
-          ]}
+          markers={markers}
         />
       </div>
+      ) : null}
 
       <JobActions
         orderId={orderId}
