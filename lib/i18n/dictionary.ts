@@ -65,6 +65,12 @@ export const DICTIONARY = {
   'parcel.returnBadge': { en: 'Return', my: 'ပြန်ပို့' },
   'parcel.fragile': { en: 'Fragile', my: 'ကွဲလွယ်' },
   'parcel.contents': { en: 'Parcel', my: 'ပါဆယ်' },
+  /* No coordinates for this place — the shop registered on its address alone
+     (0034/0036). Ringing them is how this is actually done in Yangon. */
+  'parcel.noPinCall': {
+    en: 'No map pin — call to find it',
+    my: 'မြေပုံ အမှတ်မရှိ — ဖုန်းဆက်၍ ရှာပါ',
+  },
 
   // ---- money ----------------------------------------------------------------
   'money.collect': { en: 'Collect from customer', my: 'ဝယ်သူဆီမှ ကောက်ခံရန်' },

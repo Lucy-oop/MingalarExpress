@@ -6,10 +6,11 @@ import { requireRider } from '@/lib/auth/guards'
 import { getLocale } from '@/lib/i18n/locale'
 import { translator } from '@/lib/i18n'
 import { getRiderJob, getKpayAccount } from '@/lib/rider/queries'
-import { JobSheet } from '@/components/rider/job-sheet'
+import { JobPanel } from '@/components/rider/job-panel'
 import { StatusBadge } from '@/components/orders/status-badge'
 import { codBreakdown } from '@/lib/pricing'
 import { cn, formatMmk, formatMyanmarPhone } from '@/lib/utils'
+import { buttonVariants } from '@/components/ui/button'
 
 export const metadata: Metadata = { title: 'Job' }
 export const dynamic = 'force-dynamic'
@@ -182,6 +183,9 @@ export default async function RiderJobPage({ params }: { params: Promise<{ id: s
           phone={raw.pickup_contact ?? raw.shops?.phone ?? null}
           lat={raw.pickup_lat}
           lng={raw.pickup_lng}
+          callLabel={t('action.call')}
+          navigateLabel={t('action.navigate')}
+          noPinLabel={t('parcel.noPinCall')}
         />
       ) : null}
       {/* Not on a collection run. The customer's address, a Navigate link to
@@ -199,6 +203,9 @@ export default async function RiderJobPage({ params }: { params: Promise<{ id: s
           altPhone={raw.customer_phone_alt}
           lat={raw.dropoff_lat}
           lng={raw.dropoff_lng}
+          callLabel={t('action.call')}
+          navigateLabel={t('action.navigate')}
+          noPinLabel={t('parcel.noPinCall')}
         />
       ) : null}
 
@@ -214,22 +221,15 @@ export default async function RiderJobPage({ params }: { params: Promise<{ id: s
         </p>
       </div>
 
-      <JobSheet
+      {/* The panel renders its INPUTS here in flow — the delivery photo, the
+          payment choice — and portals its primary button into a thumb-reach bar
+          at the bottom of the screen. See ActionBar in job-actions. */}
+      <JobPanel
         orderId={job.id}
         orderCode={job.code}
         status={job.status}
         leg={job.leg}
         customerName={job.customerName}
-        pickup={
-          raw.pickup_lat === null || raw.pickup_lng === null
-            ? null
-            : { lat: raw.pickup_lat, lng: raw.pickup_lng }
-        }
-        dropoff={
-          raw.dropoff_lat === null || raw.dropoff_lng === null
-            ? null
-            : { lat: raw.dropoff_lat, lng: raw.dropoff_lng }
-        }
         codAmount={money.total}
         kpayAccount={kpayAccount}
       />
@@ -247,6 +247,9 @@ function Leg({
   altPhone,
   lat,
   lng,
+  callLabel,
+  navigateLabel,
+  noPinLabel,
 }: {
   tone: 'pickup' | 'dropoff'
   label: string
@@ -263,6 +266,16 @@ function Leg({
    */
   lat: number | null
   lng: number | null
+  /*
+    RESOLVED STRINGS, NOT A TRANSLATOR. `dictionary.test.ts` bans a `t` prop
+    outright — "route the locale, not the translator" (57da184) — and this is a
+    plain function in a server module, so there is no `useT()` to reach for
+    either. `label` and `subtitle` above already arrive resolved; these follow
+    the same shape.
+  */
+  callLabel: string
+  navigateLabel: string
+  noPinLabel: string
 }) {
   return (
     <div className="rounded-lg border bg-card p-3">
@@ -274,55 +287,70 @@ function Leg({
       <p className="mt-0.5 text-sm">{address}</p>
       {note ? <p className="mt-1 text-xs text-amber-700">Note: {note}</p> : null}
 
-      <div className="mt-2 flex flex-wrap gap-2">
+      {/*
+        TWO BUTTONS, FULL WIDTH, NOT A WRAPPING ROW OF LINKS.
+
+        This was three `min-h-10` links — Call, Alt, Navigate, Map — the only
+        sub-44px targets left anywhere on the rider surface, and they wrapped to
+        a half-width orphan at 360px. They are also the two things a rider does
+        most: ring the person and start driving.
+
+        The OpenStreetMap link is gone. It duplicated Navigate, which already
+        hands off to whatever maps app the phone has (Google Maps, OsmAnd,
+        Maps.me) — the right call in Yangon, where coverage differs sharply
+        between them. A fourth small target for a rarer fallback was not worth
+        the row it broke.
+      */}
+      <div className="mt-3 grid grid-cols-2 gap-2">
         {phone ? (
           <a
             href={`tel:${phone}`}
-            className="inline-flex min-h-10 items-center gap-1.5 rounded-md border px-3 text-sm font-medium text-primary"
+            className={cn(
+              buttonVariants({ variant: 'outline', size: 'touch', block: true }),
+              'text-base font-semibold',
+            )}
           >
-            <Phone className="size-4" />
-            {formatMyanmarPhone(phone)}
+            <Phone />
+            {callLabel}
           </a>
         ) : null}
-        {altPhone ? (
-          <a
-            href={`tel:${altPhone}`}
-            className="inline-flex min-h-10 items-center gap-1.5 rounded-md border px-3 text-sm text-muted-foreground"
-          >
-            <Phone className="size-4" />
-            Alt
-          </a>
-        ) : null}
-        {/*
-          `geo:` hands off to whatever navigation app the rider actually uses
-          (Google Maps, OsmAnd, Maps.me), which is the right call in Yangon where
-          coverage differs sharply between apps. The OSM link is the fallback for
-          devices with no geo: handler.
-        */}
         {lat !== null && lng !== null ? (
-          <>
-            <a
-              href={`geo:${lat},${lng}?q=${lat},${lng}`}
-              className="inline-flex min-h-10 items-center gap-1.5 rounded-md bg-secondary px-3 text-sm font-medium"
-            >
-              <Navigation className="size-4" />
-              Navigate
-            </a>
-            <a
-              href={`https://www.openstreetmap.org/?mlat=${lat}&mlon=${lng}#map=18/${lat}/${lng}`}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex min-h-10 items-center gap-1.5 rounded-md px-2 text-xs text-muted-foreground"
-            >
-              Map
-            </a>
-          </>
+          <a
+            href={`geo:${lat},${lng}?q=${lat},${lng}`}
+            className={cn(
+              buttonVariants({ size: 'touch', block: true }),
+              'text-base font-semibold',
+              !phone && 'col-span-2',
+            )}
+          >
+            <Navigation />
+            {navigateLabel}
+          </a>
         ) : (
-          /* The address above and the CALL button are the whole answer here,
-             and calling the shop is how this is actually done in Yangon. */
-          <span className="text-xs text-muted-foreground">No map pin — call to find it</span>
+          /* The address above and the Call button are the whole answer here,
+             and ringing the shop is how this is actually done in Yangon. */
+          <p
+            className={cn(
+              'flex min-h-11 items-center text-xs text-muted-foreground',
+              !phone && 'col-span-2',
+            )}
+          >
+            {noPinLabel}
+          </p>
         )}
       </div>
+
+      {/* The second number is a fallback, not a peer of the two buttons above —
+          it had its own equal-sized button and competed with them. */}
+      {altPhone ? (
+        <a
+          href={`tel:${altPhone}`}
+          className="mt-2 inline-flex min-h-11 items-center gap-1.5 text-sm text-muted-foreground underline underline-offset-2"
+        >
+          <Phone className="size-4" />
+          {formatMyanmarPhone(altPhone)}
+        </a>
+      ) : null}
     </div>
   )
 }

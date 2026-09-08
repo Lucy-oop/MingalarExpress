@@ -1,11 +1,14 @@
 'use client'
 
+import * as React from 'react'
 import { useCallback, useState, useTransition } from 'react'
+import { createPortal } from 'react-dom'
 import { useRouter } from 'next/navigation'
 import { CheckCircle2, CloudOff, PackageCheck, TriangleAlert, Truck, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
 import { Input } from '@/components/ui/input'
+import { cn } from '@/lib/utils'
 import { Textarea } from '@/components/ui/textarea'
 import { ProofCapture } from '@/components/rider/proof-capture'
 import { PaymentChoice } from '@/components/rider/payment-choice'
@@ -53,6 +56,48 @@ export type JobActionsProps = {
  * `orders_delivered_needs_proof` CHECK constraint refuses the row. The UI gate is
  * the courtesy; the constraint is the guarantee.
  */
+/**
+ * The primary action, in a bar the rider's thumb can always reach.
+ *
+ * A PORTAL, AND IT HAS TO BE. The action belongs at the bottom of the screen;
+ * the inputs it depends on -- the delivery photo, the payment choice, a KPay
+ * receipt -- belong in the page flow, because they are a sequence needing room
+ * and two hands, and a 500px fixed bar would cover the address the rider is
+ * reading.
+ *
+ * Rendering `JobActions` twice would have been the obvious split and is wrong:
+ * `proof`, `collectedVia` and `busy` live in one component, and two instances
+ * would each hold their own copy. So one instance renders both halves, and this
+ * moves the button out of the DOM position it was declared in.
+ *
+ * `mounted` guards the portal because `document` does not exist during the
+ * server render, and this file is a Client Component in a server-rendered page.
+ */
+function ActionBar({ children }: { children: React.ReactNode }) {
+  const [mounted, setMounted] = React.useState(false)
+  React.useEffect(() => setMounted(true), [])
+
+  // Before hydration, and if the portal ever cannot mount, the buttons render
+  // where they were declared rather than vanishing. A rider must never lose the
+  // only control that finishes a job.
+  if (!mounted) return <>{children}</>
+
+  return createPortal(
+    <div
+      className={cn(
+        'fixed inset-x-0 bottom-0 z-30 space-y-2 border-t bg-background px-3 pt-3',
+        // The same padding the tab bar used, so it clears the iOS home
+        // indicator and the Android gesture bar. `RiderTabs` steps aside on
+        // this route, so nothing is stacked underneath.
+        'pb-[max(0.75rem,env(safe-area-inset-bottom))]',
+      )}
+    >
+      {children}
+    </div>,
+    document.body,
+  )
+}
+
 export function JobActions({
   orderId,
   orderCode,
@@ -367,6 +412,7 @@ export function JobActions({
             aria-label={t('proof.returnReceiver')}
             className="h-14 text-base"
           />
+          <ActionBar>
           <Button
             size="touch"
             block
@@ -380,6 +426,7 @@ export function JobActions({
                 ? t('action.saved')
                 : t('action.markReturned')}
           </Button>
+          </ActionBar>
         </div>
       ) : null}
 
@@ -406,6 +453,7 @@ export function JobActions({
             </div>
           ) : null}
 
+          <ActionBar>
           <Button
             size="touch"
             block
@@ -422,6 +470,7 @@ export function JobActions({
                   ? t('action.markCollected')
                   : t('action.markPickedUp')}
           </Button>
+          </ActionBar>
         </div>
       ) : null}
 
@@ -487,6 +536,7 @@ export function JobActions({
             />
           </div>
 
+          <ActionBar>
           <Button
             size="touch"
             block
@@ -507,6 +557,7 @@ export function JobActions({
                 ? t('action.saved')
                 : t('action.markDelivered')}
           </Button>
+          </ActionBar>
           {!proof && !completed ? (
             <p className="text-center text-sm font-medium text-muted-foreground">
               {t('proof.required')}
@@ -562,10 +613,12 @@ export function JobActions({
             </div>
           </div>
         ) : (
-          <Button variant="ghost" size="touch" block onClick={() => setFailing(true)}>
-            <TriangleAlert />
-            {t('action.cannotDeliver')}
-          </Button>
+          <ActionBar>
+            <Button variant="ghost" size="touch" block onClick={() => setFailing(true)}>
+              <TriangleAlert />
+              {t('action.cannotDeliver')}
+            </Button>
+          </ActionBar>
         )
       ) : null}
     </div>

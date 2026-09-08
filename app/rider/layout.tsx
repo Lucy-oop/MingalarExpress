@@ -1,10 +1,10 @@
-import Link from 'next/link'
-import { Coins, LayoutList, LogOut } from 'lucide-react'
+import { LogOut } from 'lucide-react'
 import { requireRider } from '@/lib/auth/guards'
 import { signOut } from '@/lib/auth/actions'
 import { Button } from '@/components/ui/button'
 import { QueueBanner } from '@/components/rider/queue-banner'
 import { GpsBanner } from '@/components/rider/gps-banner'
+import { RiderTabs } from '@/components/rider/rider-tabs'
 import { LanguageToggle } from '@/components/shared/language-toggle'
 import { getLocale } from '@/lib/i18n/locale'
 import { translator } from '@/lib/i18n'
@@ -58,26 +58,10 @@ export default async function RiderLayout({ children }: { children: React.ReactN
         {children}
       </main>
 
-      {/* Bottom tabs, above the iOS home indicator. */}
-      <nav className="fixed inset-x-0 bottom-0 z-20 border-t bg-background pb-[env(safe-area-inset-bottom)]">
-        <div className="grid grid-cols-2">
-          <Tab href="/rider/dashboard" label={t('nav.jobs')} icon={<LayoutList className="size-6" />} />
-          <Tab href="/rider/earnings" label={t('nav.earnings')} icon={<Coins className="size-6" />} />
-        </div>
-      </nav>
+      {/* Bottom tabs — absent on a job screen, where the primary action takes
+          this space. See components/rider/rider-tabs. */}
+      <RiderTabs />
     </div>
     </I18nProvider>
-  )
-}
-
-function Tab({ href, label, icon }: { href: string; label: string; icon: React.ReactNode }) {
-  return (
-    <Link
-      href={href}
-      className="flex min-h-16 flex-col items-center justify-center gap-1 text-xs font-medium text-muted-foreground active:bg-muted"
-    >
-      {icon}
-      {label}
-    </Link>
   )
 }
