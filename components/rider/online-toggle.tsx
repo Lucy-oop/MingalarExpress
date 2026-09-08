@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Power, Satellite, TriangleAlert } from 'lucide-react'
+import { Power, Satellite } from 'lucide-react'
 import { useRiderBeacon } from '@/lib/rider/use-rider-beacon'
 import { cn } from '@/lib/utils'
 import { useT } from '@/components/shared/i18n-provider'
@@ -23,7 +23,7 @@ export function OnlineToggle({
   onOnlineChange?: (online: boolean) => void
 }) {
   const t = useT()
-  const { online, position, geoError, pending, toggle } = useRiderBeacon(riderId, initialOnline)
+  const { online, position, pending, toggle } = useRiderBeacon(riderId, initialOnline)
   const [error, setError] = useState<string | null>(null)
 
   const handleToggle = async () => {
@@ -89,12 +89,24 @@ export function OnlineToggle({
         </p>
       ) : null}
 
-      {geoError ? (
-        <p className="flex items-start gap-1.5 text-xs text-amber-700">
-          <TriangleAlert className="mt-0.5 size-3.5 shrink-0" />
-          {geoError}
-        </p>
-      ) : null}
+      {/*
+        THE GEO ERROR IS NOT PRINTED. "Location permission denied. Dispatch
+        cannot see you." sat here as an amber alert under the control, and it
+        was the loudest thing on the rider's first screen -- above the shops,
+        above the stops, on every render where the browser had not handed over
+        a fix. Which includes indoors, in a stairwell, and the first few
+        seconds of every shift.
+
+        The sub-label above already tells the same truth without shouting: it
+        reads "GPS on - ±12 m" when there is a fix and "Waiting for GPS..."
+        when there is not, whatever the reason. A rider who never leaves
+        "Waiting" learns more from that than from a red sentence naming an API
+        error code they cannot act on.
+
+        `useRiderBeacon` still exposes `geoError` -- the beacon knows WHY, and
+        a caller that needs the reason (a diagnostics screen, dispatch-side)
+        can read it. This screen deliberately does not.
+      */}
       {error ? <p className="text-xs font-medium text-destructive">{error}</p> : null}
     </div>
   )

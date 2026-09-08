@@ -3,7 +3,6 @@ import { requireRider } from '@/lib/auth/guards'
 import { signOut } from '@/lib/auth/actions'
 import { Button } from '@/components/ui/button'
 import { QueueBanner } from '@/components/rider/queue-banner'
-import { GpsBanner } from '@/components/rider/gps-banner'
 import { RiderTabs } from '@/components/rider/rider-tabs'
 import { LanguageToggle } from '@/components/shared/language-toggle'
 import { getLocale } from '@/lib/i18n/locale'
@@ -50,10 +49,29 @@ export default async function RiderLayout({ children }: { children: React.ReactN
       </header>
 
       <main className="flex-1 space-y-3 px-3 pb-24 pt-3">
-        {/* In the shell, beside the queue banner, so it is on the job page too.
-            The job page used to swallow a denied permission in silence and let
-            the rider stamp checkpoints with no coordinates at all. */}
-        <GpsBanner />
+        {/*
+          NO GPS BANNER. A full-width destructive alert sat here on every rider
+          screen, dashboard and job page, whenever the permission was not
+          granted -- so a rider who had not yet been asked met a red block
+          above their work before they had done anything wrong.
+
+          THERE WERE TWO of these, which is how one survived the first pass:
+          this banner, and an amber line inside OnlineToggle printing the
+          beacon's `geoError`. Both are gone. What remains is the sub-label on
+          the toggle itself -- "GPS on - ±12 m" with a fix, "Waiting for
+          GPS..." without one -- which says the same thing at a glance and is
+          inside the control the message is ABOUT: being visible to dispatch.
+
+          WHAT THIS GIVES UP, stated plainly because it is a real cost. No
+          rider screen now says the permission is blocked. `advance_order`
+          still stamps whatever coordinate it gets onto `order_status_events`,
+          and with location blocked that is null, silently -- so if a COD
+          dispute ever turns on "where was the rider", the answer for those
+          checkpoints is nothing, discovered weeks later. A rider stuck on
+          "Waiting for GPS..." all shift is the only remaining tell, and it
+          does not name the cause. If that bites, the fix is a quiet line on
+          the job screen, not a banner on every screen.
+        */}
         <QueueBanner />
         {children}
       </main>

@@ -134,18 +134,19 @@ export function RiderDashboard({
         onOnlineChange={() => router.refresh()}
       />
 
-      {/* Today's output. Four figures, big enough to read at a glance, and the
-          two counts a rider is paid on sit side by side. */}
-      <div className="grid grid-cols-2 gap-2">
-        <Stat label={t('stat.delivered')} value={n(feed.earnings.deliveredToday)} big />
-        <Stat label={t('stat.collected')} value={n(feed.earnings.pickedUpToday)} big />
-        <Stat label={t('stat.earnedToday')} value={formatMmk(feed.earnings.earnedToday)} />
-        <Stat
-          label={t('stat.cashHeld')}
-          value={formatMmk(feed.earnings.codInHand)}
-          tone={feed.earnings.codInHand > 0 ? 'warn' : undefined}
-        />
-      </div>
+      {/*
+        NO SCOREBOARD HERE. Four tiles sat above the work: delivered, picked up,
+        earned today, cash held. On the screen a rider opens to find out where
+        to go, all four read 0 for the first hour of every shift -- a quarter of
+        the first screenful spent saying nothing yet.
+
+        Nothing is lost. /rider/earnings shows the same figures against the
+        ledger lines that produced them, which is where a rider goes to check
+        their money; /rider/ways shows them per run. And the one figure with
+        safety weight keeps its place on this screen: the cash line at the
+        bottom, which appears only when there IS cash to answer for, rather
+        than announcing "0 Ks" all morning.
+      */}
 
       {feed.trip ? (
         <div
@@ -404,33 +405,6 @@ export function RiderDashboard({
           {t('cash.warning', { amount: formatMmk(feed.earnings.codInHand) })}
         </p>
       ) : null}
-    </div>
-  )
-}
-
-function Stat({
-  label,
-  value,
-  tone,
-  big,
-}: {
-  label: string
-  value: string
-  tone?: 'warn'
-  big?: boolean
-}) {
-  return (
-    <div className="rounded-lg border bg-card p-3 text-center">
-      <p className="text-xs font-medium text-muted-foreground">{label}</p>
-      <p
-        className={cn(
-          'mt-0.5 font-bold tabular-nums',
-          big ? 'text-3xl' : 'text-base',
-          tone === 'warn' && 'text-amber-700',
-        )}
-      >
-        {value}
-      </p>
     </div>
   )
 }

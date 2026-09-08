@@ -249,25 +249,6 @@ export const DICTIONARY = {
   'online.visible': { en: 'Dispatch can see you', my: 'ရုံးမှ မြင်နိုင်ပါသည်' },
   'online.tapToStart': { en: 'Tap to start work', my: 'အလုပ်စရန် နှိပ်ပါ' },
   'online.gpsLocked': { en: 'GPS on', my: 'GPS ရပါသည်' },
-  /*
-    GPS PERMISSION, which had no key at all and one line of hardcoded English.
-    Dispatch places work by where a rider is, and every checkpoint stamps a
-    coordinate — so a denied permission is not a degraded experience, it is a
-    rider the office cannot see and a delivery with no proof of place.
-  */
-  'gps.denied': {
-    en: 'Location is blocked. Dispatch cannot see you.',
-    my: 'တည်နေရာ ပိတ်ထားပါသည်။ ရုံးမှ သင့်ကို မမြင်ပါ။',
-  },
-  'gps.deniedWhy': {
-    en: 'Your stops are stamped with where you were. Turn location on for this site.',
-    my: 'သင်ရောက်ခဲ့သည့် တည်နေရာကို မှတ်တမ်းတင်ရပါသည်။ ဒီဆိုဒ်အတွက် တည်နေရာ ဖွင့်ပါ။',
-  },
-  'gps.allow': { en: 'Turn on location', my: 'တည်နေရာ ဖွင့်ပါ' },
-  'gps.howTo': {
-    en: 'Blocked earlier? Open your browser settings for this site and allow location.',
-    my: 'ယခင် ပိတ်ထားလျှင် ဘရောက်ဇာ setting တွင် ဒီဆိုဒ်အတွက် တည်နေရာ ခွင့်ပြုပါ။',
-  },
   'online.gpsWaiting': { en: 'Waiting for GPS…', my: 'GPS စောင့်နေသည်…' },
 
   // ==========================================================================
