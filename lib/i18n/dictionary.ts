@@ -358,14 +358,28 @@ export const DICTIONARY = {
     en: 'What has the customer already paid?',
     my: 'ဝယ်သူ ဘာကို ရှင်းပြီးပြီလဲ',
   },
-  'book.paidNothing': { en: 'Nothing yet', my: 'မရှင်းရသေးပါ' },
+  /*
+    THE BURMESE ANSWERS NAME WHAT THE RIDER COLLECTS, not what the customer
+    paid -- and that is the shop's own wording, not a loose translation.
+
+    The English reads back the question ("Nothing yet", "The product only").
+    The Burmese was a literal match for that and merchants had to do the
+    subtraction themselves: "they paid nothing" -> so the rider collects goods
+    AND fee. These say the answer directly. `Deliခ` is how the trade writes it,
+    Latin stem and Burmese ခ together; leave it.
+
+    So en and my differ in FRAMING here on purpose. Do not "correct" one to
+    mirror the other -- the strings answer the same question from opposite ends
+    and both are right for their reader.
+  */
+  'book.paidNothing': { en: 'Nothing yet', my: 'ပစ္စည်းဖိုး+Deliခ ပါကောက်ရန်' },
   'book.paidProduct': {
     en: 'The product only — collect the delivery fee',
-    my: 'ကုန်ဖိုးသာ — ပို့ဆောင်ခ ကောက်ပါ',
+    my: 'Deliခ သာကောက်ရန်',
   },
   'book.paidAll': {
     en: 'Everything — collect nothing',
-    my: 'အားလုံး — ငွေ မကောက်ပါ',
+    my: 'ငွေကောက်မရှိပါ',
   },
   /* Shown under the 'product' choice, so the shop can see what the rider will
      actually ask for before it books. */
