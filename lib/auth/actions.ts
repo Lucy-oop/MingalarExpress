@@ -99,7 +99,7 @@ export async function signIn(
 
   if (!profile) {
     await supabase.auth.signOut()
-    return { error: 'This account has no profile yet. Contact your dispatcher.' }
+    return { error: 'This account has no profile yet. Contact the office.' }
   }
   if (!profile.is_active) {
     await supabase.auth.signOut()

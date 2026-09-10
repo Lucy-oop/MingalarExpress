@@ -129,9 +129,9 @@ export default async function SuperAdminOverviewPage() {
             value={overview.pending_now}
             hint="unassigned"
             tone={overview.pending_now > 0 ? 'warn' : 'default'}
-            href="/admin/dispatcher"
+            href="/admin"
           />
-          <Kpi label="In flight" value={overview.in_flight_now} href="/admin/dispatcher" />
+          <Kpi label="In flight" value={overview.in_flight_now} href="/admin" />
           <Kpi
             label="Riders online"
             value={`${overview.riders_online} / ${overview.riders_total}`}

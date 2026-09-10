@@ -12,7 +12,7 @@ import {
   Smartphone,
   Store,
 } from 'lucide-react'
-import { ADMIN_NAV_ITEMS } from '@/lib/admin/nav'
+import { ADMIN_NAV_EXACT, ADMIN_NAV_ITEMS } from '@/lib/admin/nav'
 import { activeHref } from '@/lib/nav/active'
 import { cn } from '@/lib/utils'
 
@@ -23,6 +23,10 @@ import { cn } from '@/lib/utils'
  * `layout.tsx` is never handed one. Icons cannot cross the RSC boundary either,
  * so the lucide components are mapped from the plain `icon` key here rather
  * than travelling in the data — the same shape as components/shop/shop-nav.
+ *
+ * NO `admin` PROP ANY MORE. It existed to filter `adminOnly` items out for a
+ * dispatcher; with one office role every item is shown to everyone who can open
+ * this shell at all, and the filter would always have been a no-op.
  *
  * WHY THE HIGHLIGHT MATTERS HERE especially. The sub-nav has always set
  * `aria-current` and a filled background while this bar rendered every link
@@ -42,11 +46,18 @@ const ICONS: Record<string, typeof Radio> = {
   scale: Scale,
 }
 
-export function AdminNav({ admin }: { admin: boolean }) {
+export function AdminNav() {
   const pathname = usePathname()
-  const items = ADMIN_NAV_ITEMS.filter((i) => admin || !i.adminOnly)
+  const items = ADMIN_NAV_ITEMS
   // Longest match, so /admin/super/riders lights Riders and not Overview.
-  const active = activeHref(pathname ?? '', items.map((i) => i.href))
+  // `/admin` is exact-only (ADMIN_NAV_EXACT): it prefixes every other item, so
+  // as an ordinary entry it would light "Runs" on any /admin page lacking a nav
+  // item of its own.
+  const active = activeHref(
+    pathname ?? '',
+    items.map((i) => i.href),
+    { exact: ADMIN_NAV_EXACT },
+  )
 
   return (
     <nav

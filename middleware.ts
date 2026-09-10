@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { redirectWithSession, updateSession } from '@/lib/supabase/middleware'
-import type { UserRole } from '@/types/domain'
+import { AUTH_PAGES, ROLE_HOME, ROUTE_ROLES, matchPrefix } from '@/lib/auth/routes'
 
 /**
  * Root middleware. Two jobs:
@@ -14,41 +14,6 @@ import type { UserRole } from '@/types/domain'
  *
  * Next 16 also accepts this file as `proxy.ts`; `middleware.ts` remains valid.
  */
-
-/**
- * Longest-prefix wins. '/admin/super' MUST be matched before '/admin', which is
- * why this is sorted by descending prefix length at module load rather than
- * relying on object key order.
- */
-const ROUTE_ROLES: Record<string, readonly UserRole[]> = {
-  '/admin/super': ['super_admin'],
-  // Money and shop administration live outside /admin/super but are just as
-  // restricted; each also calls requireAdmin in its own render path.
-  '/admin/shops': ['super_admin'],
-  '/admin/audit': ['super_admin'],
-  '/admin/dispatcher': ['dispatcher', 'super_admin'],
-  '/admin': ['dispatcher', 'super_admin'],
-  '/shop': ['shop_owner'],
-  '/rider': ['rider'],
-}
-
-const PROTECTED_PREFIXES = Object.keys(ROUTE_ROLES).sort((a, b) => b.length - a.length)
-
-const ROLE_HOME: Record<UserRole, string> = {
-  shop_owner: '/shop/dashboard',
-  rider: '/rider/dashboard',
-  dispatcher: '/admin/dispatcher',
-  super_admin: '/admin/super',
-}
-
-/** Signed-in users have no business on the login/register forms. */
-const AUTH_PAGES = ['/auth/login', '/auth/register']
-
-function matchPrefix(pathname: string): string | undefined {
-  return PROTECTED_PREFIXES.find(
-    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
-  )
-}
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
@@ -66,9 +31,26 @@ export async function middleware(request: NextRequest) {
     return redirectWithSession(url, response)
   }
 
-  // Already signed in and staring at a login form? Send them home.
+  /*
+    Already signed in and staring at a login form? Send them home -- UNLESS
+    home is the login form.
+
+    A RETIRED ROLE'S HOME IS THE DOOR. `ROLE_HOME.dispatcher` is
+    '/auth/login?error=role_retired' so that middleware never sends such an
+    account into /admin, which would refuse it and bounce it home again. But
+    that makes this branch the loop instead: the pathname of its destination is
+    '/auth/login', which is an AUTH_PAGE, so it would redirect to itself until
+    the browser gives up.
+
+    Comparing the DESTINATION rather than special-casing the role keeps the
+    rule true for whatever is retired next, and leaves the account on a page
+    that explains itself instead of a dead tab.
+  */
   if (user && role && isActive && AUTH_PAGES.includes(pathname)) {
-    return redirectWithSession(new URL(ROLE_HOME[role], request.url), response)
+    const home = new URL(ROLE_HOME[role], request.url)
+    if (!AUTH_PAGES.includes(home.pathname)) {
+      return redirectWithSession(home, response)
+    }
   }
 
   const prefix = matchPrefix(pathname)

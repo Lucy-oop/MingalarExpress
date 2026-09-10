@@ -9,6 +9,12 @@
  * twice, one of them aimed at the page they were already on. `nav.test.ts`
  * asserts the two lists never share an href again, which is the only thing that
  * stops this growing back the next time a page is added.
+ *
+ * AND `adminOnly` IS GONE. Five of these eight carried a flag whose only job
+ * was hiding them from a dispatcher, so the top bar rendered a different shape
+ * for each of the two office roles. With the dispatcher role retired there is
+ * one office login, every destination is visible to it, and the bar is one flat
+ * list. The filter in components/admin/admin-nav went with the flag.
  */
 
 export type NavItem = {
@@ -16,26 +22,34 @@ export type NavItem = {
   label: string
   /** Icon key; the client component owns the actual lucide component. */
   icon: string
-  /** Hidden from dispatchers. */
-  adminOnly?: boolean
 }
 
 /** The top bar. Every destination in the panel has exactly one home here. */
 export const ADMIN_NAV_ITEMS: readonly NavItem[] = [
-  { href: '/admin/dispatcher', label: 'Dispatch', icon: 'radio' },
-  // Dispatchers too, not admins only: answering "where is this parcel" is the
-  // job of whoever picks up the phone.
+  // The office's landing page. Was /admin/dispatcher; /admin had no index.
+  { href: '/admin', label: 'Runs', icon: 'radio' },
   { href: '/admin/orders', label: 'Orders', icon: 'package' },
-  // Also dispatchers: a KPay transfer sits in neither the rider's hands nor the
-  // books until somebody checks it, and leaving that to one person is how a
-  // queue builds up for a week.
   { href: '/admin/kpay', label: 'KBZPay', icon: 'smartphone' },
-  { href: '/admin/super', label: 'Overview', icon: 'dashboard', adminOnly: true },
-  { href: '/admin/super/riders', label: 'Riders', icon: 'bike', adminOnly: true },
-  { href: '/admin/shops', label: 'Shops', icon: 'store', adminOnly: true },
-  { href: '/admin/super/settlements', label: 'Settlements', icon: 'banknote', adminOnly: true },
-  { href: '/admin/audit', label: 'COD audit', icon: 'scale', adminOnly: true },
+  { href: '/admin/super', label: 'Overview', icon: 'dashboard' },
+  { href: '/admin/super/riders', label: 'Riders', icon: 'bike' },
+  { href: '/admin/shops', label: 'Shops', icon: 'store' },
+  { href: '/admin/super/settlements', label: 'Settlements', icon: 'banknote' },
+  { href: '/admin/audit', label: 'COD audit', icon: 'scale' },
 ] as const
+
+/**
+ * Top-bar entries that light only on an EXACT match.
+ *
+ * `/admin` is a prefix of every other destination in the panel, so as an
+ * ordinary entry it lights "Runs" on any /admin page that has no more specific
+ * nav item of its own. Nothing falls through today -- every section has its own
+ * entry -- but the next page added under /admin without one would light the
+ * wrong tab, and that is a bug nobody reports because it merely looks odd.
+ *
+ * Same reason and same fix as SUPER_NAV_EXACT below, which was written after
+ * this exact mistake surfaced in the sub-nav.
+ */
+export const ADMIN_NAV_EXACT: readonly string[] = ['/admin']
 
 /**
  * The Super Admin sub-navigation: only what lives nowhere else.

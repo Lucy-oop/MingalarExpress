@@ -32,7 +32,11 @@ const nextConfig: NextConfig = {
       // The daily route manifest is Phase 3 of the route plan and does not exist
       // yet; until it does, a rider lands on their job list.
       { source: '/rider/today-way', destination: '/rider/dashboard', permanent: false },
-      { source: '/admin/dispatch-board', destination: '/admin/dispatcher', permanent: false },
+      { source: '/admin/dispatch-board', destination: '/admin', permanent: false },
+      // The board moved to /admin when the dispatcher role was retired and
+      // /admin finally got an index page. Kept because this path is in the
+      // office's browser history and was the brand mark's target for months.
+      { source: '/admin/dispatcher', destination: '/admin', permanent: false },
     ]
   },
   async headers() {

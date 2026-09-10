@@ -27,7 +27,7 @@ function refresh() {
   revalidatePath('/admin/super/pricing')
   revalidatePath('/admin/super/settlements')
   revalidatePath('/admin/audit')
-  revalidatePath('/admin/dispatcher')
+  revalidatePath('/admin')
 }
 
 async function admin() {

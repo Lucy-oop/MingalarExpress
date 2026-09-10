@@ -9,16 +9,27 @@ export const metadata: Metadata = { title: 'Sign in' }
 const NOTICES: Record<string, { tone: 'error' | 'info'; message: string }> = {
   account_disabled: {
     tone: 'error',
-    message: 'This account has been disabled. Contact your dispatcher.',
+    message: 'This account has been disabled. Contact the office.',
   },
   no_profile: {
     tone: 'error',
-    message: 'This account is not set up yet. Contact your dispatcher.',
+    message: 'This account is not set up yet. Contact the office.',
   },
   session_expired: { tone: 'info', message: 'Your session expired. Please sign in again.' },
   not_configured: {
     tone: 'error',
     message: 'Sign-in is not configured on this deployment. Contact the administrator.',
+  },
+  /*
+    A ROLE THAT NO LONGER EXISTS. `ROLE_HOME.dispatcher` points here rather
+    than into /admin, because /admin now refuses the role and sending it there
+    would loop. Nothing should reach this -- the one dispatcher account went
+    with the change -- but the enum value survives in the schema, so an account
+    minted by hand through the Admin API still can.
+  */
+  role_retired: {
+    tone: 'error',
+    message: 'This account type is no longer used. Ask the administrator for an office account.',
   },
   missing_code: { tone: 'error', message: 'That confirmation link was incomplete.' },
   link_expired: { tone: 'error', message: 'That link has expired. Please sign in again.' },
@@ -37,7 +48,7 @@ export default async function LoginPage({
       <CardHeader>
         <CardTitle>Portal Sign In</CardTitle>
         <CardDescription>
-          Shops, riders and dispatchers use the same door. Sign in with the email address
+          Shops, riders and the office use the same door. Sign in with the email address
           your account was created with.
         </CardDescription>
       </CardHeader>

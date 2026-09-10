@@ -273,7 +273,7 @@ Seeded accounts, password `mingalar123` for all:
 | Email | Role | |
 |---|---|---|
 | `admin@mingalar.test` | super_admin | Ko Aung |
-| `dispatch@mingalar.test` | dispatcher | Ma Hnin |
+| ~~`dispatch@mingalar.test`~~ | ~~dispatcher~~ | **Retired 2026-09-10.** The role is gone; the office is one login, `admin@mingalar.test`. `seed.sql` still creates this account — see the warning below |
 | `shop@mingalar.test` | shop_owner | San Pya Mini Mart |
 | `rider1@mingalar.test` | rider | Zaw Zaw — 0.33 km from the shop |
 | `rider2@mingalar.test` | rider | Thiha — 1.6 km |
@@ -284,6 +284,13 @@ Seeded accounts, password `mingalar123` for all:
 > a single NULL (`reauthentication_token` is the usual one) makes sign-in fail
 > with "Database error querying schema" while admin user creation still works.
 > It is version-coupled to GoTrue, so do not use it on production.
+>
+> **And it resurrects the retired dispatcher role.** `seed.sql` inserts all six
+> accounts including `dispatch@mingalar.test`, so seeding a database that was
+> just wiped puts back the login this system no longer has a place for. After a
+> reset, do **not** run `scripts/db-push.sh --seed`; plain `db:push` applies
+> migrations only and is safe. `scripts/db-reset-all.sh` deliberately does not
+> re-seed for this reason.
 
 ### Production — wards only, then bootstrap one admin
 
@@ -483,9 +490,15 @@ Sign in `shop@mingalar.test` / `mingalar123`.
 > stored `delivery_fee` differs from the official schedule for that route, that is
 > the bug this test exists to find.
 
-### Step 2 — Dispatcher plans the run
+### Step 2 — The office plans the run
 
-Sign in `dispatch@mingalar.test` in a second profile → `/admin/dispatcher`.
+Stay signed in as `admin@mingalar.test` → `/admin`, which is the run board and
+the office's landing page.
+
+> Was "sign in `dispatch@mingalar.test` → `/admin/dispatcher`". The dispatcher
+> role was retired on 2026-09-10: it could do nothing a super admin could not,
+> and the second login was two things to keep consistent rather than two jobs.
+> `/admin/dispatcher` still redirects to `/admin` for old bookmarks.
 
 This is a ROUTE PLANNING board. There is no rider ranking and no offer/accept —
 0009 retired both. Work moves by loading parcels onto a scheduled run.
@@ -500,9 +513,11 @@ This is a ROUTE PLANNING board. There is no rider ranking and no offer/accept �
 | 2.6 | Watch the volume banner | Amber under 20 parcels, red if the run would actually lose money. It renders nothing when the run is fine |
 | 2.7 | **Depart trip** | Under 20 parcels a modal demands a reason of 10+ characters. Cancel it and the run stays; supply one and the override lands in `audit_log` as `trip.depart_below_minimum` with the projected margin |
 
-> **Two dispatchers, one board.** Every action ends in a server round trip and a
+> **Two tabs, one board.** Every action ends in a server round trip and a
 > refresh — nothing is optimistic. Realtime keeps both screens current, so a
-> parcel loaded in one tab leaves the pool in the other within ~400 ms.
+> parcel loaded in one tab leaves the pool in the other within ~400 ms. This
+> mattered when two dispatchers shared the board and still does for one person
+> with it open on a laptop and a phone.
 
 ### Step 3 — Rider delivers
 

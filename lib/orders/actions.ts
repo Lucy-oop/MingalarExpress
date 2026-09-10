@@ -395,7 +395,7 @@ export async function createOrder(
   revalidatePath('/shop/dashboard')
   revalidatePath('/shop/orders')
   revalidatePath(`/shop/orders/${created.id}`)
-  revalidatePath('/admin/dispatcher')
+  revalidatePath('/admin')
 
   return {
     created: {
@@ -562,7 +562,7 @@ export async function resolveFailedOrder(
   // `owns_shop(...) or is_dispatch()`, and the office taking the decision over
   // the phone is the common case — a shop that rings up should not be told to
   // go and click it themselves.
-  const ctx = await assertRole('shop_owner', 'dispatcher', 'super_admin').catch(() => null)
+  const ctx = await assertRole('shop_owner', 'super_admin').catch(() => null)
   if (!ctx) {
     return { ok: false, message: 'Your session has expired. Sign in again and retry.' }
   }
@@ -579,7 +579,7 @@ export async function resolveFailedOrder(
   refreshShopViews(orderId)
   // Dispatch sees the consequence immediately: a retry rejoins the pool, a
   // return or a cancel leaves it.
-  revalidatePath('/admin/dispatcher')
+  revalidatePath('/admin')
   revalidatePath('/admin/orders')
   revalidatePath(`/admin/orders/${orderId}`)
 

@@ -37,7 +37,7 @@ const HEADERS = [
 
 export async function GET(request: NextRequest) {
   try {
-    await assertRole('dispatcher', 'super_admin')
+    await assertRole('super_admin')
   } catch {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 })
   }

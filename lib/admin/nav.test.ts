@@ -1,6 +1,12 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { ADMIN_NAV_ITEMS, ALLOWED_NAV_OVERLAP, SUPER_NAV_ITEMS } from './nav'
+import { ROUTE_ROLES } from '../auth/routes'
+import {
+  ADMIN_NAV_EXACT,
+  ADMIN_NAV_ITEMS,
+  ALLOWED_NAV_OVERLAP,
+  SUPER_NAV_ITEMS,
+} from './nav'
 
 describe('admin navigation', () => {
   /**
@@ -56,21 +62,51 @@ describe('admin navigation', () => {
   })
 
   /**
-   * A dispatcher must never be shown a link middleware will bounce them off.
-   * ROUTE_ROLES gates /admin/super, /admin/shops and /admin/audit to
-   * super_admin, so every nav item under those prefixes has to be adminOnly.
+   * NOBODY IS SHOWN A LINK MIDDLEWARE WILL BOUNCE THEM OFF.
+   *
+   * This replaces "everything a dispatcher can see is a route they may open",
+   * which checked that every nav item under an admin-only prefix carried
+   * `adminOnly`. That flag is gone with the dispatcher role, so the old test
+   * would have passed while asserting nothing.
+   *
+   * It also duplicated middleware's prefix list as a literal, so the two could
+   * drift silently. This imports the REAL `ROUTE_ROLES` and asks the real question: can
+   * the office role actually open every destination the office is shown? A new
+   * /admin route gated to some future role, still listed in the top bar, fails
+   * here rather than 404-ing in somebody's face.
    */
-  test('everything a dispatcher can see is a route they may open', () => {
-    const superAdminOnly = ['/admin/super', '/admin/shops', '/admin/audit']
-    for (const item of ADMIN_NAV_ITEMS) {
-      const restricted = superAdminOnly.some(
+  test('every destination in the bar is one the office may open', () => {
+    // Same longest-prefix rule middleware applies.
+    const prefixes = Object.keys(ROUTE_ROLES).sort((a, b) => b.length - a.length)
+
+    for (const item of [...ADMIN_NAV_ITEMS, ...SUPER_NAV_ITEMS]) {
+      const prefix = prefixes.find(
         (p) => item.href === p || item.href.startsWith(`${p}/`),
       )
-      if (restricted) {
-        assert.equal(item.adminOnly, true, `${item.href} must be adminOnly`)
-      } else {
-        assert.notEqual(item.adminOnly, true, `${item.href} need not be adminOnly`)
-      }
+      assert.ok(prefix, `${item.href} matches no ROUTE_ROLES prefix — is it even gated?`)
+      assert.ok(
+        ROUTE_ROLES[prefix]!.includes('super_admin'),
+        `${item.href} is gated to ${ROUTE_ROLES[prefix]!.join('/')}, which the office is not`,
+      )
+    }
+  })
+
+  /**
+   * The landing page prefixes every other destination, so as an ordinary entry
+   * it would light "Runs" on any /admin page without a nav item of its own.
+   * SUPER_NAV_EXACT exists because this exact bug already happened once in the
+   * sub-nav; this is the top bar's version of that guard.
+   */
+  test('the landing page is exact-match only', () => {
+    assert.ok(
+      ADMIN_NAV_EXACT.includes('/admin'),
+      '/admin prefixes every other item and must not light as a prefix',
+    )
+    for (const href of ADMIN_NAV_EXACT) {
+      assert.ok(
+        ADMIN_NAV_ITEMS.some((i) => i.href === href),
+        `${href} is marked exact but is not in the bar`,
+      )
     }
   })
 })

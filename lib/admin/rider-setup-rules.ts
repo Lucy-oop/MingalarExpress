@@ -12,7 +12,16 @@
  */
 
 export type RiderSetupSubject = {
-  /** Null when the profile row is gone. */
+  /**
+   * Null when the profile row is gone.
+   *
+   * `'dispatcher'` STAYS despite the role being retired. This mirrors
+   * `user_role`, which still carries the value because `audit_log.actor_role`
+   * and friends hold history written by dispatchers -- so a profile with that
+   * role remains representable, and a rule about who may be impersonated must
+   * keep answering for it. Dropping it here would narrow the type below the
+   * data it describes.
+   */
   role: 'shop_owner' | 'rider' | 'dispatcher' | 'super_admin' | null
   isActive: boolean
 }

@@ -7,13 +7,19 @@ import { Alert } from '@/components/ui/alert'
 export const metadata: Metadata = { title: 'Route planning' }
 
 /**
- * Always fresh. Two dispatchers work this board at once, and a cached planning
- * board is a double-loading generator — the same reason the offer-era dispatch
- * queue was never cached.
+ * The office's home. Signing in lands here, because planning the day's runs is
+ * what the office opens the app to do -- /admin had no index page at all until
+ * this moved here from /admin/dispatcher.
+ *
+ * Always fresh. A cached planning board is a double-loading generator: two
+ * tabs, or two people, acting on a stale manifest load the same parcel twice.
+ * That was true when two dispatchers shared the board and is still true of one
+ * person with the board open on a laptop and a phone -- the same reason the
+ * offer-era dispatch queue was never cached.
  */
 export const dynamic = 'force-dynamic'
 
-export default async function DispatcherPage({
+export default async function AdminHomePage({
   searchParams,
 }: {
   searchParams: Promise<{ date?: string }>

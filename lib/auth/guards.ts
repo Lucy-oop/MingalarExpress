@@ -1,6 +1,12 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import type { Profile, UserRole } from '@/types/domain'
+// The route map lives in its own module so middleware (edge runtime) and this
+// file (Supabase server client) can share one copy. Imported for requireRole
+// below, and re-exported because a dozen callers already take ROLE_HOME from
+// here.
+import { ROLE_HOME } from '@/lib/auth/routes'
+export { ROLE_HOME }
 
 /**
  * Server-side authorisation. Called at the top of every protected layout.
@@ -11,13 +17,6 @@ import type { Profile, UserRole } from '@/types/domain'
  * the real boundary -- RLS is -- but three layers means a mistake in one is not
  * a data leak.
  */
-
-export const ROLE_HOME: Record<UserRole, string> = {
-  shop_owner: '/shop/dashboard',
-  rider: '/rider/dashboard',
-  dispatcher: '/admin/dispatcher',
-  super_admin: '/admin/super',
-}
 
 export type AuthContext = {
   userId: string
@@ -103,7 +102,21 @@ export async function requireRole(...allowed: UserRole[]): Promise<AuthContext> 
 
 export const requireShop = () => requireRole('shop_owner')
 export const requireRider = () => requireRole('rider')
-export const requireDispatch = () => requireRole('dispatcher', 'super_admin')
+/**
+ * Whoever runs the office. Since the dispatcher role was retired that is
+ * `super_admin` and nothing else, so this is now the same gate as
+ * `requireAdmin`.
+ *
+ * KEPT AS A SEPARATE NAME ON PURPOSE, rather than collapsed into
+ * `requireAdmin` at ~30 call sites. The two say different things: pages behind
+ * `requireDispatch` are the day's WORK -- the run board, the parcel search, the
+ * KBZPay queue -- and pages behind `requireAdmin` are the business's SETTINGS
+ * and its MONEY. That line is real even while one person is on both sides of
+ * it, and it is the line a second office login would be granted along. Merging
+ * the names would erase the distinction and make re-drawing it a re-audit of
+ * every admin route.
+ */
+export const requireDispatch = () => requireRole('super_admin')
 export const requireAdmin = () => requireRole('super_admin')
 
 // ---------------------------------------------------------------------------
@@ -117,8 +130,27 @@ export const requireAdmin = () => requireRole('super_admin')
 
 export const isAdmin = (role: UserRole | null | undefined): boolean => role === 'super_admin'
 
+/**
+ * DELIBERATELY NO LONGER A MIRROR OF SQL `is_dispatch()`, which is the one
+ * place in this file where the app and the database disagree on purpose.
+ *
+ *   SQL   public.is_dispatch()  ->  auth_role() in ('super_admin','dispatcher')
+ *   here  isDispatch(role)      ->  role === 'super_admin'
+ *
+ * The dispatcher role was retired from the PRODUCT, not from the schema. The
+ * enum value stays because `audit_log.actor_role`,
+ * `order_status_events.actor_role` and `order_notes.author_role` hold history
+ * written by dispatchers, and because two SQL suites assert the dispatcher
+ * boundary (`settlement_flow.sql` -- "a dispatcher cannot remit cash or
+ * settle") which is worth keeping as proof the money boundary never moved.
+ *
+ * So SQL stays permissive toward a role that can no longer log in, and the app
+ * is the thing that refuses it. Safe in that direction only: the app is
+ * strictly narrower than the policy, never wider. Do NOT "fix" the SQL to
+ * match -- that is 16 policies and 18 functions for no gain.
+ */
 export const isDispatch = (role: UserRole | null | undefined): boolean =>
-  role === 'super_admin' || role === 'dispatcher'
+  role === 'super_admin'
 
 export const isRider = (role: UserRole | null | undefined): boolean => role === 'rider'
 

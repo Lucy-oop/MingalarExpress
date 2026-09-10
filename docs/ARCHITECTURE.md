@@ -1027,6 +1027,23 @@ export const supabaseAdmin = createClient<Database>(
 
 `middleware.ts` — refreshes the session cookie **and** does a coarse path/role check. It is a UX gate, not the security boundary; RLS is.
 
+> **Superseded, 2026-09-10 — the dispatcher role is retired.** The snippets in
+> this section (and the `app/` tree above) show the two-office-role design they
+> were written for. There is now **one** office login, `super_admin`:
+> `ROUTE_ROLES` is `{ '/admin': ['super_admin'], '/shop': …, '/rider': … }` and
+> the run board is `/admin` itself, not `/admin/dispatcher`.
+>
+> **The single source of truth is `lib/auth/routes.ts`** — `ROUTE_ROLES`,
+> `ROLE_HOME`, `AUTH_PAGES` and `matchPrefix`, shared by `middleware.ts` and
+> `lib/auth/guards.ts` so the map cannot drift between them.
+>
+> SQL did **not** change: `public.is_dispatch()` still reads
+> `auth_role() in ('super_admin','dispatcher')` and `user_role` still carries
+> the value, because `audit_log.actor_role` and friends hold history written by
+> dispatchers and two SQL suites assert the dispatcher money boundary. So the
+> app is now strictly narrower than the policy — safe in that direction only.
+> See the note on `isDispatch` in `lib/auth/guards.ts`.
+
 ```ts
 import { type NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'

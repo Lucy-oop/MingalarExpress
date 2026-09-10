@@ -24,7 +24,7 @@ function refresh() {
   revalidatePath('/admin/shops')
   revalidatePath('/admin/super')
   revalidatePath('/admin/audit')
-  revalidatePath('/admin/dispatcher')
+  revalidatePath('/admin')
 }
 
 const FORBIDDEN = 'Only a Super Admin can manage shops.'

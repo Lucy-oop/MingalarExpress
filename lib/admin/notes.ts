@@ -62,7 +62,7 @@ export async function addOrderNote(
   _prev: NoteResult | null,
   formData: FormData,
 ): Promise<NoteResult> {
-  const ctx = await assertRole('dispatcher', 'super_admin').catch(() => null)
+  const ctx = await assertRole('super_admin').catch(() => null)
   if (!ctx) {
     return { ok: false, message: 'Your session has expired. Sign in again and retry.' }
   }

@@ -1,10 +1,9 @@
 import Link from 'next/link'
 import { LogOut } from 'lucide-react'
-import { requireDispatch, isAdmin } from '@/lib/auth/guards'
+import { requireDispatch } from '@/lib/auth/guards'
 import { signOut } from '@/lib/auth/actions'
 import { BrandMark } from '@/components/shared/brand-mark'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { AdminNav } from '@/components/admin/admin-nav'
 import { AdminNoticeBell } from '@/components/admin/notice-bell'
 import { getOfficeNotices } from '@/lib/admin/shop-queries'
@@ -12,10 +11,17 @@ import { officeNotices } from '@/lib/admin/notices'
 import { createClient } from '@/lib/supabase/server'
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
-  // Dispatchers and Super Admins share this shell; /admin/super is additionally
-  // gated by middleware (longest-prefix) and by requireAdmin in its own layout.
+  /*
+    ONE OFFICE ROLE. This shell used to be shared by dispatchers and Super
+    Admins, which is why it read the role at all: to filter the nav and to
+    label a badge. Both are gone with the dispatcher role, so the guard is the
+    only thing left that cares.
+
+    `requireDispatch` is `super_admin` now (see lib/auth/guards.ts for why the
+    name survives), and middleware gates all of /admin to the same role, so
+    /admin/super's own requireAdmin is a third layer rather than a wider one.
+  */
   const { profile } = await requireDispatch()
-  const admin = isAdmin(profile.role)
 
   /*
     THE FEED IS LAYOUT CHROME, so it must not be able to break a page. Both
@@ -39,14 +45,11 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     <div className="min-h-dvh bg-muted/30">
       <header className="border-b bg-background">
         <div className="mx-auto flex max-w-[1600px] items-center justify-between gap-4 px-4 py-3">
-          <Link href="/admin/dispatcher">
+          <Link href="/admin">
             <BrandMark tagline={false} className="text-left" />
           </Link>
           <div className="flex items-center gap-2 sm:gap-3">
             <AdminNoticeBell notices={notices} seenAt={me?.notices_seen_at ?? null} />
-            <Badge tone={admin ? 'gold' : 'blue'}>
-              {admin ? 'Super Admin' : 'Dispatcher'}
-            </Badge>
             <span className="hidden text-sm text-muted-foreground sm:inline">
               {profile.full_name}
             </span>
@@ -58,7 +61,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
             </form>
           </div>
         </div>
-        <AdminNav admin={admin} />
+        <AdminNav />
       </header>
       <main className="mx-auto max-w-[1600px] px-4 py-4">{children}</main>
     </div>

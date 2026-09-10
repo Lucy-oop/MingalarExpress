@@ -23,12 +23,12 @@ export type TripResult =
   | { ok: false; message: string; retry: boolean; requiresOverride?: boolean }
 
 function refresh() {
-  revalidatePath('/admin/dispatcher')
+  revalidatePath('/admin')
   revalidatePath('/admin/super')
 }
 
 async function dispatchClient() {
-  await assertRole('dispatcher', 'super_admin')
+  await assertRole('super_admin')
   return createClient()
 }
 

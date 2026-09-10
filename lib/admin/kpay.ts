@@ -36,7 +36,7 @@ export type KpayResult = { ok: true; message: string } | { ok: false; message: s
 const RECEIPT_TTL_SECONDS = 600
 
 export async function getKpayQueue(): Promise<KpayPending[]> {
-  await assertRole('dispatcher', 'super_admin')
+  await assertRole('super_admin')
   const supabase = await createClient()
 
   const { data, error } = await supabase
@@ -90,7 +90,7 @@ async function sign(
 }
 
 export async function confirmKpay(orderId: string): Promise<KpayResult> {
-  const ctx = await assertRole('dispatcher', 'super_admin').catch(() => null)
+  const ctx = await assertRole('super_admin').catch(() => null)
   if (!ctx) return { ok: false, message: 'Your session has expired. Sign in again.' }
 
   const supabase = await createClient()
@@ -102,7 +102,7 @@ export async function confirmKpay(orderId: string): Promise<KpayResult> {
 }
 
 export async function rejectKpay(orderId: string, reason: string): Promise<KpayResult> {
-  const ctx = await assertRole('dispatcher', 'super_admin').catch(() => null)
+  const ctx = await assertRole('super_admin').catch(() => null)
   if (!ctx) return { ok: false, message: 'Your session has expired. Sign in again.' }
   if (reason.trim().length < 4) {
     return { ok: false, message: 'Say what was wrong with the receipt.' }
