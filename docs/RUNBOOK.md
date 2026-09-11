@@ -618,9 +618,19 @@ an old build.
       workers need HTTPS; `localhost` is exempt)
 - [ ] Install to an Android home screen, open, kill the network, tap a state
       change — the queued banner appears and the offline page serves
-- [ ] **Add 192×192 and 512×512 PNG icons.** The manifest currently declares only
-      `icon.svg`. Chrome on Android accepts SVG, but older Androids and every
-      store wrapper want PNG, and installability silently degrades without them
+- [x] **192×192 and 512×512 PNG icons.** Done 2026-09-11: the manifest declared
+      only a hand-drawn `icon.svg`, which Chrome on Android accepts but older
+      Androids and every store wrapper do not, so installability degraded
+      silently. Now `/icon-192.png` and `/icon-512.png` from the brand logo
+- [ ] **Check the maskable icon on a real launcher.** `/icon-maskable-512.png`
+      is the logo inset to 80% because Android crops a maskable icon to a
+      circle or squircle — the full-bleed logo loses 11% of its artwork that
+      way, including both ends of "MINGALAR". Worth eyeballing on a Samsung
+      (squircle) and a Pixel (circle), which crop differently
+- [ ] **Check the iOS home screen icon.** `app/apple-icon.png` (180×180) via
+      Next's file convention. iOS ignores the manifest icons entirely and has
+      never accepted SVG, so before this there was no iOS icon at all —
+      Safari fell back to a screenshot of the page
 - [ ] Confirm `theme_color` `#c62828` matches the header on a real device
 
 ### MapTiler
