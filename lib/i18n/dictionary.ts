@@ -209,6 +209,17 @@ export const DICTIONARY = {
     figure that is still climbing reads as a finished total.
   */
   'ways.running': { en: 'On the road now', my: 'လမ်းပေါ်ရောက်နေဆဲ' },
+  'ways.done': { en: 'Finished', my: 'ပြီးဆုံး' },
+  'ways.atHub': { en: 'Back at hub', my: 'ဌာနပြန်ရောက်' },
+  /*
+    The honest label for a collection the run is credited with but that nothing
+    can still name: receive_trip banks a COUNT and detaches the parcels, so a
+    run received before 0042 has no per-parcel trace left at all.
+  */
+  'ways.handedIn': {
+    en: '{n} parcels handed in at the hub',
+    my: 'ဌာနတွင် အပ်ခဲ့သော ပါဆယ် {n} ခု',
+  },
   'way.deliver': { en: 'Deliver to customers', my: 'ဝယ်သူများဆီ ပို့ရန်' },
 
   // ---- proof ----------------------------------------------------------------

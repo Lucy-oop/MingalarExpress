@@ -86,9 +86,46 @@ describe('way history counts what actually happened', () => {
 })
 
 describe('the card shows both halves of the day', () => {
-  test('collections and deliveries each carry their own money', () => {
-    assert.match(page, /way\.pickupPay/, 'the pickup earnings are not shown')
-    assert.match(page, /way\.deliveryPay/, 'the delivery earnings are not shown')
+  /**
+   * ONE MONEY FIGURE IN THE HEADER, and it is the total.
+   *
+   * The per-half amounts were printed beside each count here for exactly one
+   * revision. That put three figures in Ks on a single card — pickup pay,
+   * delivery pay, and the total top-right — and left the rider to work out that
+   * the first two summed to the third. The counts answer "what did I do"; the
+   * total answers "what did it pay"; the per-parcel split is a tap away.
+   */
+  test('the summary line carries counts, not amounts', () => {
+    const summary = page.slice(page.indexOf('<summary'), page.indexOf('</summary>'))
+    assert.match(summary, /formatMmk\(way\.pay\)/, 'the total is gone from the header')
+    for (const field of ['way.pickupPay', 'way.deliveryPay']) {
+      assert.ok(
+        !summary.includes(field),
+        `${field} is back in the card header — three money figures on one card again`,
+      )
+    }
+  })
+
+  /**
+   * `receive_trip` banks a COUNT and detaches the parcels, so a run received
+   * before 0042 existed has no per-parcel trace at all — no trip link, no
+   * ledger row. The count is real; the itemisation is genuinely gone. Saying
+   * "8 parcels handed in at the hub" is honest. "No parcels recorded against
+   * this run" was not: it contradicted the 8 printed directly above it.
+   */
+  test('collections it cannot itemise are still accounted for', () => {
+    assert.match(page, /way\.shelved > 0/, 'a shelved collection reads as "nothing recorded" again')
+    assert.match(page, /ways\.handedIn/, 'the handed-in-at-hub label is gone')
+  })
+
+  /** The name is what a rider recognises; the code is for reading out. */
+  test('a parcel row leads with who it was for', () => {
+    assert.match(page, /\{p\.name \?\? p\.code\}/, 'the tracking code is the primary label again')
+  })
+
+  /** Reuses Badge rather than restating its classes and drifting from them. */
+  test('run status is a pill', () => {
+    assert.match(page, /<Badge tone=\{way\.status === 'departed' \? 'gold' : 'neutral'\}/)
   })
 
   /**

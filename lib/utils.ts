@@ -11,7 +11,20 @@ export function cn(...inputs: ClassValue[]) {
  */
 export function formatMmk(amount: number | null | undefined): string {
   if (amount === null || amount === undefined) return '—'
-  return `${new Intl.NumberFormat('en-US').format(Math.round(amount))} Ks`
+  /*
+    `|| 0` NORMALISES NEGATIVE ZERO, and it is not paranoia — it shipped.
+
+    JavaScript has a signed zero, and `Intl.NumberFormat` faithfully renders it:
+    `format(-0)` is the string "-0". Way history produced one the ordinary way —
+    ledger amounts are stored negative, so the pay sums flip them back with a
+    leading minus, and negating the sum of an EMPTY list gives `-0`. A run that
+    earned nothing printed "-0 Ks", which reads as a deduction.
+
+    Fixed here rather than at that call site because every money figure in the
+    app goes through this function, and any of them can reach zero by
+    subtraction. `-0 || 0` is `0`; a real 0 is unchanged.
+  */
+  return `${new Intl.NumberFormat('en-US').format(Math.round(amount) || 0)} Ks`
 }
 
 /** +959791234567 -> 09 791 234 567 (how a Myanmar number is actually read). */

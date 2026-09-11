@@ -54,6 +54,14 @@ export type WayParcel = {
   /** Order id where we still have it; the ledger line's id otherwise. */
   key: string
   code: string
+  /**
+   * WHO IT WAS FOR — the shop on a collection, the customer on a delivery —
+   * with the township where there is one. A rider recognises "Lady Fashion ·
+   * Kamayut" instantly and a tracking code never; the code is for reading OUT
+   * to the office, not for finding your place in a list.
+   */
+  name: string | null
+  area: string | null
   kind: 'delivered' | 'collected'
   /** What this parcel paid the rider, 0 on a 'trip' route where pay is per run. */
   pay: number
@@ -84,6 +92,19 @@ export type RiderWay = {
   pay: number
   /** Itemised, for the expandable list. Newest first. */
   parcels: WayParcel[]
+  /**
+   * Collections this run is credited with that NOTHING can still name.
+   *
+   * `receive_trip` detaches a collected parcel and banks only a COUNT, so a run
+   * received before 0042 existed — before any `pickup_pay` line was written —
+   * leaves no per-parcel trace at all: no trip link, no ledger row. The count
+   * is real and the itemisation is genuinely gone.
+   *
+   * Saying "8 parcels handed in at hub" is the honest rendering of that.
+   * "No parcels recorded against this run" was not: it contradicted the 8 in
+   * the summary line directly above it.
+   */
+  shelved: number
 }
 
 /** Pay lines only. `cod_collected` is the customer's cash, not the rider's. */
@@ -114,17 +135,43 @@ export async function getRiderWays(limit = 40): Promise<RiderWay[]> {
     selects over the rider's entire history, which PostgREST silently caps at
     1000 rows — so a busy rider's oldest runs would quietly start reading zero.
   */
-  const [{ data: orders }, { data: ledger }] = await Promise.all([
+  const { data: ledger } = await supabase
+    .from('cod_ledger')
+    .select('id, order_id, trip_id, kind, amount, memo, created_at')
+    .in('trip_id', ids)
+    .in('kind', PAY_KINDS)
+
+  /*
+    TWO WAYS TO REACH A PARCEL, AND BOTH ARE NEEDED.
+
+    Still attached to the run -> `trip_id`. Detached by receive/close but named
+    by a pay line -> that line's `order_id`. The ORDER ROW SURVIVES either way;
+    it is only the trip link that is cleared, so once we have an id the
+    customer, the shop and the township are all still there to read.
+  */
+  const fromLedger = [
+    ...new Set((ledger ?? []).flatMap((l) => (l.order_id ? [l.order_id] : []))),
+  ]
+  const [{ data: attached }, { data: named }] = await Promise.all([
     supabase
       .from('orders')
-      .select('id, code, status, trip_id, trip_leg')
+      .select(
+        'id, code, status, trip_id, trip_leg, customer_name, shops:shop_id (name), dropoff_area:dropoff_area_id (name)',
+      )
       .in('trip_id', ids),
-    supabase
-      .from('cod_ledger')
-      .select('id, order_id, trip_id, kind, amount, memo, created_at')
-      .in('trip_id', ids)
-      .in('kind', PAY_KINDS),
+    fromLedger.length
+      ? supabase
+          .from('orders')
+          .select(
+            'id, code, status, trip_id, trip_leg, customer_name, shops:shop_id (name), dropoff_area:dropoff_area_id (name)',
+          )
+          .in('id', fromLedger)
+      : Promise.resolve({ data: [] as never[] }),
   ])
+
+  const orders = attached ?? []
+  const byId = new Map<string, (typeof orders)[number]>()
+  for (const o of [...(named ?? []), ...orders]) byId.set(o.id, o)
 
   const ways = trips.map((t) => {
     const route = t.routes as unknown as { code: string; name: string; colour: string } | null
@@ -133,8 +180,15 @@ export async function getRiderWays(limit = 40): Promise<RiderWay[]> {
 
     // Ledger amounts are NEGATIVE — a pay line is money the platform owes the
     // rider (see `ledger_kind`). Flip once, here, so nothing downstream has to.
+    /*
+      `|| 0` because negating the sum of an EMPTY list gives JavaScript's
+      negative zero, which Intl renders as the string "-0" — a run that earned
+      nothing printed "-0 Ks". `formatMmk` now normalises it too (belt and
+      braces, and that one protects every other money figure in the app), but
+      the data leaving this function should be clean in the first place.
+    */
     const sum = (kind: string) =>
-      -lines.filter((l) => l.kind === kind).reduce((n, l) => n + Number(l.amount), 0)
+      -lines.filter((l) => l.kind === kind).reduce((n, l) => n + Number(l.amount), 0) || 0
 
     const deliveryPay = sum('commission_earned')
     const pickupPay = sum('pickup_pay')
@@ -166,24 +220,39 @@ export async function getRiderWays(limit = 40): Promise<RiderWay[]> {
       Ledger first, so a detached collection is not lost, then anything attached
       the ledger has not already named.
     */
+    /*
+      The shop on a collection, the customer on a delivery. A pickup leg ends at
+      our own hub, so "who" is the counter it came FROM; a delivery ends at a
+      door, so it is the person who opened it.
+    */
+    const who = (id: string | null, kind: 'delivered' | 'collected') => {
+      const o = id ? byId.get(id) : undefined
+      if (!o) return { name: null, area: null }
+      const shop = (o.shops as unknown as { name: string } | null)?.name ?? null
+      const area = (o.dropoff_area as unknown as { name: string } | null)?.name ?? null
+      return { name: kind === 'collected' ? shop : o.customer_name, area }
+    }
+
     const seen = new Set<string>()
     const parcels: WayParcel[] = []
     for (const l of lines) {
       if (l.kind === 'trip_pay' || !l.order_id) continue
       seen.add(l.order_id)
+      const kind = l.kind === 'pickup_pay' ? ('collected' as const) : ('delivered' as const)
       parcels.push({
         key: String(l.id),
-        code: l.memo ?? '—',
-        kind: l.kind === 'pickup_pay' ? 'collected' : 'delivered',
+        code: byId.get(l.order_id)?.code ?? l.memo ?? '—',
+        ...who(l.order_id, kind),
+        kind,
         pay: -Number(l.amount),
       })
     }
     for (const o of mine) {
       if (seen.has(o.id)) continue
       if (o.trip_leg === 'delivery' && o.status === 'delivered')
-        parcels.push({ key: o.id, code: o.code, kind: 'delivered', pay: 0 })
+        parcels.push({ key: o.id, code: o.code, ...who(o.id, 'delivered'), kind: 'delivered', pay: 0 })
       else if (o.trip_leg === 'pickup' && (o.status === 'picked_up' || o.status === 'delivered'))
-        parcels.push({ key: o.id, code: o.code, kind: 'collected', pay: 0 })
+        parcels.push({ key: o.id, code: o.code, ...who(o.id, 'collected'), kind: 'collected', pay: 0 })
     }
 
     return {
@@ -201,6 +270,7 @@ export async function getRiderWays(limit = 40): Promise<RiderWay[]> {
       tripPay,
       pay: deliveryPay + pickupPay + tripPay,
       parcels,
+      shelved: Math.max(0, collected - parcels.filter((p) => p.kind === 'collected').length),
     }
   })
 
