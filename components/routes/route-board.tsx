@@ -16,6 +16,7 @@ import {
   departTrip,
   loadTrip,
   planTrip,
+  receiveTrip,
   returnTrip,
   sendToRider,
   unloadTrip,
@@ -365,6 +366,7 @@ export function RouteBoard({ board }: { board: PlanningBoard }) {
                         onUnload={(ids) => void run(trip.id, () => unloadTrip(trip.id, ids))}
                         onDepart={() => void handleDepart(trip)}
                         onReturn={() => void run(trip.id, () => returnTrip(trip.id))}
+                        onReceive={() => void run(trip.id, () => receiveTrip(trip.id), true)}
                         onClose={() => {
                           if (
                             !window.confirm(

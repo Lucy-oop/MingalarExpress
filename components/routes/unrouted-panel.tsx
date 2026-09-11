@@ -158,17 +158,29 @@ export function UnroutedPanel({
         their dropoff townships are irrelevant until they are at the hub. A
         DELIVERY run goes out to customers, so it groups by area as before.
       */
+      /*
+        0040: A DELIVERY GROUP IS A WAY, NOT A WARD.
+
+        Hub-held parcels used to key on `areaId`, giving one box per ward — and
+        with eight wards across five routes that is a lot of small boxes, none
+        of which is the thing the office actually hands to a rider. The unit of
+        the afternoon is the WAY: sort the shelf into runs, give a run to
+        somebody. Wards survive as rows inside the box, so nothing is lost.
+
+        Collections still key on the pickup address: a collection run visits
+        shops, and ten parcels off one counter is one stop.
+      */
       const key = p.isReturn
         ? '__return'
         : p.isHubHeld
-          ? (p.areaId ?? 'unmapped')
+          ? `way:${p.suggestedRouteId ?? 'unmapped'}`
           : `shop:${p.pickupAddress.trim().toLowerCase()}`
       const entry = map.get(key) ?? {
         key,
         label: p.isReturn
           ? 'Back to the shop'
           : p.isHubHeld
-            ? (p.areaName ?? 'No area set')
+            ? (routeById.get(p.suggestedRouteId ?? '')?.name ?? 'No way mapped')
             : (p.shopName ?? (p.pickupAddress || 'Unknown shop')),
         sub: p.isHubHeld || p.isReturn ? null : p.pickupAddress,
         /*
@@ -190,7 +202,28 @@ export function UnroutedPanel({
       entry.items.push(p)
       map.set(key, entry)
     }
-    return [...map.values()].sort((a, b) => {
+    /*
+      The wards inside each way, derived rather than keyed on: the group is a
+      way now, but the office still sorts by ward within it. Order is by size —
+      the ward with eight parcels is the one worth deciding about first.
+    */
+    const withAreas = [...map.values()].map((g) => {
+      const byArea = new Map<string, string[]>()
+      if (g.isHubHeld) {
+        for (const p of g.items) {
+          const name = p.areaName ?? 'No area set'
+          byArea.set(name, [...(byArea.get(name) ?? []), p.id])
+        }
+      }
+      return {
+        ...g,
+        areas: [...byArea.entries()]
+          .map(([name, ids]) => ({ name, ids }))
+          .sort((x, y) => y.ids.length - x.ids.length || x.name.localeCompare(y.name)),
+      }
+    })
+
+    return withAreas.sort((a, b) => {
       if (a.isReturn !== b.isReturn) return a.isReturn ? -1 : 1
       // Then the hub shelf: it is stock already paid for in riding, and it
       // should go out before anything new is collected.
@@ -200,6 +233,26 @@ export function UnroutedPanel({
       return ra - rb || a.label.localeCompare(b.label)
     })
   }, [visible, routeById])
+
+  /*
+    THE THREE HALVES, counted once so each heading can carry its own total.
+    Order is fixed by the comparator above: returns, then the shelf, then the
+    shops. That was already the order; what was missing was anyone saying so.
+  */
+  const kindOf = (g: { isReturn: boolean; isHubHeld: boolean }) =>
+    g.isReturn ? 'return' : g.isHubHeld ? 'deliver' : ('collect' as const)
+
+  const kindTotals = React.useMemo(() => {
+    const t = { deliver: 0, return: 0, collect: 0 }
+    for (const g of groups) t[kindOf(g) as keyof typeof t] += g.items.length
+    return t
+  }, [groups])
+
+  const KIND_HEADING: Record<string, string> = {
+    deliver: 'READY TO DELIVER',
+    return: 'BACK TO A SHOP',
+    collect: 'TO COLLECT',
+  }
 
   const chosen = React.useMemo(
     () => parcels.filter((p) => selected.has(p.id)),
@@ -345,13 +398,32 @@ export function UnroutedPanel({
             </p>
           </div>
         ) : (
-          groups.map((group) => {
+          groups.map((group, i) => {
             const ids = group.items.map((p) => p.id)
             const allSelected = ids.every((id) => selected.has(id))
             const route = group.routeId ? routeById.get(group.routeId) : null
-            const cod = group.items.reduce((sum, p) => sum + p.codAmount, 0)
+            /*
+              LEG-AWARE, because a return's cod_amount is money nobody will
+              collect — the rows beneath already say "No fee" and the header
+              was contradicting them.
+            */
+            const cod = group.isReturn
+              ? 0
+              : group.items.reduce((sum, p) => sum + p.codAmount, 0)
+
+            const kind = kindOf(group)
+            const first = i === 0 || kindOf(groups[i - 1]!) !== kind
 
             return (
+              <React.Fragment key={`k-${group.key}`}>
+                {first ? (
+                  <h3 className="flex items-baseline gap-2 pt-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                    {KIND_HEADING[kind]}
+                    <span className="tabular-nums">
+                      · {kindTotals[kind as keyof typeof kindTotals]}
+                    </span>
+                  </h3>
+                ) : null}
               <section
                 key={group.key}
                 className={cn(
@@ -394,10 +466,16 @@ export function UnroutedPanel({
                       </span>
                     ) : null}
                   </span>
+                  {/*
+                    "Out only" is gone. It was the only word naming the
+                    delivery half and it never said "deliver" — with a
+                    READY TO DELIVER heading above, it was a puzzle where a
+                    label used to be. A way box now shows its route pill, the
+                    same as a collection group, so both halves are read the
+                    same way.
+                  */}
                   {group.isReturn ? (
                     <Badge tone="blue">Return</Badge>
-                  ) : group.isHubHeld ? (
-                    <Badge tone="amber">Out only</Badge>
                   ) : route ? (
                     <span
                       className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold text-white"
@@ -412,6 +490,36 @@ export function UnroutedPanel({
                     {group.items.length} · {formatMmk(cod)}
                   </span>
                 </header>
+
+                {/*
+                  THE WARDS INSIDE THE WAY. The office sorts the shelf into
+                  runs, but it thinks in wards while doing it — "Thitsar has
+                  four, Yadanar three". Each chip ticks its own ward, so a way
+                  can go out whole or be split without hunting individual rows.
+                */}
+                {group.isHubHeld && group.areas.length > 1 ? (
+                  <div className="flex flex-wrap gap-1 border-b bg-amber-50/50 p-2">
+                    {group.areas.map((a) => {
+                      const on = a.ids.every((id) => selected.has(id))
+                      return (
+                        <button
+                          key={a.name}
+                          type="button"
+                          onClick={() => onToggleMany(a.ids, !on)}
+                          aria-pressed={on}
+                          className={cn(
+                            'rounded-full border px-2 py-0.5 text-[10px] font-medium transition-colors',
+                            on
+                              ? 'border-brand-red bg-brand-red text-white'
+                              : 'bg-card hover:bg-muted',
+                          )}
+                        >
+                          {a.name} <span className="tabular-nums">{a.ids.length}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                ) : null}
 
                 <ul className="divide-y">
                   {group.items.map((p) => {
@@ -460,6 +568,7 @@ export function UnroutedPanel({
                   })}
                 </ul>
               </section>
+              </React.Fragment>
             )
           })
         )}

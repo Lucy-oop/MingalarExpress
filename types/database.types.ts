@@ -1906,6 +1906,39 @@ export type Database = {
         Args: { p_parcels: number; p_pickups?: number; p_route_id?: string }
         Returns: Json
       }
+      receive_trip: {
+        Args: { p_trip_id: string }
+        Returns: {
+          base_pay: number
+          closed_at: string | null
+          created_at: string
+          created_by: string | null
+          depart_override_reason: string | null
+          depart_parcel_count: number | null
+          departed_at: string | null
+          departed_by: string | null
+          id: string
+          notes: string | null
+          parcel_count: number
+          parcel_pay: number
+          pay_tier_snapshot: Json | null
+          pickup_count: number
+          pickup_pay: number
+          returned_at: string | null
+          rider_id: string | null
+          route_id: string
+          service_date: string
+          status: Database["public"]["Enums"]["trip_status"]
+          total_pay: number
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "trips"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       reject_kpay_payment: {
         Args: { p_order_id: string; p_reason: string }
         Returns: {

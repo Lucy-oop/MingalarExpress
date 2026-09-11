@@ -17,6 +17,8 @@
 
 export type TripErrorKind =
   | 'below_minimum'
+  | 'nothing_to_receive'
+  | 'not_receivable'
   | 'reason_too_short'
   | 'no_rider'
   | 'rider_busy'
@@ -124,6 +126,24 @@ const MAP: Array<{ match: RegExp; value: ExplainedTripError }> = [
       // rule that no longer exists. What still refuses is a run that is back
       // at the hub or finished.
       message: 'This run is back at the hub or already closed — start a new one.',
+      retry: false,
+    },
+  },
+  {
+    // 0040. Pressing Received on a run that collected nothing is a mistake
+    // worth naming rather than a failure worth alarming about.
+    match: /nothing_to_receive/i,
+    value: {
+      kind: 'nothing_to_receive',
+      message: 'This run has no collected parcels waiting to be shelved.',
+      retry: false,
+    },
+  },
+  {
+    match: /trip_not_receivable/i,
+    value: {
+      kind: 'not_receivable',
+      message: 'Only a run that has left the hub can bring parcels back to it.',
       retry: false,
     },
   },

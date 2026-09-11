@@ -1794,5 +1794,181 @@ begin
   perform public.cancel_trip(t_id, 'test cleanup');
 end $$;
 
+-- ============================================================================
+--  R9. receive_trip — the parcels arrived at the office (0040)
+--
+--  LAST IN THE FILE ON PURPOSE. These blocks close two extra runs, and every
+--  closed run books a trip_pay ledger line. Placed among the R6 close tests
+--  they inflated the rider's earnings and broke R7a, which asserts an exact
+--  figure -- 18600 became 51600. The assertions themselves were fine; their
+--  position was not. Anything added after this point must expect the rider to
+--  have two more closed runs than R7 counted.
+-- ============================================================================
+
+\echo '=== R9a. 0040 — receive_trip shelves collections, and pay is identical ==='
+--  THE ASSERTION THAT MATTERS IS THE LAST ONE.
+--
+--  close_trip pays for pickups still ATTACHED to the run. receive_trip detaches
+--  them so the office can sort the shelf hours before settling, which would
+--  have zeroed that count -- a rider clearing thirty counters paid for none of
+--  them, silently, because the run closes fine and only the ledger line is
+--  short. receive_trip banks the count and close_trip adds it back.
+--
+--  So this runs the SAME three-parcel collection twice with the same rider on
+--  the same route, once through receive_trip and once not, and demands the two
+--  ledger lines match to the kyat. If that arithmetic is ever broken again,
+--  this is what says so.
+do $$
+declare
+  v_route  uuid;
+  v_rider  uuid;
+  v_shop   uuid := 'aaaaaaaa-0000-0000-0000-000000000001';
+  v_by     uuid := '33333333-3333-3333-3333-333333333333';
+  ids      uuid[];
+  t        public.trips;
+  t_id     uuid;
+  pay_recv bigint;
+  pay_plain bigint;
+  n        integer;
+  i        integer;
+  oid      uuid;
+begin
+  select id into v_route from public.routes where code = 'ROUTE_A';
+
+  -- ---- pass 1: collect, RECEIVE, then close --------------------------------
+  select r.id into v_rider
+    from public.rider_profiles r
+   where not exists (select 1 from public.trips t2
+                      where t2.rider_id = r.id
+                        and t2.status in ('planned','loading','departed'))
+   limit 1;
+  if v_rider is null then
+    raise notice 'SKIP: every rider is already out';
+    return;
+  end if;
+
+  ids := '{}'::uuid[];
+  for i in 1..3 loop
+    insert into public.orders (
+      shop_id, pickup_address, pickup_lat, pickup_lng, customer_name, customer_phone,
+      dropoff_address, dropoff_area_id, dropoff_lat, dropoff_lng, parcel_desc,
+      payment_method, cod_amount, delivery_fee, created_by)
+    values (v_shop, 'No. 24, Thitsar Road, San Pya Ward, Thingangyun, Yangon',
+      16.8478, 96.1693, 'Receive Test A', '+95978000005' || i,
+      'Somewhere, Thingangyun', null, 16.8500, 96.1700, 'Parcel',
+      'prepaid', 0, 2500, v_by)
+    returning id into oid;
+    ids := ids || oid;
+  end loop;
+
+  t_id := (public.plan_trip(v_route)).id;
+  perform public.assign_trip_rider(t_id, v_rider);
+  perform public.load_trip(t_id, ids, 'pickup');
+  perform public.depart_trip(t_id);
+  foreach oid in array ids loop
+    perform public.advance_order(oid, 'picked_up');
+  end loop;
+  perform public.return_trip(t_id);
+
+  -- the new step
+  t := public.receive_trip(t_id);
+
+  if t.status <> 'returned' then
+    raise exception 'FAIL: receive_trip changed the run status to %', t.status;
+  end if;
+  if t.pickup_count <> 3 then
+    raise exception 'FAIL: banked pickup_count %, expected 3', t.pickup_count;
+  end if;
+
+  select count(*) into n from public.orders
+   where id = any(ids) and trip_id is null and trip_leg is null
+     and status = 'picked_up' and picked_up_at is not null;
+  if n <> 3 then
+    raise exception 'FAIL: % of 3 parcels reached the shelf', n;
+  end if;
+  raise notice 'PASS: receive_trip shelved 3 collections, run still open';
+
+  -- and the shelf is what the hub pool is made of
+  select count(*) into n from public.orders
+   where id = any(ids) and trip_id is null and picked_up_at is not null
+     and status in ('pending','picked_up');
+  if n <> 3 then raise exception 'FAIL: shelved parcels are not in the hub pool'; end if;
+
+  -- a shelved parcel may go out, and may NOT be collected again
+  begin
+    perform public.load_trip(t_id, array[ids[1]], 'pickup');
+    raise exception 'FAIL: a shelved parcel was sent to be collected again';
+  exception when sqlstate '55000' then
+    raise notice 'PASS: a shelved parcel cannot be collected a second time';
+  end;
+
+  perform public.close_trip(t_id);
+  select total_pay into pay_recv from public.trips where id = t_id;
+  select pickup_count into n from public.trips where id = t_id;
+  if n <> 3 then
+    raise exception 'FAIL: closed pickup_count %, expected 3 — banking double counted', n;
+  end if;
+  raise notice 'PASS: closed after receiving; pickup_count still 3, pay %', pay_recv;
+
+  -- ---- pass 2: the same run, closed WITHOUT receiving ----------------------
+  ids := '{}'::uuid[];
+  for i in 1..3 loop
+    insert into public.orders (
+      shop_id, pickup_address, pickup_lat, pickup_lng, customer_name, customer_phone,
+      dropoff_address, dropoff_area_id, dropoff_lat, dropoff_lng, parcel_desc,
+      payment_method, cod_amount, delivery_fee, created_by)
+    values (v_shop, 'No. 24, Thitsar Road, San Pya Ward, Thingangyun, Yangon',
+      16.8478, 96.1693, 'Receive Test B', '+95978000006' || i,
+      'Somewhere, Thingangyun', null, 16.8500, 96.1700, 'Parcel',
+      'prepaid', 0, 2500, v_by)
+    returning id into oid;
+    ids := ids || oid;
+  end loop;
+
+  t_id := (public.plan_trip(v_route)).id;
+  perform public.assign_trip_rider(t_id, v_rider);
+  perform public.load_trip(t_id, ids, 'pickup');
+  perform public.depart_trip(t_id);
+  foreach oid in array ids loop
+    perform public.advance_order(oid, 'picked_up');
+  end loop;
+  perform public.return_trip(t_id);
+  perform public.close_trip(t_id);
+  select total_pay into pay_plain from public.trips where id = t_id;
+
+  -- THE ONE THAT MATTERS
+  if pay_recv <> pay_plain then
+    raise exception
+      'FAIL: receiving cost the rider their collection pay — % received vs % plain',
+      pay_recv, pay_plain;
+  end if;
+  raise notice 'PASS: pay identical whether received first or not (% Ks)', pay_plain;
+end $$;
+
+\echo '=== R9b. receive_trip refuses a run that has not been out ==='
+do $$
+declare t public.trips; v_route uuid;
+begin
+  select id into v_route from public.routes where code = 'ROUTE_B';
+  t := public.plan_trip(v_route);
+  begin
+    perform public.receive_trip(t.id);
+    raise exception 'FAIL: received a run that never left';
+  exception when sqlstate '55000' then
+    raise notice 'PASS: receive_trip refused a planned run';
+  end;
+  perform public.cancel_trip(t.id, 'test fixture');
+
+  -- and a closed one has nothing left to shelve
+  select id into t.id from public.trips where status = 'closed' limit 1;
+  begin
+    perform public.receive_trip(t.id);
+    raise exception 'FAIL: received a closed run';
+  exception when sqlstate '55000' then
+    raise notice 'PASS: receive_trip refused a closed run';
+  end;
+end $$;
+
+
 \echo ''
 \echo '####  ALL ROUTE / TRIP CHECKS PASSED  ####'

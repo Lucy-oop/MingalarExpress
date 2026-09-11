@@ -10,6 +10,7 @@ import {
   Send,
   Truck,
   Undo2,
+  Warehouse,
   X,
 } from 'lucide-react'
 import {
@@ -80,6 +81,7 @@ export function TripCard({
   onUnload,
   onDepart,
   onReturn,
+  onReceive,
   onClose,
   onCancel,
 }: {
@@ -94,6 +96,7 @@ export function TripCard({
   onUnload: (orderIds: string[]) => void
   onDepart: () => void
   onReturn: () => void
+  onReceive: () => void
   onClose: () => void
   onCancel: () => void
 }) {
@@ -189,10 +192,23 @@ export function TripCard({
 
           <div className="flex flex-wrap items-center gap-2">
             {quiet ? null : <TripVolumePill check={trip.volume} />}
+            {/*
+              NAME THE RUN'S JOB, both halves of it. The card was identical for
+              a collection run and a delivery run — same title, same border,
+              same status words — and the only hint was a grey "N pickups"
+              badge with no counterpart for deliveries. On a board whose whole
+              purpose is separating the two ways, the runs said nothing.
+            */}
             {trip.pickupCount > 0 ? (
               <Badge tone="neutral">
                 <Inbox className="size-3" />
-                {trip.pickupCount} pickup{trip.pickupCount === 1 ? '' : 's'}
+                {trip.pickupCount} to collect
+              </Badge>
+            ) : null}
+            {summary.deliveries > 0 ? (
+              <Badge tone="neutral">
+                <Send className="size-3" />
+                {summary.deliveries} to deliver
               </Badge>
             ) : null}
             <Badge tone={summary.cod > 0 ? 'amber' : 'neutral'}>
@@ -361,6 +377,27 @@ export function TripCard({
               <Button size="sm" variant="outline" disabled={busy} onClick={onReturn}>
                 <Truck />
                 Back at hub
+              </Button>
+            ) : null}
+
+            {/*
+              RECEIVING IS NOT CLOSING, and this button exists because the two
+              were the same press. A collected parcel keeps its trip_id until
+              something detaches it, and every pool the office can sort from
+              filters trip_id is null — so the afternoon's work was gated
+              behind a button labelled after payroll. This is the inventory
+              half on its own: the parcels hit the shelf, the run stays open,
+              the rider is paid later and paid the same.
+
+              Offered whenever the run is carrying collections, so a rider who
+              drops a load and goes out again on the same run (possible since
+              0039) can be received mid-day.
+            */}
+            {(trip.status === 'departed' || trip.status === 'returned') &&
+            trip.pickupCount > 0 ? (
+              <Button size="sm" disabled={busy} onClick={onReceive}>
+                <Warehouse />
+                Received at office · {trip.pickupCount}
               </Button>
             ) : null}
 

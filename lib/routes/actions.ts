@@ -182,6 +182,42 @@ export async function departTrip(tripId: string, overrideReason?: string): Promi
   }
 }
 
+/**
+ * The parcels came off the bike.
+ *
+ * Shelves every collected pickup on the run so the office can sort it onto
+ * delivery ways, WITHOUT closing the run or booking the rider's pay.
+ *
+ * WHY THIS IS A SEPARATE BUTTON. Until 0040 a collected parcel kept its
+ * `trip_id` until `close_trip` detached it, and every dispatchable pool filters
+ * `trip_id is null` — so between the rider tapping "I have the parcel" and
+ * somebody pressing "Close & pay", the parcel sat in the office and could be
+ * moved by nobody. The afternoon sort was gated behind a payroll button.
+ *
+ * `receive_trip` banks the pickup count before detaching, so closing later
+ * still pays the rider for the morning. That arithmetic is asserted in
+ * `route_flow.sql` R9a by running the same collection twice, once received and
+ * once not, and demanding the same ledger line.
+ */
+export async function receiveTrip(tripId: string): Promise<TripResult> {
+  let supabase
+  try {
+    supabase = await dispatchClient()
+  } catch {
+    return DENIED
+  }
+
+  const { data, error } = await supabase.rpc('receive_trip', { p_trip_id: tripId })
+  if (error) return fail(error.message)
+
+  refresh()
+  const shelved = (data as unknown as { pickup_count?: number } | null)?.pickup_count ?? 0
+  return {
+    ok: true,
+    message: `On the shelf. ${shelved} ${shelved === 1 ? 'parcel is' : 'parcels are'} ready to sort.`,
+  }
+}
+
 export async function returnTrip(tripId: string): Promise<TripResult> {
   let supabase
   try {
