@@ -1,12 +1,13 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { PackageCheck } from 'lucide-react'
 import type { NotificationGroup } from '@/lib/orders/notifications'
 import { useT } from '@/components/shared/i18n-provider'
 import { markNoticesSeen } from '@/lib/notices/actions'
 import { isNewSince } from '@/lib/orders/notifications'
 import { NotificationRow } from '@/components/orders/notification-row'
+import { NotificationDetail } from '@/components/orders/notification-detail'
 
 /**
  * The shop's feed, in full, at /shop/notifications.
@@ -45,6 +46,8 @@ export function NotificationFeed({
     write. No `router.refresh()` either: the rows are already correct on screen,
     and refreshing would restyle them out from under the reader mid-scroll.
   */
+  const [open, setOpen] = useState<NotificationGroup | null>(null)
+
   const marked = useRef(false)
   useEffect(() => {
     if (marked.current) return
@@ -63,10 +66,20 @@ export function NotificationFeed({
   }
 
   return (
-    <ul className="space-y-2">
-      {groups.map((group) => (
-        <NotificationRow key={group.key} group={group} isNew={isNewSince(group.at, seenAt)} />
-      ))}
-    </ul>
+    <>
+      <ul className="space-y-2">
+        {groups.map((group) => (
+          <NotificationRow
+            key={group.key}
+            group={group}
+            isNew={isNewSince(group.at, seenAt)}
+            onOpen={setOpen}
+          />
+        ))}
+      </ul>
+      {/* The modal lives HERE, not inside the row, so only one can ever be
+          open and a row stays a row. */}
+      <NotificationDetail group={open} onClose={() => setOpen(null)} />
+    </>
   )
 }

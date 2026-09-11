@@ -1786,6 +1786,10 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      event_actor_names: {
+        Args: { p_event_ids: number[] }
+        Returns: { event_id: number; full_name: string }[]
+      }
       in_service_area: {
         Args: { p_lat: number; p_lng: number }
         Returns: boolean

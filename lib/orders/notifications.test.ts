@@ -18,7 +18,11 @@ function row(over: Partial<EventRow> & { id: number }): EventRow {
     orderId: `o${over.id}`,
     code: `MGE-260907-00000${over.id}`,
     customerName: 'A customer',
+    township: null,
+    dropoffAddress: null,
+    status: null,
     failReason: null,
+    actorName: null,
     ...over,
   }
 }
@@ -203,5 +207,35 @@ describe('isNewSince — the singular of unseenCount', () => {
         `disagreement at marker ${String(since)}`,
       )
     }
+  })
+})
+
+describe('who did it', () => {
+  /**
+   * A group is one `advance_orders` call, so it is one actor by construction.
+   * If two rows in a group disagree, the group is not the single handover it
+   * appears to be — and naming one of the two riders against all ten parcels
+   * would be worse than naming none. Same rule `reason` follows.
+   */
+  test('the actor survives a group that agrees', () => {
+    const [g] = groupEvents([
+      row({ id: 1, actorName: 'Zaw Zaw' }),
+      row({ id: 2, actorName: 'Zaw Zaw' }),
+    ])
+    assert.equal(g!.actorName, 'Zaw Zaw')
+    assert.equal(g!.rows.length, 2)
+  })
+
+  test('and is dropped when it does not', () => {
+    const [g] = groupEvents([
+      row({ id: 1, actorName: 'Zaw Zaw' }),
+      row({ id: 2, actorName: 'Myo Min' }),
+    ])
+    assert.equal(g!.actorName, null, 'one rider was named against another rider\'s parcel')
+  })
+
+  test('an unresolved name is simply absent', () => {
+    const [g] = groupEvents([row({ id: 1, actorName: null })])
+    assert.equal(g!.actorName, null)
   })
 })

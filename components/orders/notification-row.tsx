@@ -56,12 +56,15 @@ export function NotificationRow({
   isNew,
   compact = false,
   onNavigate,
+  onOpen,
 }: {
   group: NotificationGroup
   isNew: boolean
   compact?: boolean
   /** Lets the drawer close itself when a row is followed. */
   onNavigate?: () => void
+  /** Opens the detail modal. Absent where there is nothing to open into. */
+  onOpen?: (group: NotificationGroup) => void
 }) {
   const t = useT()
   const locale = useLocale()
@@ -69,6 +72,27 @@ export function NotificationRow({
   const n = group.rows.length
   const decisionHref =
     n === 1 ? `/shop/orders/${group.rows[0]!.orderId}` : '/shop/orders?needs=1'
+
+  /*
+    WHAT THE HEADLINE SAYS, and why it is built here rather than in the
+    dictionary.
+
+    "Delivered" and "8 parcels" told a shop that something happened to
+    something. A shop with forty parcels out recognises a delivery by WHO it
+    went to and a collection by WHO took it, and both facts were already on the
+    row — the customer since this feed shipped, the rider since 0045 — just
+    never said.
+
+    Only where it does not lie. A delivery group is one parcel except in the
+    rare case of two delivered in the same transaction, so the name goes on the
+    singular and the count carries the rest. The rider's name only appears when
+    every row in the group agrees on it; `groupEvents` nulls it otherwise.
+  */
+  const subject =
+    group.kind === 'delivered' && n === 1
+      ? [group.rows[0]!.customerName, group.rows[0]!.township].filter(Boolean).join(' · ')
+      : null
+  const openable = group.kind === 'delivered' ? n === 1 : group.kind === 'collected'
 
   return (
     <li
@@ -88,11 +112,25 @@ export function NotificationRow({
       </span>
 
       <div className="min-w-0 flex-1">
-        <p className="flex flex-wrap items-center gap-2">
-          <span className="font-medium">{t(LABEL[group.kind])}</span>
-          <span className="text-sm text-muted-foreground">
-            {n === 1 ? t('sn.parcelOne') : t('sn.parcels').replace('{n}', localeNumber(locale, n))}
+        <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span className="font-medium">
+            {t(LABEL[group.kind])}
+            {subject ? <>: {subject}</> : null}
           </span>
+          {subject ? null : (
+            <span className="text-sm text-muted-foreground">
+              {n === 1
+                ? t('sn.parcelOne')
+                : t('sn.parcels').replace('{n}', localeNumber(locale, n))}
+            </span>
+          )}
+          {/* Who collected them. Only on the kinds a rider causes, and only
+              when the whole group agrees. */}
+          {group.actorName && group.kind === 'collected' ? (
+            <span className="text-sm text-muted-foreground">
+              {t('sn.by').replace('{name}', group.actorName)}
+            </span>
+          ) : null}
           {isNew ? <Badge tone="red">{t('sn.new').replace('{n}', '')}</Badge> : null}
         </p>
 
@@ -129,6 +167,27 @@ export function NotificationRow({
           >
             {t('sn.needsYou')}
           </Link>
+        ) : openable && onOpen ? (
+          /*
+            A BUTTON, NOT A LINK, and not the whole row either.
+
+            Not a link because nothing navigates: the modal fetches through a
+            server action and the feed stays where it is, which is the point —
+            a shop checking four deliveries should not lose its place in the
+            list four times.
+
+            Not the whole row because `needsDecision` rows already carry a link
+            inside them, and a row that is itself a control cannot hold another
+            one without nesting interactive elements. Same rule JobCard is
+            written on.
+          */
+          <button
+            type="button"
+            onClick={() => onOpen(group)}
+            className="mt-1 inline-block min-h-11 text-sm font-medium text-primary hover:underline"
+          >
+            {t('sn.viewDetail')}
+          </button>
         ) : null}
       </div>
     </li>

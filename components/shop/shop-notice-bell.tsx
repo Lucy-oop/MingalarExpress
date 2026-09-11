@@ -1,5 +1,6 @@
 'use client'
 
+import * as React from 'react'
 import Link from 'next/link'
 import {
   isNewSince,
@@ -9,6 +10,7 @@ import {
 import { markNoticesSeen } from '@/lib/notices/actions'
 import { NoticeBell } from '@/components/shared/notice-bell'
 import { NotificationRow } from '@/components/orders/notification-row'
+import { NotificationDetail } from '@/components/orders/notification-detail'
 import { useT } from '@/components/shared/i18n-provider'
 
 /**
@@ -39,12 +41,14 @@ export function ShopNoticeBell({
 }) {
   const t = useT()
   const unseen = unseenCount(groups, seenAt)
+  const [open, setOpen] = React.useState<NotificationGroup | null>(null)
 
   // Enough to answer "what happened while I was away" without turning the
   // panel into the page it links to.
   const recent = groups.slice(0, 8)
 
   return (
+    <>
     <NoticeBell
       unseen={unseen}
       ariaLabel={unseen > 0 ? `${t('sn.title')}, ${unseen}` : t('sn.title')}
@@ -69,6 +73,12 @@ export function ShopNoticeBell({
                 isNew={isNewSince(group.at, seenAt)}
                 compact
                 onNavigate={close}
+                onOpen={(g) => {
+                  // The drawer closes behind the modal: two stacked panels on a
+                  // phone leaves the detail in a 60%-height strip.
+                  close()
+                  setOpen(g)
+                }}
               />
             ))}
           </ul>
@@ -82,5 +92,7 @@ export function ShopNoticeBell({
         </>
       )}
     </NoticeBell>
+    <NotificationDetail group={open} onClose={() => setOpen(null)} />
+    </>
   )
 }

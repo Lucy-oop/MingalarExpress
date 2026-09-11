@@ -45,6 +45,12 @@ export type EventRow = {
   orderId: string
   code: string
   customerName: string
+  /** Dropoff township, for a delivery line that names where it went. */
+  township: string | null
+  /** Where it went, for the batch list. */
+  dropoffAddress: string | null
+  /** Current status, so a batch row can say where each parcel is now. */
+  status: string | null
   /**
    * The reason recorded AT THIS TRANSITION, from `order_status_events.note`
    * — which `tg_orders_audit` fills with `coalesce(app.event_note,
@@ -55,6 +61,8 @@ export type EventRow = {
    * event, quietly rewriting history on the shop's own screen.
    */
   failReason: string | null
+  /** Resolved through `event_actor_names` (0045); `profiles` is not shop-readable. */
+  actorName: string | null
 }
 
 export type NotificationGroup = {
@@ -65,6 +73,15 @@ export type NotificationGroup = {
   rows: EventRow[]
   /** Set only when every parcel in the group carries the same reason. */
   reason: string | null
+  /**
+   * Whoever caused the event — the rider, on the two kinds that have one.
+   *
+   * Set only when every row in the group agrees, on the same rule `reason`
+   * follows: one `advance_orders` call is one actor, so a group that disagrees
+   * is not the handover it appears to be and naming one of them would be
+   * worse than naming none.
+   */
+  actorName: string | null
 }
 
 /**
@@ -113,6 +130,7 @@ export function groupEvents(rows: readonly EventRow[]): NotificationGroup[] {
       // A reason only survives while every parcel in the group agrees. Showing
       // one parcel's reason against ten would misattribute it.
       if (existing.reason !== row.failReason) existing.reason = null
+      if (existing.actorName !== row.actorName) existing.actorName = null
       continue
     }
 
@@ -122,6 +140,7 @@ export function groupEvents(rows: readonly EventRow[]): NotificationGroup[] {
       at: row.createdAt,
       rows: [row],
       reason: row.failReason,
+      actorName: row.actorName,
     }
     byKey.set(key, group)
     out.push(group)

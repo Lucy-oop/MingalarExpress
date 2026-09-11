@@ -134,7 +134,9 @@ export async function getShopNotifications(limit = 120): Promise<NotificationGro
 
   const { data, error } = await supabase
     .from('order_status_events')
-    .select('id, from_status, to_status, note, created_at, order_id, orders:order_id (code, customer_name)')
+    .select(
+      'id, from_status, to_status, note, created_at, order_id, orders:order_id (code, customer_name, dropoff_address, status, service_areas:dropoff_area_id (name))',
+    )
     // The four a shop is told about. `assigned` is dispatch moving work around.
     .in('to_status', ['picked_up', 'failed', 'returned', 'delivered'])
     .order('created_at', { ascending: false })
@@ -144,9 +146,35 @@ export async function getShopNotifications(limit = 120): Promise<NotificationGro
   // take the page down with it.
   if (error || !data) return []
 
+  /*
+    WHO DID IT, through a definer RPC, because `profiles` is not shop-readable:
+    `profiles_read_self_or_dispatch` lets a shop owner read their own row and
+    nothing else, so joining it here returns a bare UUID at best. 0045 exists
+    for this, and it keys on the EVENT rather than the order — a collection
+    must name whoever collected it, and `orders.rider_id` becomes somebody else
+    the moment the office reloads that parcel for delivery.
+
+    ONE CALL FOR THE WHOLE PAGE, not one per row. And it fails soft, like the
+    feed above it: no names is a feed that says "8 parcels collected", which is
+    what it said before this existed. A blank panel would be worse.
+  */
+  const names = new Map<number, string>()
+  const { data: actors } = await supabase.rpc('event_actor_names', {
+    p_event_ids: data.map((r) => Number(r.id)),
+  })
+  for (const a of (actors ?? []) as { event_id: number; full_name: string | null }[]) {
+    if (a.full_name) names.set(Number(a.event_id), a.full_name)
+  }
+
   return groupEvents(
     data.map((raw) => {
-      const order = raw.orders as unknown as { code: string; customer_name: string } | null
+      const order = raw.orders as unknown as {
+        code: string
+        customer_name: string
+        dropoff_address: string | null
+        status: string | null
+        service_areas: { name: string } | null
+      } | null
       return {
         id: Number(raw.id),
         fromStatus: raw.from_status,
@@ -155,10 +183,79 @@ export async function getShopNotifications(limit = 120): Promise<NotificationGro
         orderId: raw.order_id,
         code: order?.code ?? '—',
         customerName: order?.customer_name ?? '',
+        township: order?.service_areas?.name ?? null,
+        dropoffAddress: order?.dropoff_address ?? null,
+        status: order?.status ?? null,
         failReason: raw.note,
+        actorName: names.get(Number(raw.id)) ?? null,
       }
     }),
   )
+}
+
+/**
+ * One delivered parcel, for the modal a shop opens from its feed.
+ *
+ * NOT `getShopOrderDetail`, WHICH ALREADY EXISTS. That fires seven round trips
+ * — the status history, the rider card, two attempt-count RPCs, `app_settings`
+ * — for a page that shows all of it. This modal answers a much smaller
+ * question: what was delivered, to whom, for how much, and what does the photo
+ * show. Two round trips, and the second is only the signed URL.
+ *
+ * The same reasoning ORDER_LABEL_COLUMNS is written on, a few lines above: a
+ * narrower caller gets a narrower query rather than paying for a wide one.
+ *
+ * RLS returns nothing for another shop's order, so a miss is a miss and needs
+ * no ownership check here.
+ */
+export type ShopDeliveryDetail = {
+  id: string
+  code: string
+  status: OrderStatus
+  deliveredAt: string | null
+  customerName: string
+  customerPhone: string
+  dropoffAddress: string
+  township: string | null
+  codAmount: number
+  deliveryFee: number
+  paymentMethod: 'cod' | 'prepaid'
+  feePayer: string | null
+  collectedVia: string | null
+  proofUrl: string | null
+}
+
+export async function getShopDeliveryDetail(
+  orderId: string,
+): Promise<ShopDeliveryDetail | null> {
+  const supabase = await createClient()
+
+  const { data: order } = await supabase
+    .from('orders')
+    .select(
+      'id, code, status, delivered_at, customer_name, customer_phone, dropoff_address, cod_amount, delivery_fee, payment_method, fee_payer, collected_via, proof_photo_path, service_areas:dropoff_area_id (name)',
+    )
+    .eq('id', orderId)
+    .maybeSingle()
+
+  if (!order) return null
+
+  return {
+    id: order.id,
+    code: order.code,
+    status: order.status as OrderStatus,
+    deliveredAt: order.delivered_at,
+    customerName: order.customer_name,
+    customerPhone: order.customer_phone,
+    dropoffAddress: order.dropoff_address,
+    township: (order.service_areas as unknown as { name: string } | null)?.name ?? null,
+    codAmount: Number(order.cod_amount ?? 0),
+    deliveryFee: Number(order.delivery_fee ?? 0),
+    paymentMethod: order.payment_method as 'cod' | 'prepaid',
+    feePayer: order.fee_payer ?? null,
+    collectedVia: order.collected_via ?? null,
+    proofUrl: await signProof(supabase, order.proof_photo_path),
+  }
 }
 
 export async function getShopDashboard(): Promise<ShopDashboard> {
