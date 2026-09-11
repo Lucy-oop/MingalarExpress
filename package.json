@@ -6,12 +6,12 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start",
+    "start": "node scripts/start.mjs",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "db:verify": "bash supabase/tests/reset_and_verify.sh",
     "db:types": "bash scripts/db-types.sh",
-    "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --import ./scripts/register-ts-resolve.mjs --test 'lib/**/*.test.ts' 'components/**/*.test.ts'",
+    "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --import ./scripts/register-ts-resolve.mjs --test 'lib/**/*.test.ts' 'components/**/*.test.ts' 'scripts/**/*.test.ts'",
     "test:watch": "npm run test -- --watch",
     "db:push": "bash scripts/db-push.sh"
   },
