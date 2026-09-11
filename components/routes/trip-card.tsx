@@ -19,7 +19,7 @@ import {
 } from '@/components/routes/trip-volume-banner'
 import { RiderPicker } from '@/components/routes/rider-picker'
 import { departBlocker, DEPART_BLOCKER_MESSAGE } from '@/lib/routes/depart-gate'
-import { summariseManifest } from '@/lib/routes/load-gate'
+import { LOADABLE_STATUSES, summariseManifest } from '@/lib/routes/load-gate'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { StatusBadge } from '@/components/orders/status-badge'
@@ -97,7 +97,20 @@ export function TripCard({
   onClose: () => void
   onCancel: () => void
 }) {
+  /*
+    TWO DIFFERENT QUESTIONS, and conflating them would make the card lie.
+
+    `canLoad` is "may this run still be EDITED at the hub" — rider swaps,
+    unloading, Depart, Cancel. All of those are refused once the bike is gone:
+    `assign_trip_rider` raises trip_rider_locked, `depart_trip` raises
+    trip_not_departable.
+
+    `canReceive` is "may parcels be added to it", which since 0039 includes a
+    departed run. A rider on the road can be given more work; they cannot be
+    swapped out from under it.
+  */
   const canLoad = trip.status === 'planned' || trip.status === 'loading'
+  const canReceive = LOADABLE_STATUSES.includes(trip.status)
   // Open where there is a decision to make, closed where there is not.
   const [expanded, setExpanded] = React.useState(canLoad)
   const [showParcels, setShowParcels] = React.useState(false)
@@ -131,16 +144,33 @@ export function TripCard({
         // it is where the next Load lands.
         targeted && 'ring-2 ring-primary ring-offset-1',
       )}
-      onFocusCapture={canLoad ? onTarget : undefined}
+      onFocusCapture={canReceive ? onTarget : undefined}
     >
       <header
         className="space-y-2 border-l-4 p-3"
         style={{ borderLeftColor: route.colour }}
       >
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          {/*
+            THE FIRST CLICK SELECTS AND OPENS; only later ones fold.
+
+            The board wraps every card in an onClick that targets it, so
+            clicking the title used to do both at once — target the run and
+            collapse the card, hiding the Depart button the operator was
+            reaching for. Reaching for a control and having it disappear reads
+            as the board fighting you, which is most of why this screen felt
+            hostile.
+          */}
           <button
             type="button"
-            onClick={() => setExpanded((v) => !v)}
+            onClick={() => {
+              if (!targeted) {
+                onTarget()
+                setExpanded(true)
+              } else {
+                setExpanded((v) => !v)
+              }
+            }}
             className="flex min-w-0 flex-1 items-center gap-2 rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             aria-expanded={expanded}
           >

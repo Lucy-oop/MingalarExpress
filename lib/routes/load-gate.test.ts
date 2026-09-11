@@ -2,6 +2,7 @@ import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   loadPlan,
+  selectionLeg,
   summariseManifest,
   LOAD_BLOCKER_MESSAGE,
   type LoadParcel,
@@ -77,12 +78,40 @@ describe('loadPlan — blockers, in the order a dispatcher fixes them', () => {
     assert.equal(loadPlan([], EMPTY).blocker, 'nothing_selected')
   })
 
-  test('a departed run cannot be loaded', () => {
-    const gone = { ...EMPTY, status: 'departed' }
-    assert.equal(loadPlan([parcel('a')], gone).blocker, 'target_not_loadable')
-    for (const status of ['planned', 'loading']) {
+  /**
+   * 0039 INVERTED THIS. It used to assert that a departed run refuses a load.
+   * A rider on the road can now be given more work — the office's commonest
+   * need, a parcel booked after the bike left for a ward it is about to pass,
+   * was the one case the board refused.
+   *
+   * `unload_trip` had always accepted a departed run, so parcels could come
+   * OFF a moving bike but never ON. This closes that, and mirrors load_trip's
+   * own status list.
+   */
+  test('a run still out on the road takes more parcels', () => {
+    for (const status of ['planned', 'loading', 'departed']) {
       assert.equal(loadPlan([parcel('a')], { ...EMPTY, status }).blocker, null, status)
     }
+  })
+
+  test('but a run back at the hub or finished does not', () => {
+    for (const status of ['returned', 'closed', 'cancelled']) {
+      assert.equal(
+        loadPlan([parcel('a')], { ...EMPTY, status }).blocker,
+        'target_not_loadable',
+        status,
+      )
+    }
+  })
+
+  /**
+   * The gate opening must not open the ceilings with it — `load_trip` computes
+   * them over the trip AFTER the load, so loading late is not a way around a
+   * cap. Pinned here because it is the whole safety argument for 0039.
+   */
+  test('a departed run still refuses a load over its cap', () => {
+    const full = { ...EMPTY, status: 'departed', maxCod: 1000 }
+    assert.equal(loadPlan([parcel('a', 5000)], full).blocker, 'over_cod_cap')
   })
 
   /** Mixed is reported before the ceilings: it has no single leg to measure. */
@@ -304,5 +333,51 @@ describe('loadPlan — parcels already on the hub shelf', () => {
     for (const [key, message] of Object.entries(LOAD_BLOCKER_MESSAGE)) {
       assert.ok(message.trim().length > 0, `${key} is blank`)
     }
+  })
+})
+
+
+/**
+ * `selectionLeg` is the half of `loadPlan` that depends only on the parcels.
+ *
+ * It exists because the Send flow picks a RIDER rather than a run, so it has no
+ * target to measure ceilings against — but it still needs the leg, and it still
+ * must refuse a mixed batch. These assertions pin that the split did not change
+ * the derivation: every case here is also reachable through loadPlan.
+ */
+describe('selectionLeg — the leg without a run to load into', () => {
+  test('agrees with loadPlan on every kind', () => {
+    const cases: Array<[string, LoadParcel[]]> = [
+      ['fresh', [parcel('a'), parcel('b')]],
+      ['held', [held('a'), held('b')]],
+      ['returns', [parcel('a', 0, true)]],
+      ['mixed', [parcel('a'), held('b')]],
+    ]
+    for (const [name, sel] of cases) {
+      assert.equal(selectionLeg(sel).leg, loadPlan(sel, EMPTY).leg, name)
+    }
+  })
+
+  test('a mixed batch is named as mixed, with no target needed', () => {
+    assert.equal(selectionLeg([parcel('a'), held('b')]).mixed, true)
+    assert.equal(selectionLeg([parcel('a'), parcel('b', 0, true)]).mixed, true)
+    assert.equal(selectionLeg([held('a'), parcel('b', 0, true)]).mixed, true)
+  })
+
+  test('one kind is never mixed', () => {
+    assert.equal(selectionLeg([parcel('a'), parcel('b')]).mixed, false)
+    assert.equal(selectionLeg([held('a'), held('b')]).mixed, false)
+    assert.equal(selectionLeg([parcel('a', 0, true)]).mixed, false)
+  })
+
+  /**
+   * An empty selection is not mixed and reports the collection leg. The Send
+   * bar blocks on the count before it ever reads the leg, but a helper that
+   * threw or guessed here would be a trap for the next caller.
+   */
+  test('an empty selection is answerable', () => {
+    const s = selectionLeg([])
+    assert.equal(s.mixed, false)
+    assert.equal(s.leg, 'pickup')
   })
 })

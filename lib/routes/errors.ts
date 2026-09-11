@@ -4,11 +4,15 @@
  * Outside `actions.ts` because a `'use server'` module may only export async
  * functions, so a mapper defined there could never be unit-tested.
  *
- * The important one is `trip_below_minimum`. It is not a failure — it is the
- * system asking for a reason, and the board turns it into a modal rather than an
- * error. Flattening it into "something went wrong" would leave a dispatcher
- * unable to send a legitimate short run at all, and the first thing they would
- * do is stop trusting the board.
+ * `trip_below_minimum` used to be the important one: not a failure, but the
+ * system asking for a reason, which the board turned into a modal. 0039 made
+ * that reason optional, so a short run just departs and this branch should now
+ * be UNREACHABLE.
+ *
+ * It is kept, and reworded, because the one way to reach it is a database still
+ * on 0038 while the app is on 0039 — and in that state the modal it used to
+ * open is gone, so the old copy would tell the operator to do something the UI
+ * can no longer do. Naming the real cause is worth more than a tidier map.
  */
 
 export type TripErrorKind =
@@ -42,7 +46,9 @@ const MAP: Array<{ match: RegExp; value: ExplainedTripError }> = [
     match: /trip_below_minimum/i,
     value: {
       kind: 'below_minimum',
-      message: 'This run is under the minimum parcel count. Give a reason to send it out anyway.',
+      message:
+        'This run is under the minimum parcel count and the database is still ' +
+        'refusing it. Migration 0039 makes a short run departable — apply it.',
       retry: false,
     },
   },
@@ -113,7 +119,11 @@ const MAP: Array<{ match: RegExp; value: ExplainedTripError }> = [
     match: /trip_not_loadable/i,
     value: {
       kind: 'not_loadable',
-      message: 'This run has already left. Loading is only possible before departure.',
+      // 0039: a departed run DOES take parcels now, so this message can no
+      // longer say "already left" — it would send the office looking for a
+      // rule that no longer exists. What still refuses is a run that is back
+      // at the hub or finished.
+      message: 'This run is back at the hub or already closed — start a new one.',
       retry: false,
     },
   },

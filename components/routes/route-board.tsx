@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation'
 import { Plus, RefreshCw } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { TripCard } from '@/components/routes/trip-card'
-import { DepartDialog } from '@/components/routes/depart-dialog'
 import { UnroutedPanel, type PanelTarget } from '@/components/routes/unrouted-panel'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -18,6 +17,7 @@ import {
   loadTrip,
   planTrip,
   returnTrip,
+  sendToRider,
   unloadTrip,
   type TripResult,
 } from '@/lib/routes/actions'
@@ -51,8 +51,6 @@ export function RouteBoard({ board }: { board: PlanningBoard }) {
   const [refreshing, startTransition] = React.useTransition()
 
   /** The run the depart modal is asking about, once SQL says it is short. */
-  const [departing, setDeparting] = React.useState<BoardTrip | null>(null)
-  const [departError, setDepartError] = React.useState<string | null>(null)
 
   /**
    * The run the next Load lands on.
@@ -171,32 +169,15 @@ export function RouteBoard({ board }: { board: PlanningBoard }) {
       return next
     })
 
-  /**
-   * Depart, in two phases.
-   *
-   * The first call carries no reason. If the run is under
-   * `min_parcels_per_trip`, `depart_trip` refuses with `trip_below_minimum` and
-   * the action returns `requiresOverride` — which is what opens the modal. The
-   * threshold therefore lives in exactly one place (SQL), even though the banner
-   * shows it too.
-   */
-  const handleDepart = async (trip: BoardTrip) => {
-    const result = await run(trip.id, () => departTrip(trip.id))
-    if (!result.ok && result.requiresOverride) {
-      setDepartError(null)
-      setDeparting(trip)
-      setFeedback(null)
-    }
-  }
+  /*
+    Depart, in ONE phase.
 
-  const handleDepartOverride = async (reason: string) => {
-    if (!departing) return
-    const trip = departing
-    setDepartError(null)
-    const result = await run(trip.id, () => departTrip(trip.id, reason))
-    if (result.ok) setDeparting(null)
-    else setDepartError(result.message)
-  }
+    This was two: call with no reason, catch `trip_below_minimum`, open a modal
+    demanding ten characters, call again. 0039 made the reason optional — the
+    volume banner still shows the shortfall, but the office is no longer asked
+    to justify a short run to itself, and the audit row records it either way.
+  */
+  const handleDepart = (trip: BoardTrip) => run(trip.id, () => departTrip(trip.id))
 
   const tripsByRoute = React.useMemo(() => {
     const map = new Map<string, BoardTrip[]>()
@@ -425,23 +406,20 @@ export function RouteBoard({ board }: { board: PlanningBoard }) {
               if (!target) return
               void run(target.tripId, () => loadTrip(target.tripId, ids, leg), true)
             }}
+            riders={board.riders}
+            /*
+              No trip id to key `busy` on -- the run may not exist yet. `run`
+              takes one to disable the card being acted on; here the whole
+              panel is the thing acting, so a synthetic key keeps the spinner
+              honest without pretending a card is busy.
+            */
+            onSend={(ids, riderId, routeId, leg) =>
+              void run('send', () => sendToRider(ids, riderId, routeId, leg), true)
+            }
           />
         </section>
       </div>
 
-      {departing ? (
-        <DepartDialog
-          open
-          onClose={() => setDeparting(null)}
-          onConfirm={(reason) => void handleDepartOverride(reason)}
-          routeName={
-            board.routes.find((r) => r.id === departing.routeId)?.name ?? 'This run'
-          }
-          volume={departing.volume}
-          busy={busyTripId === departing.id}
-          error={departError}
-        />
-      ) : null}
     </div>
   )
 }

@@ -744,18 +744,17 @@ end $$;
 --  R5. depart_trip — THE 20-PARCEL GATE
 -- ============================================================================
 
-\echo '=== R5a. a 12-parcel run is refused without a reason ==='
-do $$
-declare t_id uuid;
-begin
-  select id into t_id from public.trips where status = 'loading' order by created_at desc limit 1;
-  perform public.depart_trip(t_id);
-  raise exception 'FAIL: a 12-parcel run departed unchallenged';
-exception when sqlstate '55000' then
-  raise notice 'PASS: depart_trip refused 12/20 parcels with no override reason';
-end $$;
+--  0039 CHANGED WHAT THIS SECTION ASSERTS. `depart_trip` used to REFUSE a short
+--  run that gave no reason, and R5a pinned that refusal. The reason is now
+--  optional -- the margin guard is worth seeing, not worth a written
+--  justification addressed to the person who already decided.
+--
+--  So the old R5a is gone and R5c below takes its place from the other side:
+--  the run departs, and the audit row still records the shortfall and the
+--  money. THAT is the invariant that mattered, and it is the one now pinned.
+--  What is NOT relaxed: a reason that is supplied must still say something.
 
-\echo '=== R5b. a token reason is not an override ==='
+\echo '=== R5a. a token reason is still not an override ==='
 do $$
 declare t_id uuid;
 begin
@@ -763,10 +762,10 @@ begin
   perform public.depart_trip(t_id, 'ok');
   raise exception 'FAIL: a 2-character override was accepted';
 exception when sqlstate '22023' then
-  raise notice 'PASS: depart_trip refused a 2-character override reason';
+  raise notice 'PASS: depart_trip still refused a 2-character override reason';
 end $$;
 
-\echo '=== R5c. the run departs on an override, and the override is recorded ==='
+\echo '=== R5b. the run departs on an override, and the override is recorded ==='
 do $$
 declare t public.trips; v_audit jsonb;
 begin
@@ -802,6 +801,66 @@ begin
       v_audit ->> 'projected_margin';
   end if;
   raise notice 'PASS: departed 12/20 on override; audit records 8 short, 18600 pay, 23400 margin';
+end $$;
+
+\echo '=== R5c. 0039 — a short run departs with NO reason, and is still recorded ==='
+--  The half of the old R5a that survives. Nobody is made to type; the trail is
+--  kept. `depart_override_reason` is null because none was given, and the
+--  audit row is what distinguishes "went short quietly" from "met the rule" --
+--  R5g asserts the compliant case writes no such row at all.
+do $$
+declare t public.trips; ids uuid[]; v_audit jsonb; n int;
+begin
+  select array_agg(o.id) into ids from (
+    select id from public.orders where status = 'pending' and trip_id is null limit 2) o;
+  if coalesce(array_length(ids, 1), 0) < 1 then
+    raise notice 'SKIP: no pending parcels left to build a short run';
+    return;
+  end if;
+
+  t := public.plan_trip((select id from public.routes where code = 'ROUTE_D'));
+  t := public.assign_trip_rider(t.id, '66666666-6666-6666-6666-666666666666');
+  -- A delivery leg may only carry what the hub already holds (0028).
+  update public.orders set picked_up_at = coalesce(picked_up_at, now())
+   where id = any(ids);
+  t := public.load_trip(t.id, ids, 'delivery');
+
+  -- No second argument. Before 0039 this raised trip_below_minimum.
+  t := public.depart_trip(t.id);
+
+  if t.status <> 'departed' then
+    raise exception 'FAIL: a short run with no reason did not depart: %', t.status;
+  end if;
+  if t.depart_override_reason is not null then
+    raise exception 'FAIL: a reason was invented: %', t.depart_override_reason;
+  end if;
+
+  select after into v_audit from public.audit_log
+   where action = 'trip.depart_below_minimum' and entity_id = t.id::text
+   order by created_at desc limit 1;
+  if v_audit is null then
+    raise exception 'FAIL: short departure left no audit row — the trail is the point';
+  end if;
+  if (v_audit ->> 'shortfall')::int <> 20 - array_length(ids, 1) then
+    raise exception 'FAIL: audit shortfall %, expected %',
+      v_audit ->> 'shortfall', 20 - array_length(ids, 1);
+  end if;
+  if v_audit ? 'reason' and (v_audit ->> 'reason') is not null then
+    raise exception 'FAIL: audit recorded a reason nobody gave: %', v_audit ->> 'reason';
+  end if;
+  -- The money is still captured at the moment of the decision.
+  if (v_audit ->> 'projected_pay') is null or (v_audit ->> 'projected_margin') is null then
+    raise exception 'FAIL: audit lost the projected pay/margin';
+  end if;
+
+  select count(*) into n from public.audit_log
+   where action = 'trip.depart' and entity_id = t.id::text;
+  if n <> 0 then
+    raise exception 'FAIL: a short run wrote BOTH audit rows — they are either/or';
+  end if;
+
+  raise notice 'PASS: % parcels departed with no reason; shortfall still audited',
+    array_length(ids, 1);
 end $$;
 
 \echo '=== R5d. a departed run cannot depart again ==='
@@ -882,6 +941,78 @@ begin
    where action = 'trip.depart_below_minimum' and entity_id = t.id::text;
   if n <> 0 then raise exception 'FAIL: % below-minimum audit rows for a 20-parcel run', n; end if;
   raise notice 'PASS: 20/20 departed clean — no override, no below-minimum audit row';
+end $$;
+
+\echo '=== R5h2. 0039 — a DEPARTED run still takes parcels ==='
+--  THE ASYMMETRY THIS CLOSES. `unload_trip` has always accepted a departed run;
+--  `load_trip` refused one. Parcels could come off a moving bike but never on,
+--  so a parcel booked at 10:40 waited for tomorrow while the rider who could
+--  have carried it rode past the door.
+--
+--  Loading late must NOT be a way around anything: the run stays departed, the
+--  parcel takes the run's rider, and the ceilings still bite. R5h3 checks the
+--  last of those.
+do $$
+declare t public.trips; t_id uuid; o_id uuid; before_status text; n int;
+begin
+  select id, status into t_id, before_status
+    from public.trips where status = 'departed' and depart_parcel_count = 12 limit 1;
+  if t_id is null then
+    raise notice 'SKIP: no departed run to top up';
+    return;
+  end if;
+
+  select id into o_id from public.orders
+   where status = 'pending' and trip_id is null and picked_up_at is null limit 1;
+  if o_id is null then
+    raise notice 'SKIP: no uncollected parcel left to add';
+    return;
+  end if;
+
+  -- A brand-new parcel is still at its shop, so it joins as a COLLECTION.
+  -- That is the right leg: the rider goes and fetches it.
+  t := public.load_trip(t_id, array[o_id], 'pickup');
+
+  if t.status <> 'departed' then
+    raise exception 'FAIL: topping up reversed the run to %', t.status;
+  end if;
+  select count(*) into n from public.orders
+   where id = o_id and trip_id = t_id and trip_leg = 'pickup'
+     and status = 'assigned' and rider_id = t.rider_id;
+  if n <> 1 then
+    raise exception 'FAIL: the late parcel did not land assigned to the run''s rider';
+  end if;
+
+  -- Take it back off so R6's pay arithmetic still sees exactly 12 parcels.
+  perform public.unload_trip(t_id, array[o_id]);
+  raise notice 'PASS: a departed run accepted a parcel, stayed departed, kept its rider';
+end $$;
+
+\echo '=== R5h3. and loading late is not a way around the ceilings ==='
+do $$
+declare t_id uuid; o_id uuid; v_max bigint; v_cod bigint;
+begin
+  select id into t_id from public.trips
+   where status = 'departed' and depart_parcel_count = 12 limit 1;
+  if t_id is null then raise notice 'SKIP: no departed run'; return; end if;
+
+  select r.max_cod_per_trip into v_max
+    from public.routes r join public.trips t on t.route_id = r.id where t.id = t_id;
+  select coalesce(sum(cod_amount), 0) into v_cod from public.orders where trip_id = t_id;
+
+  select id into o_id from public.orders
+   where status = 'pending' and trip_id is null and picked_up_at is null limit 1;
+  if o_id is null then raise notice 'SKIP: no parcel to test the ceiling with'; return; end if;
+
+  -- Push this one parcel past the run's cash ceiling on its own.
+  update public.orders set cod_amount = v_max - v_cod + 1000, payment_method = 'cod'
+   where id = o_id;
+  begin
+    perform public.load_trip(t_id, array[o_id], 'pickup');
+    raise exception 'FAIL: a departed run took a parcel over its cash ceiling';
+  exception when sqlstate '55000' then
+    raise notice 'PASS: the COD ceiling still refuses a late load';
+  end;
 end $$;
 
 \echo '=== R5h. one rider cannot be out on two runs ==='
@@ -1451,21 +1582,36 @@ begin
   -- 2. It CAN be collected.
   perform public.load_trip(t_id, array[oid], 'pickup');
 
-  --    COLLECTIONS NOW COUNT TOWARD THE MINIMUM. One parcel against a minimum
-  --    of 20 is still short -- but the gate must say 1/20, not 0/20. Before
-  --    0028 it measured delivery legs alone, so a run of thirty collections
-  --    read as empty and every collection departure needed a typed override.
-  begin
-    perform public.depart_trip(t_id);
-    raise exception 'FAIL: a one-parcel run departed against a minimum of 20';
-  exception when sqlstate '55000' then
-    if strpos(sqlerrm, '1/') = 0 then
-      raise exception 'FAIL: the volume gate still ignores collections (%)', sqlerrm;
-    end if;
-    raise notice 'PASS: collections count toward the minimum volume';
-  end;
-
+  --    COLLECTIONS NOW COUNT TOWARD THE MINIMUM. Before 0028 the gate measured
+  --    delivery legs alone, so a run of thirty collections read as empty and
+  --    every collection departure needed a typed override.
+  --
+  --    0039 CHANGED HOW THIS IS PROVED, not what is proved. This used to depart
+  --    the run, catch the refusal and grep sqlerrm for '1/' -- but a short run
+  --    no longer refuses, so there is no message to read. The audit row carries
+  --    the same fact more directly and without string matching: one COLLECTION
+  --    must show up as pickups = 1 and a shortfall of 19, where the pre-0028
+  --    behaviour would have said 0 and 20.
   perform public.depart_trip(t_id, 'Single collection, verification run.');
+
+  declare v_audit jsonb;
+  begin
+    select after into v_audit from public.audit_log
+     where action = 'trip.depart_below_minimum' and entity_id = t_id::text
+     order by created_at desc limit 1;
+    if v_audit is null then
+      raise exception 'FAIL: a 1/20 run left no below-minimum audit row';
+    end if;
+    if (v_audit ->> 'pickups')::int <> 1 then
+      raise exception 'FAIL: the volume gate still ignores collections — pickups %',
+        v_audit ->> 'pickups';
+    end if;
+    if (v_audit ->> 'shortfall')::int <> 19 then
+      raise exception 'FAIL: shortfall %, expected 19 — collections not counted',
+        v_audit ->> 'shortfall';
+    end if;
+    raise notice 'PASS: collections count toward the minimum volume (1 pickup, 19 short)';
+  end;
 
   perform public.advance_order(oid, 'picked_up');
   perform public.return_trip(t_id);

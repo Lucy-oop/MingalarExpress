@@ -1,14 +1,30 @@
 'use client'
 
 import * as React from 'react'
-import { Coins, CornerUpLeft, MapPin, PackageOpen, PackagePlus, Search, Store, Warehouse } from 'lucide-react'
+import {
+  Bike,
+  Coins,
+  CornerUpLeft,
+  MapPin,
+  PackageOpen,
+  PackagePlus,
+  Search,
+  Send,
+  Store,
+  Warehouse,
+} from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
-import { loadPlan, LOAD_BLOCKER_MESSAGE, type LoadTarget } from '@/lib/routes/load-gate'
+import {
+  loadPlan,
+  selectionLeg,
+  LOAD_BLOCKER_MESSAGE,
+  type LoadTarget,
+} from '@/lib/routes/load-gate'
 import { cn, formatMmk } from '@/lib/utils'
-import type { BoardRoute, UnroutedParcel } from '@/lib/routes/queries'
+import type { BoardRider, BoardRoute, UnroutedParcel } from '@/lib/routes/queries'
 
 /** An unrouted parcel plus whether the shop has asked for it back. */
 export type PanelParcel = UnroutedParcel & { isReturn: boolean; isHubHeld: boolean }
@@ -50,6 +66,8 @@ export function UnroutedPanel({
   onToggleMany,
   onClear,
   onLoad,
+  riders,
+  onSend,
 }: {
   parcels: PanelParcel[]
   routes: BoardRoute[]
@@ -61,6 +79,14 @@ export function UnroutedPanel({
   onToggleMany: (ids: string[], select: boolean) => void
   onClear: () => void
   onLoad: (orderIds: string[], leg: 'delivery' | 'pickup' | 'return') => void
+  riders: BoardRider[]
+  /** The one-action path: parcels straight to a rider, run handled for you. */
+  onSend: (
+    orderIds: string[],
+    riderId: string,
+    routeId: string,
+    leg: 'delivery' | 'pickup' | 'return',
+  ) => void
 }) {
   const [query, setQuery] = React.useState('')
   const [routeFilter, setRouteFilter] = React.useState<string>('')
@@ -77,9 +103,17 @@ export function UnroutedPanel({
   const visible = React.useMemo(() => {
     const q = query.trim().toLowerCase()
     return parcels.filter((p) => {
-      // Returns travel to the shop, not to the customer's area, so a route
-      // filter must never hide them — they belong on whichever run is going.
-      if (p.isHubHeld) {
+      /*
+        Returns travel to the shop, not to the customer's area, so a route
+        filter must never hide them — they belong on whichever run is going.
+
+        EVERYTHING ELSE IS FILTERED, including collections. This block used to
+        be wrapped in `if (p.isHubHeld)`, so choosing a route left the shop
+        groups untouched and the control appeared to do nothing at all — worse
+        than absent, because targeting a run sets the filter silently and the
+        operator then sees a pool that ignored it.
+      */
+      if (!p.isReturn) {
         // '__none' is its own case: a parcel whose area maps to no route cannot
         // be loaded anywhere and needs surfacing, not hiding.
         if (routeFilter === '__none') {
@@ -137,7 +171,18 @@ export function UnroutedPanel({
             ? (p.areaName ?? 'No area set')
             : (p.shopName ?? (p.pickupAddress || 'Unknown shop')),
         sub: p.isHubHeld || p.isReturn ? null : p.pickupAddress,
-        routeId: p.isReturn ? null : p.isHubHeld ? p.suggestedRouteId : null,
+        /*
+          A COLLECTION GROUP HAS A ROUTE TOO. This was hard-coded null for
+          anything not hub-held, so every shop group rendered a red "No route"
+          badge even when its parcels map cleanly -- on the half of the pool
+          the office uses FIRST. They then had to guess which route section to
+          press "New run" under, with the answer already computed and thrown
+          away.
+
+          A return genuinely has none: it travels to a shop, and which run
+          carries it is a choice, not a mapping.
+        */
+        routeId: p.isReturn ? null : p.suggestedRouteId,
         isReturn: p.isReturn,
         isHubHeld: p.isHubHeld,
         items: [],
@@ -161,6 +206,50 @@ export function UnroutedPanel({
     [parcels, selected],
   )
   const plan = loadPlan(chosen, target)
+
+  /*
+    THE SEND PATH derives what the board used to make the operator choose.
+
+    `selectionLeg` is the same derivation loadPlan uses, shared rather than
+    repeated -- a second opinion about "collection or delivery" would
+    eventually disagree with load_trip, and the operator would only find out
+    from an error.
+
+    The ROUTE is the majority `suggestedRouteId` across the ticked parcels,
+    which route_areas.is_primary has been computing all along and which the
+    board used only to count unmapped parcels. Ties and misses fall back to the
+    first active route so the control is never empty; it is a <select>, so a
+    wrong guess costs one click rather than a refusal.
+  */
+  const send = selectionLeg(chosen)
+  const suggestedRoute = React.useMemo(() => {
+    const tally = new Map<string, number>()
+    for (const p of chosen) {
+      if (p.suggestedRouteId) tally.set(p.suggestedRouteId, (tally.get(p.suggestedRouteId) ?? 0) + 1)
+    }
+    let best: string | null = null
+    let bestN = 0
+    for (const [id, n] of tally) if (n > bestN) [best, bestN] = [id, n]
+    return best ?? routes[0]?.id ?? null
+  }, [chosen, routes])
+
+  const [sendRider, setSendRider] = React.useState<string>('')
+  const [sendRoute, setSendRoute] = React.useState<string>('')
+  const routeForSend = sendRoute || suggestedRoute || ''
+
+  /*
+    A rider already out is NOT barred here, which is the whole point of the
+    flow: `sendToRider` finds their open run and tops it up rather than
+    refusing. The chip says where they are so the choice is informed.
+  */
+  const sendBlocker: string | null = (() => {
+    if (chosen.length === 0) return 'Tick some parcels first.'
+    if (send.mixed) return LOAD_BLOCKER_MESSAGE.mixed_legs
+    if (riders.length === 0) return null
+    if (!sendRider) return 'Choose a rider.'
+    if (!routeForSend) return 'No active route to send this on.'
+    return null
+  })()
   const hiddenTicks = selected.size - visible.filter((p) => selected.has(p.id)).length
   const hasReturns = chosen.some((p) => p.isReturn)
   const hasHeld = chosen.some((p) => p.isHubHeld)
@@ -377,7 +466,116 @@ export function UnroutedPanel({
       </div>
 
       {/* ---- the one load button --------------------------------------- */}
+      {/* ---- SEND: the one-action path ---------------------------------- */}
+      {/*
+        THIS IS THE PRIMARY WAY TO ASSIGN NOW, and it sits above the Load
+        button on purpose. Loading into a targeted run is still there for the
+        cases that need it -- mixed batches, topping up a specific run, unload
+        -- but the common case is "give these to this rider", and that used to
+        cost four clicks in a fixed order with two blockers that only appeared
+        after the wrong one.
+
+        No run is chosen here, and none has to be: `sendToRider` finds the
+        rider's open run or makes one. A rider already on the road is a
+        TOP-UP, which is exactly why they are not barred from this list.
+      */}
       <div className="space-y-1.5 border-t pt-2">
+        <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+          Send straight to a rider
+        </p>
+
+        {riders.length === 0 ? (
+          /*
+            The empty state that was missing. With no riders the picker
+            rendered an empty row and said nothing, on a board whose whole
+            purpose is handing work to riders -- so the operator was left
+            looking for a control that could not exist yet.
+          */
+          <p className="rounded-md border border-dashed p-2.5 text-xs text-muted-foreground">
+            <span className="font-medium text-foreground">No riders yet.</span> Add one on the{' '}
+            <a href="/admin/super/riders" className="text-primary underline">
+              Riders
+            </a>{' '}
+            page, then come back and send this parcel out.
+          </p>
+        ) : (
+          <>
+            <div className="flex flex-wrap gap-1.5">
+              {riders.map((r) => {
+                const picked = r.id === sendRider
+                return (
+                  <button
+                    key={r.id}
+                    type="button"
+                    disabled={busy}
+                    onClick={() => setSendRider(picked ? '' : r.id)}
+                    aria-pressed={picked}
+                    className={cn(
+                      'flex min-h-9 items-center gap-1.5 rounded-full border px-2.5 text-xs transition-colors',
+                      picked
+                        ? 'border-primary bg-primary text-primary-foreground'
+                        : 'bg-card hover:bg-muted',
+                      busy && 'opacity-50',
+                    )}
+                  >
+                    <Bike className="size-3.5 shrink-0" aria-hidden="true" />
+                    <span className="truncate">{r.name}</span>
+                    {/* Where they are, not whether they may be picked. */}
+                    {r.onOpenTrip ? (
+                      <span
+                        className={cn(
+                          'shrink-0 text-[10px]',
+                          picked ? 'text-primary-foreground/80' : 'text-muted-foreground',
+                        )}
+                      >
+                        on a run
+                      </span>
+                    ) : null}
+                  </button>
+                )
+              })}
+            </div>
+
+            {/* Derived, and changeable. Only consulted for a NEW run — a rider
+                already out keeps their own run's route. */}
+            {routes.length > 1 ? (
+              <Select
+                value={routeForSend}
+                onChange={(e) => setSendRoute(e.target.value)}
+                disabled={busy}
+                aria-label="Route for a new run"
+                className="text-xs"
+              >
+                {routes.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.name}
+                  </option>
+                ))}
+              </Select>
+            ) : null}
+
+            <Button
+              block
+              disabled={busy || sendBlocker !== null}
+              onClick={() => onSend(chosen.map((p) => p.id), sendRider, routeForSend, send.leg)}
+            >
+              <Send />
+              {chosen.length > 0
+                ? `Send ${chosen.length} to ${riders.find((r) => r.id === sendRider)?.name ?? 'a rider'}`
+                : 'Send to a rider'}
+            </Button>
+
+            {sendBlocker ? (
+              <p className="text-center text-xs text-muted-foreground">{sendBlocker}</p>
+            ) : null}
+          </>
+        )}
+      </div>
+
+      <div className="space-y-1.5 border-t pt-2">
+        <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+          Or load into the run picked on the left
+        </p>
         {/*
           Deliver or collect, and only when it is a real choice. A return
           selection has its leg decided by the data — load_trip refuses any other

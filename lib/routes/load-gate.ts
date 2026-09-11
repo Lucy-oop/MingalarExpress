@@ -89,16 +89,49 @@ export type LoadPlan = {
  * Returns are the exception and outrank both: they travel to a shop, not from
  * one, and the shop asked for them.
  */
-export function loadPlan(selection: readonly LoadParcel[], target: LoadTarget | null): LoadPlan {
+/**
+ * The trip statuses `load_trip` accepts, mirroring its own list.
+ *
+ * `departed` joined in 0039. Kept as a named constant because this is the
+ * THIRD copy of a trip-status triple in the codebase — the others being
+ * `trips_rider_open_uk` and `onOpenTrip` — and the one most likely to be read
+ * by somebody wondering why the board and the database disagree.
+ */
+export const LOADABLE_STATUSES: readonly string[] = ['planned', 'loading', 'departed']
+
+/**
+ * What leg a selection travels on, and whether it is coherent at all — the
+ * part of `loadPlan` that depends only on the PARCELS.
+ *
+ * Split out for the Send flow, which picks a rider rather than a run and so has
+ * no target to measure ceilings against, but still needs the leg and still must
+ * refuse a mixed batch. Sharing this is the point: two derivations of "is this
+ * a collection or a delivery" would eventually disagree, and the one the
+ * operator did not see would be the one `load_trip` used.
+ */
+export function selectionLeg(selection: readonly LoadParcel[]): {
+  leg: LoadLeg
+  mixed: boolean
+  returns: number
+  held: number
+} {
   const returns = selection.filter((p) => p.isReturn).length
   const held = selection.filter((p) => p.isHubHeld).length
 
   // Three kinds, and a selection may only contain one of them: load_trip takes
   // a single leg for the whole batch.
   const kinds = [returns, held, selection.length - returns - held].filter((n) => n > 0).length
-  const mixed = kinds > 1
 
-  const leg: LoadLeg = returns > 0 ? 'return' : held > 0 ? 'delivery' : 'pickup'
+  return {
+    leg: returns > 0 ? 'return' : held > 0 ? 'delivery' : 'pickup',
+    mixed: kinds > 1,
+    returns,
+    held,
+  }
+}
+
+export function loadPlan(selection: readonly LoadParcel[], target: LoadTarget | null): LoadPlan {
+  const { leg, mixed, held } = selectionLeg(selection)
 
   const loaded = target?.loaded ?? []
   // Exactly load_trip's counters. Delivery legs for the parcel cap; every leg
@@ -125,7 +158,14 @@ export function loadPlan(selection: readonly LoadParcel[], target: LoadTarget | 
     // run's rider becomes its rider, and a run without one would leave it
     // rider-less in a state orders_assigned_needs_rider forbids.
     if (held > 0 && !target.hasRider) return 'held_needs_rider'
-    if (target.status !== 'planned' && target.status !== 'loading') return 'target_not_loadable'
+    /*
+      0039: `departed` IS LOADABLE. A rider on the road can be given more work,
+      and the office's most common reason to want it — a parcel booked after
+      the bike left, for a ward it is about to pass — was the one case the
+      board refused. Mirrors load_trip's own status list exactly; `returned`,
+      `closed` and `cancelled` still refuse.
+    */
+    if (!LOADABLE_STATUSES.includes(target.status)) return 'target_not_loadable'
     // `p_leg = 'delivery' and v_parcels > v_r.max_parcels_per_trip`
     if (leg === 'delivery' && projectedParcels > target.maxParcels) return 'over_parcel_cap'
     if (projectedCod > target.maxCod) return 'over_cod_cap'
@@ -151,7 +191,9 @@ export const LOAD_BLOCKER_MESSAGE: Record<LoadBlocker, string> = {
   nothing_selected: 'Tick some parcels first.',
   mixed_legs:
     'Collections, deliveries and returns each travel on their own run — load them separately.',
-  target_not_loadable: 'That run has already left.',
+  // 0039: a departed run IS loadable, so this now only means back at the hub
+  // or finished. Saying "has already left" would be actively wrong.
+  target_not_loadable: 'That run is finished — start a new one.',
   over_parcel_cap: 'That would put the run over its parcel limit.',
   over_cod_cap: 'That would put the run over its cash limit.',
   held_needs_rider: 'Give this run a rider before loading parcels held at the hub.',
