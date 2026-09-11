@@ -2143,6 +2143,7 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      rider_cash_held: { Args: { p_rider_id: string }; Returns: number }
       rider_cod_in_hand: { Args: { p_rider_id: string }; Returns: number }
       rider_earnings_summary: { Args: { p_rider_id?: string }; Returns: Json }
       rider_has_work_at_shop: { Args: { p_shop_id: string }; Returns: boolean }

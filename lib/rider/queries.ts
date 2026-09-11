@@ -173,7 +173,10 @@ export type RiderFeed = {
     lastPingAt: string | null
   } | null
   earnings: {
+    /** Net unsettled position — goes NEGATIVE once pay is owed. */
     codInHand: number
+    /** The notes in the bag: COD collected less cash handed in. */
+    cashHeld: number
     earnedToday: number
     earnedWeek: number
     deliveredToday: number
@@ -365,6 +368,7 @@ export async function getRiderFeed(riderId: string): Promise<RiderFeed> {
       : null,
     earnings: {
       codInHand: Number(s.cod_in_hand ?? 0),
+      cashHeld: Number(s.cash_held ?? 0),
       earnedToday: Number(s.earned_today ?? 0),
       earnedWeek: Number(s.earned_week ?? 0),
       deliveredToday: Number(s.delivered_today ?? 0),

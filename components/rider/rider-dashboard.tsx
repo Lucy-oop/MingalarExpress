@@ -433,10 +433,16 @@ export function RiderDashboard({
         </p>
       ) : null}
 
-      {feed.earnings.codInHand > 0 ? (
+      {/*
+        THE BAG, NOT THE NET. This read `codInHand`, which subtracts pay owed
+        and therefore goes NEGATIVE on a route day — so the one money warning
+        on the rider's first screen disappeared exactly when they were carrying
+        the most cash. `cashHeld` is the COD they are actually holding.
+      */}
+      {feed.earnings.cashHeld > 0 ? (
         <p className="flex items-start gap-2 rounded-lg bg-amber-50 p-3 text-sm font-medium text-amber-900">
           <Coins className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-          {t('cash.warning', { amount: formatMmk(feed.earnings.codInHand) })}
+          {t('cash.warning', { amount: formatMmk(feed.earnings.cashHeld) })}
         </p>
       ) : null}
     </div>

@@ -1970,5 +1970,169 @@ begin
 end $$;
 
 
+-- ============================================================================
+--  R10. The rider's own numbers (0041)
+--
+--  Reported as "company cash you are holding is not working". Three faults,
+--  and the reason none of them was caught: every existing assertion on
+--  rider_cod_in_hand runs as SERVICE or OFFICE. The one rider-session test of
+--  rider_earnings_summary (assign_flow A6) reads cod_in_hand and only prints
+--  it. So the value a real rider sees had never been asserted by anything.
+-- ============================================================================
+
+\echo '=== R10a. cash_held is the bag; cod_in_hand is the net ==='
+--  The distinction the card was missing. rider_cod_in_hand subtracts pay owed,
+--  so on a route day it goes NEGATIVE while the bag is full -- and the UI
+--  gated its "nothing outstanding" copy on `> 0`, printing that sentence
+--  directly under a negative number.
+do $$
+declare
+  v_rider uuid := '44444444-4444-4444-4444-444444444444';
+  v_bag   bigint;
+  v_net   bigint;
+  v_cod   bigint;
+  v_pay   bigint;
+begin
+  v_bag := public.rider_cash_held(v_rider);
+  v_net := public.rider_cod_in_hand(v_rider);
+
+  select coalesce(sum(amount) filter (where kind in ('cod_collected','cod_remitted')), 0),
+         coalesce(-sum(amount) filter (where kind in ('commission_earned','trip_pay')), 0)
+    into v_cod, v_pay
+    from public.cod_ledger
+   where rider_id = v_rider and settlement_id is null;
+
+  if v_bag <> v_cod then
+    raise exception 'FAIL: cash_held % but the cash lines sum to %', v_bag, v_cod;
+  end if;
+  if v_net <> v_cod - v_pay then
+    raise exception 'FAIL: cod_in_hand % but cash % less pay % is %',
+      v_net, v_cod, v_pay, v_cod - v_pay;
+  end if;
+  -- The whole point: with pay booked, the two MUST differ.
+  if v_pay > 0 and v_bag = v_net then
+    raise exception 'FAIL: cash_held and cod_in_hand agree while % of pay is owed', v_pay;
+  end if;
+
+  raise notice 'PASS: bag % , net % , the % of pay owed is the difference',
+    v_bag, v_net, v_pay;
+end $$;
+
+\echo '=== R10b. picked_up_today survives the office sorting the shelf ==='
+--  THE BUG THAT ZEROED IT. picked_up_today counted orders.trip_leg = 'pickup'.
+--  receive_trip shelves the parcel and load_trip puts it on a DELIVERY run,
+--  flipping the leg -- and the rider's morning vanished from their own screen.
+--  Counted from order_status_events now, which nothing reloads.
+do $$
+declare
+  v_rider  uuid;
+  v_route  uuid;
+  t_id     uuid;
+  oid      uuid;
+  v_before bigint;
+  v_after  bigint;
+begin
+  select r.id into v_rider from public.rider_profiles r
+   where not exists (select 1 from public.trips t
+                      where t.rider_id = r.id and t.status in ('planned','loading','departed'))
+   limit 1;
+  if v_rider is null then raise notice 'SKIP: every rider is out'; return; end if;
+  select id into v_route from public.routes where code = 'ROUTE_A';
+
+  insert into public.orders (
+    shop_id, pickup_address, pickup_lat, pickup_lng, customer_name, customer_phone,
+    dropoff_address, dropoff_lat, dropoff_lng, parcel_desc,
+    payment_method, cod_amount, delivery_fee, created_by)
+  values ('aaaaaaaa-0000-0000-0000-000000000001',
+    'No. 24, Thitsar Road, San Pya Ward, Thingangyun, Yangon', 16.8478, 96.1693,
+    'Leg Flip Test', '+959780000099', 'Somewhere, Thingangyun', 16.8500, 96.1700,
+    'Parcel', 'prepaid', 0, 2500, '33333333-3333-3333-3333-333333333333')
+  returning id into oid;
+
+  t_id := (public.plan_trip(v_route)).id;
+  perform public.assign_trip_rider(t_id, v_rider);
+  perform public.load_trip(t_id, array[oid], 'pickup');
+  perform public.depart_trip(t_id);
+  perform public.advance_order(oid, 'picked_up');
+
+  v_before := (public.rider_earnings_summary(v_rider) ->> 'picked_up_today')::bigint;
+  if v_before < 1 then
+    raise exception 'FAIL: a collection did not register at all (%)', v_before;
+  end if;
+
+  -- Now do to it exactly what the office does: shelve it, then send it out.
+  perform public.receive_trip(t_id);
+  perform public.return_trip(t_id);
+  perform public.close_trip(t_id);
+  perform public.assign_trip_rider(
+    (public.plan_trip(v_route)).id, v_rider);
+  declare t2 uuid;
+  begin
+    select id into t2 from public.trips
+     where rider_id = v_rider and status in ('planned','loading') limit 1;
+    perform public.load_trip(t2, array[oid], 'delivery');
+
+    if (select trip_leg from public.orders where id = oid) <> 'delivery' then
+      raise exception 'FAIL: the fixture did not flip the leg — nothing was tested';
+    end if;
+
+    v_after := (public.rider_earnings_summary(v_rider) ->> 'picked_up_today')::bigint;
+    if v_after < v_before then
+      raise exception
+        'FAIL: the leg flip erased % collection(s) — % before, % after',
+        v_before - v_after, v_before, v_after;
+    end if;
+    raise notice
+      'PASS: % collection(s) survived the leg flipping to delivery', v_after;
+    perform public.cancel_trip(t2, 'test cleanup');
+  end;
+end $$;
+
+\echo '=== R10c. a rider reads their own numbers, and nobody else''s ==='
+--  The gap that let all of this ship. Run as a RIDER, which no existing
+--  assertion on these functions does.
+select set_config('request.jwt.claims','{"sub":"44444444-4444-4444-4444-444444444444","role":"authenticated"}',false);
+set role authenticated;
+do $$
+declare v_bag bigint; v_net bigint; s jsonb;
+begin
+  v_bag := public.rider_cash_held('44444444-4444-4444-4444-444444444444');
+  v_net := public.rider_cod_in_hand('44444444-4444-4444-4444-444444444444');
+  s     := public.rider_earnings_summary();
+
+  if (s ->> 'cash_held')::bigint <> v_bag then
+    raise exception 'FAIL: summary cash_held % but the function says %',
+      s ->> 'cash_held', v_bag;
+  end if;
+  if (s ->> 'cod_in_hand')::bigint <> v_net then
+    raise exception 'FAIL: summary cod_in_hand % but the function says %',
+      s ->> 'cod_in_hand', v_net;
+  end if;
+  raise notice 'PASS: a rider session reads bag % and net % through the summary',
+    v_bag, v_net;
+end $$;
+
+do $$
+begin
+  -- 0041: this had NO authorization check. Any authenticated user could read
+  -- any rider's cash position by passing their uuid.
+  perform public.rider_cod_in_hand('55555555-5555-5555-5555-555555555555');
+  raise exception 'FAIL: a rider read another rider''s cash position';
+exception when insufficient_privilege then
+  raise notice 'PASS: rider_cod_in_hand refused another rider''s uuid';
+end $$;
+
+do $$
+begin
+  perform public.rider_cash_held('55555555-5555-5555-5555-555555555555');
+  raise exception 'FAIL: a rider read another rider''s bag';
+exception when insufficient_privilege then
+  raise notice 'PASS: rider_cash_held refused another rider''s uuid';
+end $$;
+
+reset role;
+select set_config('request.jwt.claims','',false);   -- back to service context
+
+
 \echo ''
 \echo '####  ALL ROUTE / TRIP CHECKS PASSED  ####'

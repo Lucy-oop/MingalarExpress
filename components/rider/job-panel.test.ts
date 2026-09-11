@@ -214,3 +214,48 @@ describe('the next stop card opens on a tap', () => {
     assert.ok(!body.includes('maps/dir'), 'the map link is nested inside the card link')
   })
 })
+
+/**
+ * The cash card must show the BAG, not the net.
+ *
+ * `rider_cod_in_hand` subtracts pay owed, so on a route day it goes negative
+ * while the rider is carrying a full bag. Both surfaces used to read it: the
+ * earnings card printed a negative number under the words "cash you are
+ * holding" next to "Nothing outstanding.", and the dashboard's warning — gated
+ * on `> 0` — vanished exactly when there was most cash to warn about.
+ *
+ * `cash_held` (0041) is `cod_collected + cod_remitted` and is what both should
+ * read. Reverting either to `codInHand` reintroduces a money bug that looks
+ * like a blank space, so it is worth a guard.
+ */
+const earningsPage = readFileSync('app/rider/earnings/page.tsx', 'utf8')
+
+describe('the cash figure is the bag', () => {
+  test('the earnings card prints cash_held', () => {
+    assert.match(
+      earningsPage,
+      /formatMmk\(cashHeld\)/,
+      'the cash card is printing the net position again',
+    )
+  })
+
+  test('and its explanation is no longer gated on a positive number', () => {
+    assert.ok(
+      !earningsPage.includes("codInHand > 0\n              ? 'This is COD"),
+      'the contradictory "Nothing outstanding." branch is back',
+    )
+  })
+
+  test("the dashboard's cash warning reads the bag too", () => {
+    assert.match(
+      dashboard,
+      /feed\.earnings\.cashHeld > 0/,
+      'the dashboard warning is gated on the net again — it will vanish when it matters',
+    )
+  })
+
+  /** A route rider's biggest ledger line rendered as the raw enum string. */
+  test('trip_pay has a human label', () => {
+    assert.match(earningsPage, /trip_pay: '/, 'trip_pay is missing from LEDGER_LABEL again')
+  })
+})

@@ -33,6 +33,25 @@ export const DICTIONARY = {
   'stat.delivered': { en: 'Delivered', my: 'ပို့ပြီး' },
   'stat.collected': { en: 'Picked up', my: 'ယူပြီး' },
   'stat.cashHeld': { en: 'Cash held', my: 'ကိုင်ထားသည်' },
+  /*
+    THE CASH CARD, finally translated. Its title and both copy lines were
+    hardcoded English on an otherwise bilingual page — and the title was a lie
+    besides: it read "Company cash you are holding" above the NET position,
+    which subtracts pay owed and goes negative on a route day.
+  */
+  'earnings.cashHeld': { en: 'Company cash you are holding', my: 'သင် ကိုင်ထားသော ကုမ္ပဏီ ငွေ' },
+  'earnings.cashHeldHint': {
+    en: 'COD you have collected, less anything already handed in. Hand it in at settlement.',
+    my: 'သင် ကောက်ထားသော COD ငွေ၊ အပ်ပြီးသည်များ ဖြုတ်ပြီး။ ရှင်းတမ်းတွင် အပ်ပါ။',
+  },
+  'earnings.owedToYou': {
+    en: 'After your pay, the office owes you {amount}.',
+    my: 'သင့် လုပ်အားခ ပြီးလျှင် ရုံးမှ သင့်ကို {amount} ပေးရန် ရှိပါသည်။',
+  },
+  'earnings.netToSettle': {
+    en: '{amount} to settle after your pay is taken off.',
+    my: 'သင့် လုပ်အားခ ဖြုတ်ပြီး ရှင်းရန် {amount}။',
+  },
   'cash.warning': {
     en: 'You are holding {amount} of company cash. Hand it in at the end of your shift.',
     my: 'ကုမ္ပဏီငွေ {amount} ကိုင်ထားပါသည်။ အလုပ်ဆင်းချိန် အပ်ပါ။',

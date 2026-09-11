@@ -53,6 +53,14 @@ export default async function RiderEarningsPage({
   ])
 
   const s = (summary ?? {}) as Record<string, number | string | null>
+  /*
+    TWO NUMBERS, because the card was asking one question and printing the
+    answer to another. `cash_held` is the notes in the bag —
+    cod_collected less cod_remitted. `cod_in_hand` also subtracts pay owed, so
+    on a route day it goes NEGATIVE while the bag is full, and this card used
+    to print that negative figure under the words "cash you are holding".
+  */
+  const cashHeld = Number(s.cash_held ?? 0)
   const codInHand = Number(s.cod_in_hand ?? 0)
 
   return (
@@ -82,20 +90,34 @@ export default async function RiderEarningsPage({
         <Tile label={t('earnings.activeJobs')} value={String(s.active_orders ?? 0)} />
       </div>
 
-      <Card className={codInHand > 0 ? 'border-amber-300 bg-amber-50' : undefined}>
+      <Card className={cashHeld > 0 ? 'border-amber-300 bg-amber-50' : undefined}>
         <CardHeader className="pb-2">
           <CardTitle className="flex items-center gap-2 text-sm">
             <Coins className="size-4" />
-            Company cash you are holding
+            {t('earnings.cashHeld')}
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-2xl font-semibold tabular-nums">{formatMmk(codInHand)}</p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            {codInHand > 0
-              ? 'This is COD you have collected, less the commission you have earned. Hand it in at settlement.'
-              : 'Nothing outstanding.'}
-          </p>
+          <p className="text-2xl font-semibold tabular-nums">{formatMmk(cashHeld)}</p>
+          {/*
+            THE EXPLANATION IS NOT GATED ON `> 0` ANY MORE. It used to be, and
+            the number beside it was the NET — which is negative on a route
+            day — so the card printed a negative figure and the words "Nothing
+            outstanding." directly underneath. Two contradictory claims about
+            the same money, and the reason this was reported as broken.
+
+            The net is worth showing too: it is what settlement will actually
+            net to zero, and a rider who has earned more than they are carrying
+            is owed the difference rather than holding it.
+          */}
+          <p className="mt-1 text-xs text-muted-foreground">{t('earnings.cashHeldHint')}</p>
+          {codInHand !== cashHeld ? (
+            <p className="mt-1 text-xs tabular-nums text-muted-foreground">
+              {codInHand < 0
+                ? t('earnings.owedToYou').replace('{amount}', formatMmk(-codInHand))
+                : t('earnings.netToSettle').replace('{amount}', formatMmk(codInHand))}
+            </p>
+          ) : null}
           {s.unsettled_since ? (
             <p className="mt-1 text-xs text-amber-800">
               Unsettled since {formatDateTimeYangon(String(s.unsettled_since))}
@@ -189,10 +211,17 @@ export default async function RiderEarningsPage({
   )
 }
 
+/*
+  EVERY KIND THE LEDGER CAN HOLD. `trip_pay` was missing, so a route rider —
+  which is every rider — saw their single largest line rendered as the raw
+  enum string `trip_pay`. The fallback at the render site prints the key when
+  it is absent, which is why nothing errored and nobody noticed.
+*/
 const LEDGER_LABEL: Record<string, string> = {
   cod_collected: 'COD collected',
   cod_remitted: 'Cash handed in',
   commission_earned: 'Delivery commission',
+  trip_pay: 'Run pay',
   platform_fee: 'Platform fee',
   adjustment: 'Adjustment',
 }
