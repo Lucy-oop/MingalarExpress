@@ -11,6 +11,13 @@ export const DEFAULT_LOCALE: Locale = 'my'
 
 export const LOCALE_LABEL: Record<Locale, string> = { my: 'မြန်မာ', en: 'English' }
 
+/**
+ * The same two labels for a phone toolbar, where the full words are ~152px of a
+ * 328px bar. Each stays in its OWN script for the reason LanguageToggle gives:
+ * the one you can read has to be the one you press.
+ */
+export const LOCALE_LABEL_SHORT: Record<Locale, string> = { my: 'မြန်', en: 'EN' }
+
 export function isLocale(value: unknown): value is Locale {
   return typeof value === 'string' && (LOCALES as readonly string[]).includes(value)
 }

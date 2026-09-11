@@ -63,7 +63,7 @@ export default async function NewOrderPage() {
     return (
       <Alert tone="warning" title={t('shop.noShop.title')}>
         <span className="block">{t('shop.noShop.body')}</span>
-        <Link href="/shop/setup" className={cn(buttonVariants({ size: 'sm' }), 'mt-3')}>
+        <Link href="/shop/setup" className={cn(buttonVariants(), 'mt-3 min-h-11')}>
           {t('sd.notSetUp')}
         </Link>
       </Alert>

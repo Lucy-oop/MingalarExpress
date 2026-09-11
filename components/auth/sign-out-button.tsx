@@ -28,7 +28,15 @@ import { Button } from '@/components/ui/button'
  * the form cannot be the same component — hence the wrapper below rendering
  * the form and `SignOutInner` reading the status from inside it.
  */
-function SignOutInner({ label, iconOnly }: { label: string; iconOnly?: boolean }) {
+function SignOutInner({
+  label,
+  iconOnly,
+  className,
+}: {
+  label: string
+  iconOnly?: boolean
+  className?: string
+}) {
   const { pending } = useFormStatus()
 
   return (
@@ -38,6 +46,7 @@ function SignOutInner({ label, iconOnly }: { label: string; iconOnly?: boolean }
       type="submit"
       disabled={pending}
       aria-label={label}
+      className={className}
     >
       {pending ? <Loader2 className="animate-spin" /> : <LogOut />}
       {/* The label is hidden below sm in every shell that shows one: an icon
@@ -48,10 +57,19 @@ function SignOutInner({ label, iconOnly }: { label: string; iconOnly?: boolean }
   )
 }
 
-export function SignOutButton({ label, iconOnly }: { label: string; iconOnly?: boolean }) {
+export function SignOutButton({
+  label,
+  iconOnly,
+  className,
+}: {
+  label: string
+  iconOnly?: boolean
+  /** For the shells that need a bigger target than the default icon size. */
+  className?: string
+}) {
   return (
     <form action={signOut}>
-      <SignOutInner label={label} iconOnly={iconOnly} />
+      <SignOutInner label={label} iconOnly={iconOnly} className={className} />
     </form>
   )
 }

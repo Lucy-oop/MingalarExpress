@@ -85,13 +85,29 @@ export default async function ShopLayout({ children }: { children: React.ReactNo
         low-end Android the CSS wordmark exists to spare.
       */}
       <header className="sticky top-0 z-20 border-b bg-background/80 backdrop-blur print:hidden">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2.5">
+        {/*
+          IT FITS ON ONE ROW NOW. The contents came to ~440px against the 328px
+          a 360px phone gives, so `flex-wrap` dropped the action group onto a
+          second line — a ~103px two-row bar on every phone, before any content.
+
+          Both halves shrank rather than one being hidden: the wordmark loses
+          "EXPRESS" below `sm` (~65px) and the language toggle uses its short
+          labels (~50px), which together more than pay for the icon buttons
+          growing from 32px to 44px. `flex-wrap` STAYS as the valve — it is what
+          makes the worst case a taller bar instead of a broken one — and
+          `min-w-0` on the brand means a future label overruns into a truncated
+          wordmark before it reaches that.
+
+          `gap-x-2` below `sm` for the same reason; the roomier `gap-x-4`
+          returns where there is room for it.
+        */}
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-2 gap-y-1 px-4 py-2.5 sm:gap-x-4">
           <Link
             href="/shop/dashboard"
             aria-label="Mingalar Express — shop home"
-            className="shrink-0"
+            className="min-w-0 shrink"
           >
-            <BrandMark tagline={false} size="sm" className="text-left" />
+            <BrandMark tagline={false} size="sm" compact className="truncate text-left" />
           </Link>
 
           {/* One mount for both desktop bands: `order-last w-full` gives it a
@@ -126,7 +142,11 @@ export default async function ShopLayout({ children }: { children: React.ReactNo
               it is what holds the actions to the right of the brand. At xl the
               nav is flex-1 and doing that job, so ml-auto becomes the thing
               opening the gap. */}
-          <div className="ml-auto flex shrink-0 items-center gap-2 xl:ml-0">
+          {/* `gap-3` between the icons, not `gap-2`: the bell and sign-out are
+              two unlabelled 44px targets side by side and one of them ends the
+              session. 12px of separation is the cheapest way to make that
+              misfire less likely. */}
+          <div className="ml-auto flex shrink-0 items-center gap-3 xl:ml-0">
             {gated ? null : (
               <>
                 <NewOrderButton className="hidden lg:inline-flex" />
@@ -140,7 +160,9 @@ export default async function ShopLayout({ children }: { children: React.ReactNo
             )}
             {/* Both scripts, both tappable — same reasoning as the rider shell. */}
             <LanguageToggle locale={locale} />
-            <SignOutButton label={t('action.signOut')} />
+            {/* Icon-only on a phone, and 44px rather than the default 40px
+                icon size — it is the last thing in a row of small targets. */}
+            <SignOutButton label={t('action.signOut')} iconOnly className="size-11" />
           </div>
         </div>
       </header>

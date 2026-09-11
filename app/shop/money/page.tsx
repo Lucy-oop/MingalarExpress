@@ -6,7 +6,8 @@ import { getShopMoney, searchShopOrders } from '@/lib/orders/queries'
 import { isoDaysAgo, yangonToday } from '@/lib/admin/day'
 import { MoneyRange } from '@/components/orders/money-range'
 import { OrderTable } from '@/components/orders/order-table'
-import { Kpi, PageHeader } from '@/components/admin/kpi'
+import { PageHeader } from '@/components/admin/kpi'
+import { ShopMoneyCard, ShopStatTile } from '@/components/shop/shop-stats'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert } from '@/components/ui/alert'
 import { formatMmk } from '@/lib/utils'
@@ -54,17 +55,54 @@ export default async function ShopMoneyPage({
 
       <MoneyRange from={from} to={to} today={today} />
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        <Kpi label={t('sd.delivered')} value={money.delivered} hint={`${from} to ${to}`} />
-        <Kpi label={t('sm.inTransit')} value={money.inTransit} hint={t('sm.inTransitHint')} />
-        <Kpi label={t('sm.collected')} value={formatMmk(money.codCollected)} />
-        <Kpi label={t('sm.fees')} value={formatMmk(money.platformFees)} hint={t('sm.feesHint')} />
-        <Kpi
-          label={t('sm.owed')}
-          value={formatMmk(money.owedToShop)}
-          tone={money.owedToShop > 0 ? 'good' : 'default'}
-          hint={t('sm.owedHint')}
-        />
+      {/*
+        THE ANSWER FIRST. This was five admin `Kpi` tiles two-across — the same
+        desk density the dashboard carried, and the same failure: three of the
+        five are money, and a comma-grouped MMK total is one unbreakable token
+        that renders through a 126px tile's border. See the docblock on
+        components/shop/shop-stats.
+
+        "Owed to you" is what a shop opens this page to find out, so it takes
+        the full width and the good tone. Collected and fees are the working
+        that produces it and sit under it as a pair; the two counts follow. At
+        `lg` the five go back to one row, unchanged.
+      */}
+      <div className="space-y-3 lg:grid lg:grid-cols-5 lg:gap-3 lg:space-y-0">
+        <div className="lg:order-5">
+          <ShopMoneyCard
+            label={t('sm.owed')}
+            value={formatMmk(money.owedToShop)}
+            hint={t('sm.owedHint')}
+            tone={money.owedToShop > 0 ? 'good' : 'default'}
+          />
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 lg:contents">
+          <div className="lg:order-3">
+            <ShopStatTile label={t('sm.collected')} value={formatMmk(money.codCollected)} />
+          </div>
+          <div className="lg:order-4">
+            <ShopStatTile
+              label={t('sm.fees')}
+              value={formatMmk(money.platformFees)}
+              hint={t('sm.feesHint')}
+            />
+          </div>
+          <div className="lg:order-1">
+            <ShopStatTile
+              label={t('sd.delivered')}
+              value={money.delivered}
+              hint={`${from} to ${to}`}
+            />
+          </div>
+          <div className="lg:order-2">
+            <ShopStatTile
+              label={t('sm.inTransit')}
+              value={money.inTransit}
+              hint={t('sm.inTransitHint')}
+            />
+          </div>
+        </div>
       </div>
 
       {/* Only when there is a shortfall. A row of zeroes on every shop's page

@@ -83,7 +83,15 @@ export function NoticeBell({
 
   return (
     <>
-      <Button variant="ghost" size="sm" onClick={show} aria-label={ariaLabel} className="relative">
+      {/* 44px square, not the 32px `sm` this used to be. It is the most-tapped
+          control in either header and it sits next to sign-out. */}
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={show}
+        aria-label={ariaLabel}
+        className="relative size-11"
+      >
         <Bell />
         {showing > 0 ? (
           <span

@@ -36,10 +36,11 @@ import { cn } from '@/lib/utils'
  * language.
  */
 
-export type ShopStatTone = 'default' | 'warn' | 'bad'
+export type ShopStatTone = 'default' | 'good' | 'warn' | 'bad'
 
 const TONES: Record<ShopStatTone, string> = {
   default: 'border-border bg-card',
+  good: 'border-emerald-200 bg-emerald-50',
   warn: 'border-amber-300 bg-amber-50',
   bad: 'border-destructive/30 bg-destructive/5',
 }
@@ -75,15 +76,22 @@ export function ShopMoneyCard({
 }
 
 /**
- * One of the four counts. A count is at most four digits, so it cannot overflow
- * the way the money figure can — the constraint here is the LABEL.
+ * A half-width figure: a count on the dashboard, a smaller money total on
+ * /shop/money.
  *
- * `min-h-11` because three of the four are links, and 44px is the floor the
- * rider suite enforces as a test (`job-panel.test.ts` bans `min-h-10`). The
- * padding alone would usually clear it; the floor makes that true regardless of
- * how short a translated label turns out to be.
+ * IT CARRIES MONEY TOO, so the value gets the same `min-w-0 truncate` the wide
+ * card has. A count is four digits and safe at any width; "1,250,000 Ks" in a
+ * 134px content box is not, and the whole point of this file is that a money
+ * figure must never render through its own border. Truncation is the backstop,
+ * not the plan — anything that routinely needs the room belongs in
+ * `ShopMoneyCard`.
+ *
+ * `min-h-11` because most of these are links, and 44px is the floor the rider
+ * suite enforces as a test (`job-panel.test.ts` bans `min-h-10`). The padding
+ * alone would usually clear it; the floor makes that true regardless of how
+ * short a translated label turns out to be.
  */
-export function ShopCountTile({
+export function ShopStatTile({
   label,
   value,
   hint,
@@ -103,7 +111,7 @@ export function ShopCountTile({
         half-width tile, large enough to be read at arm's length in a shop.
       */}
       <p className="text-[13px] font-medium leading-snug text-muted-foreground">{label}</p>
-      <p className="mt-0.5 text-xl font-semibold tabular-nums">{value}</p>
+      <p className="mt-0.5 min-w-0 truncate text-xl font-semibold tabular-nums">{value}</p>
       {hint ? (
         <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">{hint}</p>
       ) : null}

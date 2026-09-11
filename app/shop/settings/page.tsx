@@ -105,7 +105,7 @@ export default async function ShopSettingsPage() {
       ) : (
         <Alert tone="warning" title={t('ss.noShop')}>
           <span className="block">{t('shop.noShop.body')}</span>
-          <Link href="/shop/setup" className={cn(buttonVariants({ size: 'sm' }), 'mt-3')}>
+          <Link href="/shop/setup" className={cn(buttonVariants(), 'mt-3 min-h-11')}>
             Set up my shop
           </Link>
           {/* The button is the answer for most owners; the number is for the

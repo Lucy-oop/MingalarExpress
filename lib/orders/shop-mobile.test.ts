@@ -63,7 +63,7 @@ describe('the shop dashboard is not the admin panel', () => {
    *
    * ANCHORED TO THE className, AND ON STRIPPED SOURCE. The first version of
    * this matched /min-h-11/ anywhere in the file and passed with the class
-   * removed — because the docblock above ShopCountTile explains why min-h-11 is
+   * removed — because the docblock above ShopStatTile explains why min-h-11 is
    * there, and the scan read its own documentation. That is the fourth time
    * this exact trap has come up in this repo; shop-nav.test.ts records the
    * first.
@@ -72,7 +72,7 @@ describe('the shop dashboard is not the admin panel', () => {
     const classNames = [...code(stats).matchAll(/className=(?:"([^"]*)"|\{[^}]*'([^']*)'[^}]*\})/g)]
       .map((m) => m[1] ?? m[2] ?? '')
       .join(' ')
-    const tile = code(stats).slice(code(stats).indexOf('export function ShopCountTile'))
+    const tile = code(stats).slice(code(stats).indexOf('export function ShopStatTile'))
     assert.match(
       tile,
       /'flex min-h-11 flex-col/,
@@ -136,5 +136,103 @@ describe('the phone chrome adds up', () => {
     )
     const tiles = (skeleton.match(/\[0, 1, 2, 3\]/g) ?? []).length
     assert.equal(tiles, 1, 'the skeleton no longer draws exactly four count tiles')
+  })
+})
+
+const money = readFileSync('app/shop/money/page.tsx', 'utf8')
+const settings = readFileSync('app/shop/settings/page.tsx', 'utf8')
+const newOrder = readFileSync('app/shop/orders/new/page.tsx', 'utf8')
+const toggle = readFileSync('components/shared/language-toggle.tsx', 'utf8')
+const bell = readFileSync('components/shared/notice-bell.tsx', 'utf8')
+
+describe('the money page is the shop\'s, not the office\'s', () => {
+  /**
+   * Three of its five figures are money, so it had the dashboard's bug twice
+   * over: a comma-grouped MMK total is one unbreakable token and a 126px admin
+   * tile has no room for it.
+   */
+  test('it uses the shop tiles for its figures', () => {
+    assert.match(code(money), /ShopMoneyCard|ShopStatTile/, 'the money page lost the shop tiles')
+    assert.ok(
+      !/\bKpi\b/.test(code(money)),
+      'the admin Kpi is back on /shop/money — that is desk density on a phone',
+    )
+  })
+
+  /** `PageHeader` is layout only — no 10px type — so it may stay shared. */
+  test('what it still shares with admin is only the page header', () => {
+    const imports = code(money).match(/from '@\/components\/admin\/[^']*'/g) ?? []
+    assert.deepEqual(imports, ["from '@/components/admin/kpi'"])
+    assert.match(code(money), /import \{ PageHeader \} from '@\/components\/admin\/kpi'/)
+  })
+})
+
+describe('an empty state can be escaped with a thumb', () => {
+  /**
+   * Each of these is the ONLY way forward from a screen with nothing on it —
+   * no shop yet, no pickup pin, cannot book. They were `size="sm"`: h-8, 32px,
+   * with 12px type, below the 44px floor the rider suite enforces as a test.
+   */
+  test('every recovery CTA clears 44px', () => {
+    for (const [name, src] of [
+      ['dashboard', dashboard],
+      ['settings', settings],
+      ['orders/new', newOrder],
+    ] as const) {
+      assert.ok(
+        !/buttonVariants\(\{ size: 'sm' \}\)/.test(code(src)),
+        `${name} has a 32px recovery CTA again`,
+      )
+      assert.match(code(src), /min-h-11/, `${name} lost its 44px floor`)
+    }
+  })
+})
+
+describe('the shop header is one row on a phone', () => {
+  /**
+   * The contents came to ~440px against the 328px a 360px phone gives, so
+   * flex-wrap dropped the action group to a second line — ~103px of chrome on
+   * every phone before any content. Both halves shrank; neither was hidden.
+   */
+  test('the wordmark drops its second word on a phone', () => {
+    assert.match(code(shopLayout), /<BrandMark[^>]*compact/, 'the header wordmark is full-width again')
+  })
+
+  test('the language toggle uses its short labels on a phone', () => {
+    /*
+      ANCHORED TO THE RENDER, NOT THE IMPORT. The first version matched
+      /LOCALE_LABEL_SHORT/ anywhere and passed with the usage deleted, because
+      the import line still carried the name. Same trap as the min-h-11 guard
+      above, twice in one file.
+    */
+    assert.match(
+      code(toggle),
+      /<span className="sm:hidden">\{LOCALE_LABEL_SHORT\[l\]\}<\/span>/,
+      'the toggle is back to ~152px of the bar',
+    )
+    assert.match(
+      code(toggle),
+      /<span className="hidden sm:inline">\{LOCALE_LABEL\[l\]\}<\/span>/,
+      'the full labels no longer come back at sm',
+    )
+    // Both segments must remain — see the docblock; a single "switch to X"
+    // button is the saving that breaks the rule.
+    assert.match(code(toggle), /LOCALES\.map/, 'the toggle collapsed to one button')
+  })
+
+  /**
+   * flex-wrap stays deliberately: it is what makes the worst case a taller bar
+   * rather than a horizontally broken one. The fix is that it no longer fires.
+   */
+  test('wrapping survives as the valve, and the brand shrinks first', () => {
+    assert.match(code(shopLayout), /flex-wrap/, 'the header lost its overflow valve')
+    assert.match(code(shopLayout), /className="min-w-0 shrink"/, 'the brand cannot shrink, so the bar will wrap')
+  })
+
+  /** Two unlabelled targets side by side, one of which ends the session. */
+  test('the bell and sign-out are 44px and not crowded', () => {
+    assert.match(bell, /className="relative size-11"/, 'the bell is back to a 32px target')
+    assert.match(code(shopLayout), /iconOnly className="size-11"/, 'sign-out is back to a 32px target')
+    assert.match(code(shopLayout), /items-center gap-3 xl:ml-0/, 'the icons are crowded together again')
   })
 })

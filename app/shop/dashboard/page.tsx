@@ -6,7 +6,7 @@ import { getLocale } from '@/lib/i18n/locale'
 import { translator } from '@/lib/i18n'
 import { getShopDashboard } from '@/lib/orders/queries'
 import { OrderTable } from '@/components/orders/order-table'
-import { ShopCountTile, ShopMoneyCard } from '@/components/shop/shop-stats'
+import { ShopStatTile, ShopMoneyCard } from '@/components/shop/shop-stats'
 import { Alert } from '@/components/ui/alert'
 import { formatMmk } from '@/lib/utils'
 import { ContactSupport } from '@/components/shared/contact-support'
@@ -72,7 +72,7 @@ export default async function ShopDashboardPage() {
       {!shop ? (
         <Alert tone="warning" title={t('sd.notSetUp')}>
           <span className="block">{t('shop.noShop.body')}</span>
-          <Link href="/shop/setup" className={cn(buttonVariants({ size: 'sm' }), 'mt-3')}>
+          <Link href="/shop/setup" className={cn(buttonVariants(), 'mt-3 min-h-11')}>
             <Store className="size-4" />
             Set up my shop
           </Link>
@@ -108,7 +108,7 @@ export default async function ShopDashboardPage() {
       {shop && shop.pickup_lat === null ? (
         <Alert tone="warning" title={t('shop.noPin.title')}>
           <span className="block">{t('shop.noPin.body')}</span>
-          <Link href="/shop/settings" className={cn(buttonVariants({ size: 'sm' }), 'mt-3')}>
+          <Link href="/shop/settings" className={cn(buttonVariants(), 'mt-3 min-h-11')}>
             <MapPin className="size-4" />
             {t('shop.noPin.cta')}
           </Link>
@@ -142,7 +142,7 @@ export default async function ShopDashboardPage() {
 
         <div className="grid grid-cols-2 gap-3 lg:contents">
           <div className="lg:order-1">
-            <ShopCountTile
+            <ShopStatTile
               label={t('sd.waiting')}
               value={counts.pending}
               href="/shop/orders?status=pending"
@@ -150,7 +150,7 @@ export default async function ShopDashboardPage() {
             />
           </div>
           <div className="lg:order-2">
-            <ShopCountTile
+            <ShopStatTile
               label={t('sd.onTheWay')}
               value={counts.inFlight}
               href="/shop/orders?status=assigned"
@@ -158,7 +158,7 @@ export default async function ShopDashboardPage() {
             />
           </div>
           <div className="lg:order-4">
-            <ShopCountTile
+            <ShopStatTile
               label={t('sd.delivered')}
               value={counts.delivered}
               href="/shop/orders?status=delivered"
@@ -170,7 +170,7 @@ export default async function ShopDashboardPage() {
             and there is nothing for the shop to do about it yet.
           */}
           <div className="lg:order-5">
-            <ShopCountTile
+            <ShopStatTile
               label={t('sd.needsYou')}
               value={counts.needsDecision}
               href="/shop/orders?needs=1"

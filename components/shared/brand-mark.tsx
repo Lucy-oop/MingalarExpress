@@ -19,10 +19,20 @@ export function BrandMark({
   className,
   tagline = true,
   size = 'md',
+  compact = false,
 }: {
   className?: string
   tagline?: boolean
   size?: keyof typeof SIZES
+  /**
+   * Drop "EXPRESS" below `sm`, keeping only "Mingalar".
+   *
+   * For app toolbars on a phone, where the second word is ~65px of a 328px bar
+   * — and where that 65px was the difference between a one-row header and a
+   * two-row one. The name still reads, and the full lockup returns at `sm`.
+   * The hero mark (`md`, login and tracking) never passes this.
+   */
+  compact?: boolean
 }) {
   const s = SIZES[size]
   return (
@@ -33,7 +43,15 @@ export function BrandMark({
         >
           Mingalar
         </span>
-        <span className={cn('font-semibold uppercase text-charcoal', s.word)}>Express</span>
+        <span
+          className={cn(
+            'font-semibold uppercase text-charcoal',
+            s.word,
+            compact && 'hidden sm:inline',
+          )}
+        >
+          Express
+        </span>
       </div>
       {tagline ? (
         <p className="mt-1 text-[11px] font-medium uppercase tracking-[0.2em] text-muted-foreground">
