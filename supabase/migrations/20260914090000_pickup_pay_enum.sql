@@ -1,0 +1,52 @@
+-- ============================================================================
+--  MINGALAR EXPRESS  ·  0042 PART 1 OF 2 — THE ENUM VALUE, ON ITS OWN
+--
+--  This file contains ONE statement and must stay that way. Its partner,
+--  `20260914100000_per_parcel_pay.sql`, does the actual work.
+--
+--  ---------------------------------------------------------------------------
+--  WHY IT IS A SEPARATE FILE
+--
+--  Postgres refuses to USE a new enum value in the same transaction that added
+--  it:
+--
+--      ERROR: 55P04: unsafe use of new value "pickup_pay" of enum type
+--                    ledger_kind
+--      HINT:  New enum values must be committed before they can be used.
+--
+--  The value is used by the partner migration's partial index, whose predicate
+--  is parsed and type-checked at CREATE time:
+--
+--      where kind in ('cod_collected', 'commission_earned', 'pickup_pay')
+--
+--  This was originally one file, on the reasoning that `psql -f` is autocommit
+--  so each statement is its own transaction -- which is true of both tools in
+--  this repo (`scripts/db-push.sh:144` and
+--  `supabase/tests/reset_and_verify.sh:21-32` each run one file per psql
+--  invocation). That is why `npm run db:verify` passed and never saw the
+--  problem.
+--
+--  IT IS NOT TRUE OF THE SUPABASE SQL EDITOR, which wraps a pasted script in a
+--  single transaction -- and that is how migrations are actually being applied
+--  to this project. The reasoning was correct about the test harness and wrong
+--  about the real deployment path, which is the worse of the two ways to be
+--  wrong.
+--
+--  Splitting the file makes it safe under BOTH: the enum lands and commits,
+--  then the partner runs, transaction or not. 0007 has the same hazard for
+--  'trip_pay' and dodged it by luck of ordering -- its value is first used in
+--  0008, a different file.
+--
+--  ---------------------------------------------------------------------------
+--  WHAT THE VALUE IS FOR
+--
+--  A rider is paid per parcel collected on a `per_parcel` route, and that pay
+--  cannot reuse `commission_earned`: `cod_ledger_order_kind_uk` is unique on
+--  `(order_id, kind)`, so one parcel's collection pay and its delivery pay
+--  would collide and `on conflict do nothing` would drop the second SILENTLY.
+--  The partner migration explains it at length.
+--
+--  Forward-only and idempotent. `if not exists` makes a re-run a no-op.
+-- ============================================================================
+
+alter type public.ledger_kind add value if not exists 'pickup_pay';

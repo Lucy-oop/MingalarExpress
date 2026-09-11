@@ -68,19 +68,32 @@
 --  rider app replays `advance_orders` from IndexedDB hours later, so a
 --  collection saved offline would book the 500 twice.
 --
+--  TWO FILES. The `pickup_pay` enum value is added by
+--  `20260914090000_pickup_pay_enum.sql` because Postgres refuses to use a new
+--  enum value in the transaction that created it -- see section 1. Apply that
+--  one first.
+--
 --  Forward-only. A new enum value, a widened index, three redefinitions.
 -- ============================================================================
 
 -- ----------------------------------------------------------------------------
--- 1. The new kind, and the index that makes it safe
+-- 1. The index that makes the new kind safe
 --
---  ALTER TYPE ... ADD VALUE must not run in the same transaction that USES the
---  value. `psql -f` is autocommit, so each statement is its own transaction and
---  the index below sees a committed value -- but never wrap this migration in
---  BEGIN/COMMIT. Same warning 0007 carries for 'trip_pay'.
+--  THE ENUM VALUE IS ADDED BY `20260914090000_pickup_pay_enum.sql`, one file
+--  earlier, and for a reason worth reading before merging the two back
+--  together:
+--
+--      ERROR: 55P04: unsafe use of new value "pickup_pay" of enum type
+--                    ledger_kind
+--      HINT:  New enum values must be committed before they can be used.
+--
+--  Postgres will not let a new enum value be USED in the transaction that
+--  added it, and the index predicate below uses it. This file originally
+--  carried the `alter type` itself, on the reasoning that `psql -f` is
+--  autocommit -- true of both tools in this repo, which is why db:verify
+--  passed, and NOT true of the Supabase SQL editor, which wraps a pasted
+--  script in one transaction and is how this project is actually migrated.
 -- ----------------------------------------------------------------------------
-
-alter type public.ledger_kind add value if not exists 'pickup_pay';
 
 /*
   THE IDEMPOTENCY BACKSTOP, WIDENED. 0002 created this over cod_collected and
