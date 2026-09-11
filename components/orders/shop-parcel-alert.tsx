@@ -209,7 +209,14 @@ export function ShopParcelAlert({ userId }: { userId: string }) {
     band under the header on every page.
   */
   return (
-    <div role="status" aria-live="polite">
+    /*
+      `print:hidden` on the REGION, not the banner: a live-region wrapper that
+      is empty costs nothing on paper either way, but hiding it here covers the
+      banner and anything later added beside it. "3 parcels delivered while you
+      were away" is screen news, and it was landing at the top of the first
+      waybill of a label run.
+    */
+    <div role="status" aria-live="polite" className="print:hidden">
       {message ? (
         <div className="mb-4 flex items-center gap-3 rounded-xl border-2 border-emerald-500 bg-emerald-50 p-3">
           <PackageCheck className="size-6 shrink-0 text-emerald-700" aria-hidden="true" />

@@ -88,7 +88,14 @@ export function PolicyGate({ doc }: { doc: PolicyDocument }) {
       nothing behind it worth glimpsing yet.
     */
     <div
-      className="fixed inset-0 z-50 flex flex-col bg-background"
+      /*
+        `print:hidden` because this is an OVERLAY, not a redirect: the page
+        underneath still renders, so a shop caught by a new policy version who
+        reaches /shop/orders/labels?print=1 would otherwise print the terms
+        across the waybill. Narrow -- a gated shop cannot book -- but reachable
+        from the reprint link on an order placed before the version bumped.
+      */
+      className="fixed inset-0 z-50 flex flex-col bg-background print:hidden"
       role="dialog"
       aria-modal="true"
       aria-labelledby="policy-gate-title"

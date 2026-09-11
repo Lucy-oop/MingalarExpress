@@ -112,7 +112,16 @@ export function ShopTabs() {
   return (
     <nav
       aria-label="Shop sections"
-      className="fixed inset-x-0 bottom-0 z-20 border-t bg-background pb-[env(safe-area-inset-bottom)] lg:hidden"
+      /*
+        `print:hidden` IS NOT REDUNDANT WITH `lg:hidden`. A print job lays out
+        at the PAPER width, not the screen's -- and /shop/orders/labels sets
+        `@page { size: 100mm 150mm }`, so the print viewport is 100mm wide,
+        far below the lg breakpoint. `lg:hidden` therefore keeps this bar
+        VISIBLE when printing, and because it is `fixed` the browser paints it
+        onto every page of the job: a ten-parcel batch got ten tab bars, one
+        across the bottom of each waybill.
+      */
+      className="fixed inset-x-0 bottom-0 z-20 border-t bg-background pb-[env(safe-area-inset-bottom)] lg:hidden print:hidden"
     >
       {/*
         ONE COLUMN PER DESTINATION, and the number has moved twice. It was
@@ -178,6 +187,8 @@ export function NewOrderButton({ className }: { className?: string }) {
  */
 export function NewOrderFab() {
   return (
-    <NewOrderButton className="fixed right-4 z-20 h-12 px-5 text-base shadow-lg lg:hidden bottom-[calc(4rem+1rem+env(safe-area-inset-bottom))]" />
+    // `print:hidden` for the same reason as ShopTabs: fixed, below lg at paper
+    // width, and therefore stamped on every page of a label run.
+    <NewOrderButton className="fixed right-4 z-20 h-12 px-5 text-base shadow-lg lg:hidden print:hidden bottom-[calc(4rem+1rem+env(safe-area-inset-bottom))]" />
   )
 }
