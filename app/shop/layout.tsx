@@ -1,9 +1,7 @@
 import Link from 'next/link'
-import { LogOut } from 'lucide-react'
 import { requireShop } from '@/lib/auth/guards'
-import { signOut } from '@/lib/auth/actions'
+import { SignOutButton } from '@/components/auth/sign-out-button'
 import { BrandMark } from '@/components/shared/brand-mark'
-import { Button } from '@/components/ui/button'
 import { LanguageToggle } from '@/components/shared/language-toggle'
 import { ShopParcelAlert } from '@/components/orders/shop-parcel-alert'
 import { PolicyGate } from '@/components/legal/policy-gate'
@@ -25,16 +23,19 @@ export default async function ShopLayout({ children }: { children: React.ReactNo
   const t = translator(locale)
 
   /*
-    One indexed lookup per shop page. It has to be current -- the terms must
-    stop appearing the moment they are accepted -- and it FAILS OPEN: a read
-    that errors returns `unknown`, which shouldBlock() answers false to. That is
-    what stops a missing migration or a dropped connection locking every shop
-    out of every page at once. See lib/legal/gate.
-  */
-  const acceptance = await readPolicyAcceptance(COD_ADVANCE_POLICY.key)
-  const gated = shouldBlock(acceptance, COD_ADVANCE_POLICY.version)
+    ALL THREE AT ONCE. The policy read used to sit on its own `await` above the
+    Promise.all below it, which cost a whole extra sequential round trip -- 175
+    to 340ms against this project -- on EVERY shop page, for no reason: nothing
+    below depends on its result except the `gated` flag, which is only read at
+    render time. /shop/dashboard was the slowest route in the app at ten
+    sequential round trips, and this was one of them.
 
-  /*
+    THE POLICY READ IS STILL PER-REQUEST AND STILL CURRENT. It has to be: the
+    terms must stop appearing the moment they are accepted. It also still FAILS
+    OPEN -- a read that errors returns `unknown`, which shouldBlock() answers
+    false to, which is what stops a missing migration locking every shop out of
+    every page at once. See lib/legal/gate.
+
     THE FEED IS HEADER CHROME, so neither half may break a page: the query
     swallows its own error and returns [], and the marker falls back to null,
     which `isNewSince` reads as "everything is new" rather than throwing.
@@ -43,10 +44,12 @@ export default async function ShopLayout({ children }: { children: React.ReactNo
     every shop page on a realtime event, so this count moves on its own.
   */
   const supabase = await createClient()
-  const [notices, { data: me }] = await Promise.all([
+  const [acceptance, notices, { data: me }] = await Promise.all([
+    readPolicyAcceptance(COD_ADVANCE_POLICY.key),
     getShopNotifications(24),
     supabase.from('profiles').select('notices_seen_at').eq('id', profile.id).maybeSingle(),
   ])
+  const gated = shouldBlock(acceptance, COD_ADVANCE_POLICY.version)
 
   return (
     // The locale crosses the boundary as a STRING; every client component below
@@ -137,15 +140,7 @@ export default async function ShopLayout({ children }: { children: React.ReactNo
             )}
             {/* Both scripts, both tappable — same reasoning as the rider shell. */}
             <LanguageToggle locale={locale} />
-            <form action={signOut}>
-              <Button variant="ghost" size="sm" type="submit" aria-label={t('action.signOut')}>
-                <LogOut />
-                {/* Named where there is room. An icon alone, immediately beside
-                    the language toggle, makes "switch language" and "end my
-                    session" neighbours in the same thumb zone. */}
-                <span className="hidden sm:inline">{t('action.signOut')}</span>
-              </Button>
-            </form>
+            <SignOutButton label={t('action.signOut')} />
           </div>
         </div>
       </header>

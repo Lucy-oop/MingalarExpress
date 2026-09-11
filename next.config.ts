@@ -2,6 +2,35 @@ import type { NextConfig } from 'next'
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  experimental: {
+    /*
+      THE CLIENT ROUTER CACHE, which was off.
+
+      `dynamic` defaults to 0 seconds, and every protected route in this app is
+      `force-dynamic` — so going back to a tab you left a moment ago refetched
+      the whole thing. Flipping between Runs and Orders paid the full server
+      render each way.
+
+      15 SECONDS, NOT THE 30 THE DOCS SUGGEST, and the difference is the point.
+      This is a dispatch app: `public/sw.js` opens with "a clever caching
+      strategy on a dispatch app is a bug factory: serving a stale jobs feed is
+      worse than showing nothing, because a rider would ride to a pickup that
+      was reassigned ten minutes ago." A client cache is exactly that hazard in
+      a smaller window, so the window is small enough that nobody plans off it.
+
+      What makes 15s safe rather than merely short: every operational surface
+      busts this cache on its own. The run board and the rider feed hold
+      realtime subscriptions that call `router.refresh()` within ~400ms of any
+      change (`components/routes/route-board.tsx`,
+      `components/rider/rider-dashboard.tsx`), and every server action ends in
+      `revalidatePath`. The cache covers idle navigation, which is what was
+      slow, and yields immediately to anything that actually moved.
+
+      `static` stays generous: the public tracking page and the login form have
+      nothing to go stale.
+    */
+    staleTimes: { dynamic: 15, static: 300 },
+  },
   // Leaflet ships CommonJS and touches `window` at import time; every consumer
   // must be dynamically imported with `ssr: false` (see components/map/MapCanvas).
   serverExternalPackages: ['leaflet'],

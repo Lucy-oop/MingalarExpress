@@ -1,3 +1,4 @@
+import { cache } from 'react'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import type { Profile, UserRole } from '@/types/domain'
@@ -24,14 +25,52 @@ export type AuthContext = {
   profile: Profile
 }
 
-/** Authenticated session + profile, or a redirect to login. */
-export async function requireUser(): Promise<AuthContext> {
+/**
+ * Who is signed in, fetched AT MOST ONCE PER REQUEST.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY THIS EXISTS: IT WAS THE LARGEST SINGLE SOURCE OF LATENCY
+ *
+ * `auth.getUser()` is not a cookie read. `@supabase/ssr` calls GoTrue's
+ * `/auth/v1/user` to verify the JWT against the server, and against this
+ * project that measures 190-870ms. The `profiles` read beside it measures
+ * 175-340ms. Neither is avoidable per se -- but they were being paid over and
+ * over inside a single render:
+ *
+ *     /admin           layout guard + page guard          = 4 round trips
+ *     /shop/dashboard  layout guard + page guard          = 4
+ *     /admin/super     admin layout + super layout        = 6
+ *
+ * Three `getUser()` calls and three or four `profiles` reads per cold page
+ * load, every one of them strictly sequential, for an answer that cannot
+ * change within one request. On `/shop/dashboard` the whole chain came to ten
+ * sequential round trips and twenty HTTP requests.
+ *
+ * `React.cache` memoises per REQUEST, not across requests, so this is not a
+ * cache in the stale-data sense: the second guard in the same render gets the
+ * first one's answer, and the next request starts clean. No revalidation to
+ * get wrong, no window in which a suspended account still renders.
+ *
+ * ---------------------------------------------------------------------------
+ * THE REDIRECTS STAY OUTSIDE
+ *
+ * This returns data and never redirects. `redirect()` throws, and a cached
+ * function that throws caches the throw -- which would work, but it would make
+ * the memo a control-flow device and the next reader would have to reason about
+ * it. Keeping the cache a plain value and the policy in `requireUser` means
+ * the interesting part stays readable.
+ *
+ * Nothing else changes: the three-layer discipline in the docblock above is
+ * intact. Every guard still checks, on every render. They just stop asking the
+ * same question over the network three times.
+ */
+const loadAuth = cache(async (): Promise<{ user: { id: string; email: string | null }; profile: Profile | null } | null> => {
   const supabase = await createClient()
 
   const {
     data: { user },
   } = await supabase.auth.getUser()
-  if (!user) redirect('/auth/login')
+  if (!user) return null
 
   const { data: profile } = await supabase
     .from('profiles')
@@ -39,12 +78,20 @@ export async function requireUser(): Promise<AuthContext> {
     .eq('id', user.id)
     .single()
 
+  return { user: { id: user.id, email: user.email ?? null }, profile: profile ?? null }
+})
+
+/** Authenticated session + profile, or a redirect to login. */
+export async function requireUser(): Promise<AuthContext> {
+  const auth = await loadAuth()
+  if (!auth) redirect('/auth/login')
+
   // Authenticated but no profile: the signup trigger did not run. Failing to
   // login (rather than rendering a broken shell) makes this loud.
-  if (!profile) redirect('/auth/login?error=no_profile')
-  if (!profile.is_active) redirect('/auth/login?error=account_disabled')
+  if (!auth.profile) redirect('/auth/login?error=no_profile')
+  if (!auth.profile.is_active) redirect('/auth/login?error=account_disabled')
 
-  return { userId: user.id, email: user.email ?? null, profile }
+  return { userId: auth.user.id, email: auth.user.email, profile: auth.profile }
 }
 
 /**
@@ -64,24 +111,17 @@ export async function requireUser(): Promise<AuthContext> {
  */
 export async function optionalUser(): Promise<AuthContext | null> {
   try {
-    const supabase = await createClient()
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-    if (!user) return null
-
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', user.id)
-      .single()
+    // Shares `loadAuth`'s per-request memo, so a public page that also renders
+    // a guarded fragment pays for the lookup once between them.
+    const auth = await loadAuth()
+    if (!auth) return null
 
     // A disabled account is treated as signed out here. It is about to be
     // signed out for real by the next gate it meets, and pointing it at a
     // role home it cannot open would be a worse dead end than the login page.
-    if (!profile || !profile.is_active) return null
+    if (!auth.profile || !auth.profile.is_active) return null
 
-    return { userId: user.id, email: user.email ?? null, profile }
+    return { userId: auth.user.id, email: auth.user.email, profile: auth.profile }
   } catch {
     // A public page must render whatever auth is doing. Same rule
     // `getPublicSettings` follows for the same reason.
@@ -172,20 +212,15 @@ export function isServiceContext(userId?: string | null): boolean {
 
 /** Throws instead of redirecting. For Server Actions and Route Handlers. */
 export async function assertRole(...allowed: UserRole[]): Promise<AuthContext> {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) throw new Error('unauthenticated')
+  /*
+    Also on the memo. A Server Action is its own request, so this is usually
+    the only caller in it — but an action that renders after itself, or a route
+    handler that guards twice, now pays once.
+  */
+  const auth = await loadAuth()
+  if (!auth) throw new Error('unauthenticated')
+  if (!auth.profile || !auth.profile.is_active) throw new Error('unauthenticated')
+  if (!allowed.includes(auth.profile.role)) throw new Error('forbidden')
 
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('id', user.id)
-    .single()
-
-  if (!profile || !profile.is_active) throw new Error('unauthenticated')
-  if (!allowed.includes(profile.role)) throw new Error('forbidden')
-
-  return { userId: user.id, email: user.email ?? null, profile }
+  return { userId: auth.user.id, email: auth.user.email, profile: auth.profile }
 }

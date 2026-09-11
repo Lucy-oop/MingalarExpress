@@ -2,13 +2,13 @@
 
 import * as React from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowDown, LogOut } from 'lucide-react'
+import { ArrowDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
 import { PolicyDocumentView } from '@/components/legal/policy-document'
 import { LanguageToggle } from '@/components/shared/language-toggle'
 import { acceptPolicy } from '@/lib/legal/actions'
-import { signOut } from '@/lib/auth/actions'
+import { SignOutButton } from '@/components/auth/sign-out-button'
 import { isScrolledToEnd } from '@/lib/legal/gate'
 import { useLocale, useT } from '@/components/shared/i18n-provider'
 import { cn } from '@/lib/utils'
@@ -112,12 +112,7 @@ export function PolicyGate({ doc }: { doc: PolicyDocument }) {
         <div className="flex shrink-0 items-center gap-2">
           <LanguageToggle locale={locale} />
           {/* Not a trap: a shop may leave and come back having read it. */}
-          <form action={signOut}>
-            <Button variant="ghost" size="sm" type="submit" aria-label={t('action.signOut')}>
-              <LogOut />
-              <span className="hidden sm:inline">{t('action.signOut')}</span>
-            </Button>
-          </form>
+          <SignOutButton label={t('action.signOut')} />
         </div>
       </header>
 

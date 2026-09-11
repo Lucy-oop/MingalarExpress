@@ -1,7 +1,5 @@
-import { LogOut } from 'lucide-react'
 import { requireRider } from '@/lib/auth/guards'
-import { signOut } from '@/lib/auth/actions'
-import { Button } from '@/components/ui/button'
+import { SignOutButton } from '@/components/auth/sign-out-button'
 import { QueueBanner } from '@/components/rider/queue-banner'
 import { RiderTabs } from '@/components/rider/rider-tabs'
 import { LanguageToggle } from '@/components/shared/language-toggle'
@@ -39,11 +37,7 @@ export default async function RiderLayout({ children }: { children: React.ReactN
               current language cannot read a dropdown's closed state either. */}
           <div className="flex shrink-0 items-center gap-1">
             <LanguageToggle locale={locale} />
-            <form action={signOut}>
-              <Button variant="ghost" size="icon" type="submit" aria-label={t('action.signOut')}>
-                <LogOut />
-              </Button>
-            </form>
+            <SignOutButton label={t('action.signOut')} iconOnly />
           </div>
         </div>
       </header>

@@ -27,8 +27,15 @@ export default async function ShopDashboardPage() {
   await requireShop()
   const locale = await getLocale()
   const t = translator(locale)
-  const { shop, counts, codInTransit, recent } = await getShopDashboard()
-  const { supportPhone } = await getPublicSettings()
+  /*
+    BOTH AT ONCE. `getPublicSettings` sat on its own `await` below the dashboard
+    query, costing an extra sequential round trip on the slowest route in the
+    app for a support phone number that depends on nothing above it.
+  */
+  const [{ shop, counts, codInTransit, recent }, { supportPhone }] = await Promise.all([
+    getShopDashboard(),
+    getPublicSettings(),
+  ])
   /*
     ONE CALL, carrying title, body and tone together.
 

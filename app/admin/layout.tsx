@@ -1,9 +1,7 @@
 import Link from 'next/link'
-import { LogOut } from 'lucide-react'
 import { requireDispatch } from '@/lib/auth/guards'
-import { signOut } from '@/lib/auth/actions'
+import { SignOutButton } from '@/components/auth/sign-out-button'
 import { BrandMark } from '@/components/shared/brand-mark'
-import { Button } from '@/components/ui/button'
 import { AdminNav } from '@/components/admin/admin-nav'
 import { AdminNoticeBell } from '@/components/admin/notice-bell'
 import { getOfficeNotices } from '@/lib/admin/shop-queries'
@@ -53,12 +51,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
             <span className="hidden text-sm text-muted-foreground sm:inline">
               {profile.full_name}
             </span>
-            <form action={signOut}>
-              <Button variant="ghost" size="sm" type="submit">
-                <LogOut />
-                <span className="hidden sm:inline">Sign out</span>
-              </Button>
-            </form>
+            <SignOutButton label="Sign out" />
           </div>
         </div>
         <AdminNav />
