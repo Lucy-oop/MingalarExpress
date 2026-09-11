@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { Coins, LayoutDashboard, PackagePlus, Store, Table2 } from 'lucide-react'
 import { activeHref } from '@/lib/nav/active'
+import { showsNewOrderFab } from '@/lib/nav/shop-fab'
 import { useT } from '@/components/shared/i18n-provider'
 import { buttonVariants } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -23,6 +24,7 @@ import type { MessageKey } from '@/lib/i18n'
  */
 
 const BOOKING_HREF = '/shop/orders/new'
+
 
 /**
  * Five destinations. Booking is not among them: it is an action, drawn as the
@@ -184,8 +186,30 @@ export function NewOrderButton({ className }: { className?: string }) {
 /**
  * Sits above the tab bar, clear of the iOS home indicator. `shadow-lg` because
  * it floats over scrolling content rather than over chrome.
+ *
+ * ---------------------------------------------------------------------------
+ * NOT ON THE BOOKING FORM, which is where it did the most harm.
+ *
+ * On `/shop/orders/new` this was a floating shortcut to the page the shop was
+ * already on — a control that looks like the most important thing on the
+ * screen and does nothing when pressed. It also floated over the bottom of the
+ * form, which is exactly where the form's own primary action lives:
+ * `SubmitButton` is `size="touch"` and `block`, deliberately the one full-width
+ * control down there, and the FAB sat on top of it and of the line that says
+ * why it is disabled.
+ *
+ * Two primary actions in the same corner, one of which is a no-op, on the
+ * screen where a mistake costs a wrongly-booked parcel.
+ *
+ * It is gone from every detail and settings route by the same rule — see
+ * FAB_ROUTES, which is an allowlist precisely so this cannot regress by
+ * somebody adding a page and not thinking about it.
  */
 export function NewOrderFab() {
+  // The rule itself is in lib/nav/shop-fab, where it can be unit-tested against
+  // every real route rather than only scanned for in this file's source.
+  if (!showsNewOrderFab(usePathname())) return null
+
   return (
     // `print:hidden` for the same reason as ShopTabs: fixed, below lg at paper
     // width, and therefore stamped on every page of a label run.
