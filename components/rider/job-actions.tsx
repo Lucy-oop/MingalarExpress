@@ -72,6 +72,18 @@ export type JobActionsProps = {
  *
  * `mounted` guards the portal because `document` does not exist during the
  * server render, and this file is a Client Component in a server-rendered page.
+ *
+ * TWO VALUES DELIBERATELY NOT RAISED TO WHAT THEY LOOK LIKE THEY SHOULD BE:
+ *
+ *   z-30, not z-50. `components/ui/overlay.tsx` puts every sheet and modal at
+ *   z-50. A bar at z-50 ties with them and, being later in the body, would
+ *   paint OVER an open dialog — so the rider would get a COMPLETE DELIVERY
+ *   button across a confirmation they were meant to answer first. z-30 is above
+ *   the tab bar (z-20) and below the overlay, which is exactly right.
+ *
+ *   bg-background, not bg-white. globals.css defines a `.dark` theme; a
+ *   hard-coded white bar would keep white through it while the content behind
+ *   went dark. The token is white in light mode already.
  */
 function ActionBar({ children }: { children: React.ReactNode }) {
   const [mounted, setMounted] = React.useState(false)
@@ -90,6 +102,10 @@ function ActionBar({ children }: { children: React.ReactNode }) {
         // indicator and the Android gesture bar. `RiderTabs` steps aside on
         // this route, so nothing is stacked underneath.
         'pb-[max(0.75rem,env(safe-area-inset-bottom))]',
+        // Lifts the bar off the content scrolling beneath it. Without this the
+        // border alone had to carry the separation, and on a white card
+        // scrolling under a white bar there was no visible seam at all.
+        'shadow-[0_-2px_12px_rgba(0,0,0,0.08)]',
       )}
     >
       {children}
@@ -412,6 +428,105 @@ export function JobActions({
     }
   }
 
+  /*
+    ============================================================================
+    EVERY ACTION FOR THIS STATE, IN ONE BAR. THIS WAS THE BUG.
+    ============================================================================
+
+    `ActionBar` portals into `document.body`. There were FOUR of them in this
+    component and the branches are not mutually exclusive -- a picked-up
+    delivery matched two at once:
+
+        `!collecting && leg !== 'return' && status === 'picked_up'`  -> DONE
+        `status === 'assigned' || status === 'picked_up'`            -> Cannot deliver
+
+    Two separate `fixed inset-x-0 bottom-0` divs, the same z-index, both with an
+    OPAQUE background. Portals append to the body in mount order, so the second
+    one painted on top of the first: the green COMPLETE DELIVERY button was
+    rendered, correct, enabled, and completely covered by "Cannot deliver this".
+
+    The same collision hit `assigned` (I have the parcel) and the return leg. It
+    dates from the commit that first moved the primary action to the thumb, and
+    it hid the blocker hint too -- so the one thing that explains a disabled
+    button was invisible for exactly the same reason.
+
+    THE FIX IS STRUCTURAL, not a z-index. Stacking contexts would just decide
+    which button wins; the rider needs both. So the bar is computed here, ONCE,
+    and rendered ONCE at the end of the component -- primary first, secondary
+    under it, in one container that can be stacked, measured and padded for.
+
+    A guard in job-panel.test.ts now counts `<ActionBar` and fails above one.
+  */
+  const primaryAction =
+    leg === 'return' && (status === 'assigned' || status === 'picked_up') ? (
+      <Button
+        size="touch"
+        block
+        disabled={busy !== null || completed}
+        onClick={() => void onReturned()}
+      >
+        <PackageCheck />
+        {busy === 'returned'
+          ? t('action.saving')
+          : completed
+            ? t('action.saved')
+            : t('action.markReturned')}
+      </Button>
+    ) : leg !== 'return' && status === 'assigned' ? (
+      <Button
+        size="touch"
+        block
+        className="bg-emerald-600 text-lg font-bold hover:bg-emerald-700"
+        disabled={busy !== null || completed}
+        onClick={() => void onPickedUp()}
+      >
+        <Truck />
+        {busy === 'picked_up'
+          ? t('action.saving')
+          : completed
+            ? t('action.saved')
+            : collecting
+              ? t('action.markCollected')
+              : t('action.markPickedUp')}
+      </Button>
+    ) : !collecting && leg !== 'return' && status === 'picked_up' ? (
+      <>
+        <Button
+          size="touch"
+          block
+          className="bg-emerald-600 text-lg font-bold hover:bg-emerald-700"
+          disabled={busy !== null || completed || blocker !== null}
+          onClick={() => void onDelivered()}
+        >
+          <PackageCheck />
+          {busy === 'delivered'
+            ? t('action.saving')
+            : completed
+              ? t('action.saved')
+              : t('action.markDelivered')}
+        </Button>
+        {/*
+          DIRECTLY ABOVE THE BUTTON IT EXPLAINS, inside the same fixed bar, so
+          it cannot be scrolled away from -- and now, unlike before, actually
+          visible. A disabled control with no stated reason is indistinguishable
+          from a broken app.
+        */}
+        {blocker && !completed ? (
+          <p className="text-center text-sm font-medium text-muted-foreground">{t(blocker)}</p>
+        ) : null}
+      </>
+    ) : null
+
+  /* The way out of a stop that cannot be completed. Hidden while the reason
+     form is open -- that form carries its own confirm and cancel. */
+  const secondaryAction =
+    (status === 'assigned' || status === 'picked_up') && !failing ? (
+      <Button variant="ghost" size="touch" block onClick={() => setFailing(true)}>
+        <TriangleAlert />
+        {t('action.cannotDeliver')}
+      </Button>
+    ) : null
+
   return (
     <div className="space-y-3">
       {feedback ? (
@@ -440,21 +555,6 @@ export function JobActions({
             aria-label={t('proof.returnReceiver')}
             className="h-14 text-base"
           />
-          <ActionBar>
-          <Button
-            size="touch"
-            block
-            disabled={busy !== null || completed}
-            onClick={() => void onReturned()}
-          >
-            <PackageCheck />
-            {busy === 'returned'
-              ? t('action.saving')
-              : completed
-                ? t('action.saved')
-                : t('action.markReturned')}
-          </Button>
-          </ActionBar>
         </div>
       ) : null}
 
@@ -481,24 +581,6 @@ export function JobActions({
             </div>
           ) : null}
 
-          <ActionBar>
-          <Button
-            size="touch"
-            block
-            className="bg-emerald-600 text-lg font-bold hover:bg-emerald-700"
-            disabled={busy !== null || completed}
-            onClick={() => void onPickedUp()}
-          >
-            <Truck />
-            {busy === 'picked_up'
-              ? t('action.saving')
-              : completed
-                ? t('action.saved')
-                : collecting
-                  ? t('action.markCollected')
-                  : t('action.markPickedUp')}
-          </Button>
-          </ActionBar>
         </div>
       ) : null}
 
@@ -590,27 +672,6 @@ export function JobActions({
             the form asks for them, and rides with the button so it cannot be
             scrolled away from it.
           */}
-          <ActionBar>
-            <Button
-              size="touch"
-              block
-              className="bg-emerald-600 text-lg font-bold hover:bg-emerald-700"
-              disabled={busy !== null || completed || blocker !== null}
-              onClick={() => void onDelivered()}
-            >
-              <PackageCheck />
-              {busy === 'delivered'
-                ? t('action.saving')
-                : completed
-                  ? t('action.saved')
-                  : t('action.markDelivered')}
-            </Button>
-            {blocker && !completed ? (
-              <p className="text-center text-sm font-medium text-muted-foreground">
-                {t(blocker)}
-              </p>
-            ) : null}
-          </ActionBar>
         </div>
       ) : null}
 
@@ -660,14 +721,15 @@ export function JobActions({
               </Button>
             </div>
           </div>
-        ) : (
-          <ActionBar>
-            <Button variant="ghost" size="touch" block onClick={() => setFailing(true)}>
-              <TriangleAlert />
-              {t('action.cannotDeliver')}
-            </Button>
-          </ActionBar>
-        )
+        ) : null
+      ) : null}
+
+      {/* THE ONE BAR. See the docblock on primaryAction. */}
+      {primaryAction || secondaryAction ? (
+        <ActionBar>
+          {primaryAction}
+          {secondaryAction}
+        </ActionBar>
       ) : null}
     </div>
   )

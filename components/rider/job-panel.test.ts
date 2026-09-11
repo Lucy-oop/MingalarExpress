@@ -146,6 +146,11 @@ describe('a delivery can only be committed behind the gate', () => {
   */
   const blockerStart = actions.indexOf('const blocker')
   const gate = actions.slice(blockerStart, actions.indexOf('const onDelivered', blockerStart))
+  /* Everything the bar can show, computed in one place. */
+  const bar = actions.slice(
+    actions.indexOf('const primaryAction'),
+    actions.indexOf('return (', actions.indexOf('const primaryAction')),
+  )
 
   test('the delivery button is gated at all', () => {
     assert.ok(blockerStart > -1, 'there is no blocker expression — the gate is gone')
@@ -184,8 +189,42 @@ describe('a delivery can only be committed behind the gate', () => {
    * rendered in page flow can be scrolled away from the button it explains.
    */
   test('and the bar says which thing is still missing', () => {
-    const bar = actions.slice(actions.lastIndexOf('<ActionBar>', actions.indexOf('markDelivered')))
     assert.match(bar, /\{t\(blocker\)\}/, 'the disabled button no longer explains itself')
+  })
+
+  /**
+   * THE BUG THIS GUARD EXISTS FOR, reported as "the DONE button is missing even
+   * when everything is filled in".
+   *
+   * `ActionBar` portals into `document.body`. There were FOUR of them and the
+   * branches are not mutually exclusive — a picked-up delivery matched the
+   * DONE branch AND the "cannot deliver" branch at once. Two `fixed
+   * inset-x-0 bottom-0` divs at the same z-index, both opaque; portals append
+   * in mount order, so the second painted over the first and the green button
+   * was rendered, enabled, and invisible.
+   *
+   * Nothing could catch that: the button existed, its gate was correct, every
+   * guard above passed, and the type checker has no opinion about two fixed
+   * elements sharing an edge of the screen. A count is the only thing that
+   * does.
+   */
+  test('there is exactly one fixed bar, not one per branch', () => {
+    const code = actions.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
+    const rendered = (code.match(/<ActionBar[\s>]/g) ?? []).length
+    assert.equal(
+      rendered,
+      1,
+      `${rendered} <ActionBar> render sites — more than one portals a second opaque ` +
+        'fixed bar to the same bottom edge, and the later one hides the earlier',
+    )
+  })
+
+  /**
+   * The bar is taller than the tab bar it replaces (button + blocker line +
+   * ghost button + safe area), and the layout's pb-24 is sized for the tab bar.
+   */
+  test('the page leaves room for it', () => {
+    assert.match(jobPage, /className="space-y-3 pb-40"/, 'the last card will sit under the bar')
   })
 
   /**

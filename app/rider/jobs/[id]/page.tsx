@@ -51,7 +51,18 @@ export default async function RiderJobPage({ params }: { params: Promise<{ id: s
   const showDropoff = !collecting
 
   return (
-    <div className="space-y-3">
+    /*
+      ROOM FOR THE ACTION BAR. `app/rider/layout.tsx` gives every rider screen
+      `pb-24`, which is sized for the 64px tab bar — and RiderTabs hides itself
+      on this route in favour of a bar that is TALLER than it: a 56px button,
+      plus a blocker line, plus a ghost "Cannot deliver" button under it, plus
+      the safe-area inset. At pb-24 the last card on the page sat under it.
+
+      Extra padding here rather than a bigger pb in the layout, because this is
+      the only rider route with the bar; widening it globally would put a gap at
+      the bottom of the dashboard and the earnings page instead.
+    */
+    <div className="space-y-3 pb-40">
       {/*
         THE ONE WAY OFF THIS SCREEN, so it is sized like one.
 
