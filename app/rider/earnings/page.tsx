@@ -222,6 +222,7 @@ const LEDGER_LABEL: Record<string, string> = {
   cod_remitted: 'Cash handed in',
   commission_earned: 'Delivery commission',
   trip_pay: 'Run pay',
+  pickup_pay: 'Collection pay',
   platform_fee: 'Platform fee',
   adjustment: 'Adjustment',
 }

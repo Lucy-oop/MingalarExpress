@@ -2134,5 +2134,181 @@ reset role;
 select set_config('request.jwt.claims','',false);   -- back to service context
 
 
+-- ============================================================================
+--  R11. per_parcel pay — the rider earns as they work (0042)
+--
+--  Everything above runs on 'trip' routes and must be unaffected. This block
+--  flips ROUTE_D to per_parcel, proves the new path, and flips it back so the
+--  suites that run after route_flow see the schema they expect.
+-- ============================================================================
+
+\echo '=== R11a. a collection and a delivery each pay themselves, on the same parcel ==='
+--  THE INDEX TRAP, ASSERTED. pickup_pay had to be a NEW ledger kind:
+--  cod_ledger_order_kind_uk is unique on (order_id, kind), so reusing
+--  commission_earned for the 500 would have collided with the 2,800 at
+--  delivery and `on conflict do nothing` would have dropped the second
+--  SILENTLY. This is the test that would have caught that.
+do $$
+declare
+  v_route uuid;
+  v_rider uuid;
+  oid     uuid;
+  t1      uuid;
+  t2      uuid;
+  v_pick  bigint;
+  v_com   bigint;
+  v_earn  bigint;
+  v_fee   bigint := 4000;
+begin
+  select id into v_route from public.routes where code = 'ROUTE_D';
+  select r.id into v_rider from public.rider_profiles r
+   where not exists (select 1 from public.trips t
+                      where t.rider_id = r.id and t.status in ('planned','loading','departed'))
+   limit 1;
+  if v_rider is null then raise notice 'SKIP: every rider is out'; return; end if;
+
+  update public.routes set pay_model = 'per_parcel' where id = v_route;
+  update public.app_settings set rider_commission_pct = 70 where id;
+
+  insert into public.orders (
+    shop_id, pickup_address, pickup_lat, pickup_lng, customer_name, customer_phone,
+    dropoff_address, dropoff_lat, dropoff_lng, parcel_desc,
+    payment_method, cod_amount, delivery_fee, created_by)
+  values ('aaaaaaaa-0000-0000-0000-000000000001',
+    'No. 24, Thitsar Road, San Pya Ward, Thingangyun, Yangon', 16.8478, 96.1693,
+    'Per Parcel Pay', '+959780000111', 'Somewhere, Thingangyun', 16.8500, 96.1700,
+    'Parcel', 'prepaid', 0, v_fee, '33333333-3333-3333-3333-333333333333')
+  returning id into oid;
+
+  -- ---- the collection half -------------------------------------------------
+  t1 := (public.plan_trip(v_route)).id;
+  perform public.assign_trip_rider(t1, v_rider);
+  perform public.load_trip(t1, array[oid], 'pickup');
+  perform public.depart_trip(t1);
+  perform public.advance_order(oid, 'picked_up');
+
+  select -amount into v_pick from public.cod_ledger
+   where order_id = oid and kind = 'pickup_pay';
+  if v_pick is null then
+    raise exception 'FAIL: collecting a parcel paid the rider nothing';
+  end if;
+  if v_pick <> 500 then
+    raise exception 'FAIL: pickup pay %, expected 500', v_pick;
+  end if;
+  raise notice 'PASS: the collection paid 500 the moment it was tapped';
+
+  -- The pay must be visible to the rider IMMEDIATELY, which is the whole ask.
+  v_earn := (public.rider_earnings_summary(v_rider) ->> 'earned_today')::bigint;
+  if v_earn < 500 then
+    raise exception 'FAIL: earned_today % does not yet include the collection', v_earn;
+  end if;
+
+  -- ---- close the collection run: it must book NO trip_pay -----------------
+  perform public.receive_trip(t1);
+  perform public.return_trip(t1);
+  perform public.close_trip(t1);
+  if exists (select 1 from public.cod_ledger where trip_id = t1 and kind = 'trip_pay') then
+    raise exception 'FAIL: a per_parcel run booked trip_pay as well — the rider was paid twice';
+  end if;
+  raise notice 'PASS: closing a per_parcel run booked no second, per-run payment';
+
+  -- The snapshot must still show what the run earned, or /rider/ways lies.
+  if (select total_pay from public.trips where id = t1) <> 500 then
+    raise exception 'FAIL: trip total_pay %, expected the 500 actually booked',
+      (select total_pay from public.trips where id = t1);
+  end if;
+
+  -- ---- the delivery half, same parcel -------------------------------------
+  t2 := (public.plan_trip(v_route)).id;
+  perform public.assign_trip_rider(t2, v_rider);
+  perform public.load_trip(t2, array[oid], 'delivery');
+
+  -- load_trip snapshots the share; the split must still sum to the fee.
+  if (select rider_commission_amount from public.orders where id = oid) <> 2800 then
+    raise exception 'FAIL: commission stamped as %, expected 70%% of 4000 = 2800',
+      (select rider_commission_amount from public.orders where id = oid);
+  end if;
+  if (select rider_commission_amount + platform_fee_amount
+        from public.orders where id = oid) <> v_fee then
+    raise exception 'FAIL: the commission split does not sum to the delivery fee';
+  end if;
+
+  perform public.depart_trip(t2);
+  perform public.advance_order(oid, 'delivered', p_proof => 'proofs/x.jpg');
+
+  select -amount into v_com from public.cod_ledger
+   where order_id = oid and kind = 'commission_earned';
+  if v_com is null then
+    raise exception 'FAIL: delivering the parcel paid the rider nothing';
+  end if;
+  if v_com <> 2800 then
+    raise exception 'FAIL: delivery pay %, expected 2800', v_com;
+  end if;
+
+  -- BOTH lines survive on one parcel. This is the index trap.
+  if (select count(*) from public.cod_ledger
+       where order_id = oid and kind in ('pickup_pay','commission_earned')) <> 2 then
+    raise exception 'FAIL: one of the two pay lines was dropped — the rider lost money';
+  end if;
+  raise notice 'PASS: 500 to collect and 2800 to deliver, both kept on one parcel';
+
+  perform public.return_trip(t2);
+  perform public.close_trip(t2);
+
+  -- ---- restore, so every later suite sees the schema it expects ------------
+  update public.routes set pay_model = 'trip' where id = v_route;
+  update public.app_settings set rider_commission_pct = 80 where id;
+end $$;
+
+\echo '=== R11b. and a trip route is completely unaffected ==='
+--  The leak detector. If the branch bled into the per-run path, a 'trip'
+--  route would start stamping commissions and paying twice.
+do $$
+declare n int;
+begin
+  select count(*) into n from public.routes where pay_model <> 'trip';
+  if n <> 0 then
+    raise exception 'FAIL: % route(s) left on per_parcel — the fixture did not restore', n;
+  end if;
+
+  select count(*) into n from public.app_settings where rider_commission_pct <> 80;
+  if n <> 0 then raise exception 'FAIL: the commission share was left changed'; end if;
+
+  /*
+    R6d's invariant, restated against the canonical 'trip' run -- the
+    12-parcel ROUTE_A one that R6b closed and R6c/R7a measure.
+
+    NOT "no per-parcel line on any route whose pay_model is now 'trip'",
+    which is what I wrote first and which failed: R11a's parcel earned its
+    500 and 2,800 while ROUTE_D WAS per_parcel, and the fixture then flipped
+    the route back. Reading the route's CURRENT pay_model called those lines
+    illegal retroactively.
+
+    They are not. The pay is snapshotted when it is earned -- the same reason
+    orders.rider_commission_pct is a snapshot and not a lookup (0001) -- so
+    flipping a route must not rewrite what a rider was already paid. The
+    assertion had to be about a run that was never per_parcel, not about the
+    lines.
+  */
+  select count(*) into n
+    from public.cod_ledger l
+    join public.trips t on t.id = l.trip_id
+   where l.kind in ('pickup_pay','commission_earned')
+     and t.depart_parcel_count = 12;
+  if n <> 0 then
+    raise exception 'FAIL: % per-parcel pay line(s) on the per-run reference trip', n;
+  end if;
+
+  -- And that run still holds exactly its one per-run line, of the right size.
+  select count(*) into n
+    from public.cod_ledger l join public.trips t on t.id = l.trip_id
+   where l.kind = 'trip_pay' and t.depart_parcel_count = 12 and l.amount = -18600;
+  if n <> 1 then
+    raise exception 'FAIL: the per-run reference trip has % trip_pay line(s) of -18600', n;
+  end if;
+  raise notice 'PASS: the per-run route still pays once per run, and nothing per parcel';
+end $$;
+
+
 \echo ''
 \echo '####  ALL ROUTE / TRIP CHECKS PASSED  ####'

@@ -2213,6 +2213,7 @@ export type Database = {
         | "platform_fee"
         | "adjustment"
         | "trip_pay"
+        | "pickup_pay"
       offer_response: "pending" | "accepted" | "rejected" | "expired"
       order_status:
         | "pending"
