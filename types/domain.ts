@@ -55,6 +55,13 @@ export type TrackedOrder = {
   created_at: string
   picked_up_at: string | null
   delivered_at: string | null
+  /**
+   * 0046. An object path in the PRIVATE `delivery-proofs` bucket, present only
+   * on a delivered parcel — never a URL, and never sent to the browser. The
+   * tracking page signs it server-side; see that file's docblock for why this
+   * one field was added to an otherwise deliberately narrow public payload.
+   */
+  proof_photo_path: string | null
   timeline: Array<{ status: OrderStatus; at: string }>
 }
 

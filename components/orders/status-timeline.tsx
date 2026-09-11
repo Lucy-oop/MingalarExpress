@@ -33,6 +33,7 @@ export function StatusTimeline({
   maxAttempts,
   maxCollectionAttempts,
   audience = 'shop',
+  deliveredSlot,
 }: {
   current: OrderStatus
   events: TimelineEvent[]
@@ -44,6 +45,16 @@ export function StatusTimeline({
   maxCollectionAttempts?: number
   /** `customer` drops custody detail and the attempt count — see describeTerminal. */
   audience?: TimelineAudience
+  /**
+   * Rendered inside the Delivered step, when that step has happened.
+   *
+   * A SLOT RATHER THAN A URL, so this file stays what its docblock says it is:
+   * a drawing of `lib/orders/timeline`. The proof needs a signed link, a
+   * lightbox and therefore client JavaScript; taking a `proofUrl` here would
+   * drag storage concerns into a component that four screens share, three of
+   * which have no business with them.
+   */
+  deliveredSlot?: React.ReactNode
 }) {
   const { steps, terminal, attempt, collected } = buildTimeline(current, events)
   // The odd-looking gap is only worth explaining to the shop; a customer has no
@@ -89,7 +100,7 @@ export function StatusTimeline({
                 />
               ) : null}
             </div>
-            <div className={cn('pb-4', isLast && 'pb-0')}>
+            <div className={cn('min-w-0 pb-4', isLast && 'pb-0')}>
               <p
                 className={cn(
                   'text-sm font-medium',
@@ -105,6 +116,9 @@ export function StatusTimeline({
                     ? 'Never collected — still at the shop'
                     : '—'}
               </p>
+              {/* Attached to the checkpoint it is evidence of, and only once
+                  that checkpoint has actually happened. */}
+              {step.status === 'delivered' && step.done ? deliveredSlot : null}
             </div>
           </li>
         )

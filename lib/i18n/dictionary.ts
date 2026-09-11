@@ -712,6 +712,16 @@ export const DICTIONARY = {
   'sn.proof': { en: 'Delivery photo', my: 'ပို့ပြီး ဓာတ်ပုံ' },
   'sn.noProof': { en: 'No photo was attached.', my: 'ဓာတ်ပုံ မပါရှိပါ။' },
   'sn.enlarge': { en: 'Tap the photo to enlarge', my: 'ချဲ့ကြည့်ရန် ဓာတ်ပုံကို နှိပ်ပါ' },
+  'track.proof': {
+    en: 'Proof of Delivery',
+    my: 'ပို့ဆောင်မှု အထောက်အထား ဓာတ်ပုံ',
+  },
+  'track.proofNone': {
+    en: 'No delivery photo recorded',
+    my: 'ပို့ဆောင်မှု ဓာတ်ပုံ မှတ်တမ်း မရှိပါ',
+  },
+  'track.proofEnlarge': { en: 'Tap to enlarge', my: 'ချဲ့ကြည့်ရန် နှိပ်ပါ' },
+  'track.proofClose': { en: 'Close photo', my: 'ဓာတ်ပုံ ပိတ်ရန်' },
   'sn.destination': { en: 'Destination', my: 'ပို့ရမည့်နေရာ' },
   'sn.loading': { en: 'Loading…', my: 'ခဏစောင့်ပါ…' },
   'sn.notFound': { en: 'That parcel could not be loaded.', my: 'ထိုပါဆယ်ကို မဖွင့်နိုင်ပါ။' },
