@@ -24,13 +24,26 @@ export default function ShopLoading() {
         <SkeletonLine w="w-64" />
       </div>
 
-      <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
-        {[0, 1, 2, 3].map((i) => (
-          <div key={i} className="space-y-2 rounded-lg border bg-card p-3">
-            <Skeleton className="h-3 w-20" />
-            <Skeleton className="h-7 w-16" />
-          </div>
-        ))}
+      {/*
+        THE SAME SHAPE THE PAGE RENDERS, which it was not: this drew four equal
+        tiles while the dashboard drew five, so the layout jumped the moment the
+        data arrived — the one thing a skeleton exists to prevent. It is now the
+        money card over a 2x2 of counts, matching app/shop/dashboard/page.tsx.
+      */}
+      <div className="space-y-3">
+        <div className="space-y-2 rounded-lg border bg-card p-4">
+          <Skeleton className="h-4 w-24" />
+          <Skeleton className="h-7 w-32" />
+          <Skeleton className="h-3 w-28" />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          {[0, 1, 2, 3].map((i) => (
+            <div key={i} className="space-y-2 rounded-lg border bg-card p-3">
+              <Skeleton className="h-3 w-20" />
+              <Skeleton className="h-6 w-12" />
+            </div>
+          ))}
+        </div>
       </div>
 
       <div className="space-y-2 rounded-lg border bg-card p-3">

@@ -475,8 +475,17 @@ heartbeat.
 
 Sign in `shop@mingalar.test` / `mingalar123`.
 
+**Use device emulation at 360x640, in Burmese.** This is a phone UI too. The
+step existed only for the rider walkthrough (step 3), and the absence of it here
+is structurally why the shop dashboard drifted to the office's density: five
+`text-[10px]` admin tiles two-across, with a COD figure wide enough to cross its
+own card border, on the first screen a shop owner sees. Burmese specifically,
+because `:lang(my) { line-height: 1.9 }` makes every label taller than the
+English it was eyeballed in.
+
 | # | Action | Expect |
 |---|---|---|
+| 1.0 | At 360px, in Burmese, on `/shop/dashboard` | COD in transit is a full-width card and its figure does not touch the border, even at seven digits; the four counts sit in a 2x2 with no orphan; nothing under the floating New Order button when scrolled to the bottom |
 | 1.1 | Land after login | `/shop/dashboard` |
 | 1.2 | **New order** → `/shop/orders/new` | Pickup pre-filled from the shop's saved point |
 | 1.3 | Choose the destination area and drop the dropoff pin | The route and its flat fee appear as soon as the area is chosen |

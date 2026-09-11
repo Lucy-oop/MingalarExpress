@@ -604,6 +604,15 @@ export const DICTIONARY = {
   'sd.codInTransitHint': { en: 'Cash riders are holding', my: 'ရိုက်ဒါ ကိုင်ထားသော ငွေ' },
   'sd.delivered': { en: 'Delivered', my: 'ပို့ပြီး' },
   'sd.needsYou': { en: 'Needs your decision', my: 'သင် ဆုံးဖြတ်ရန်' },
+  /*
+    Both of these were English string literals inside a t()-driven page
+    (dashboard/page.tsx:153), on a screen whose default language is Burmese.
+  */
+  'sd.needsYouHint': {
+    en: 'Retry, return or cancel',
+    my: 'ပြန်ပို့ရန်၊ ပြန်အပ်ရန် သို့ ပယ်ဖျက်ရန်',
+  },
+  'sd.failedTotal': { en: '{n} failed in total', my: 'စုစုပေါင်း မအောင်မြင် {n}' },
   'sd.recent': { en: 'Recent parcels', my: 'လတ်တလော ပါဆယ်များ' },
   'sd.notSetUp': { en: 'Set up your shop', my: 'သင့်ဆိုင်ကို ပြင်ဆင်ပါ' },
   // Was 'Not able to book yet', which is now the opposite of the truth: an

@@ -6,7 +6,7 @@ import { getLocale } from '@/lib/i18n/locale'
 import { translator } from '@/lib/i18n'
 import { getShopDashboard } from '@/lib/orders/queries'
 import { OrderTable } from '@/components/orders/order-table'
-import { Kpi } from '@/components/admin/kpi'
+import { ShopCountTile, ShopMoneyCard } from '@/components/shop/shop-stats'
 import { Alert } from '@/components/ui/alert'
 import { formatMmk } from '@/lib/utils'
 import { ContactSupport } from '@/components/shared/contact-support'
@@ -121,38 +121,68 @@ export default async function ShopDashboardPage() {
         which quietly undercounted any shop busier than that — "COD in transit"
         included, which is real money.
       */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        <Kpi
-          label={t('sd.waiting')}
-          value={counts.pending}
-          href="/shop/orders?status=pending"
-          tone={counts.pending > 0 ? 'warn' : 'default'}
-        />
-        <Kpi
-          label={t('sd.onTheWay')}
-          value={counts.inFlight}
-          href="/shop/orders?status=assigned"
-          hint={t('sd.onTheWayHint')}
-        />
-        <Kpi
-          label={t('sd.codInTransit')}
-          value={formatMmk(codInTransit)}
-          hint={t('sd.codInTransitHint')}
-          tone={codInTransit > 0 ? 'warn' : 'default'}
-        />
-        <Kpi label={t('sd.delivered')} value={counts.delivered} href="/shop/orders?status=delivered" />
-        {/*
-          Points at the parcels waiting on the SHOP, not at every failure. A
-          parcel that failed while its run is still out is dispatch's problem
-          and there is nothing for the shop to do about it yet.
-        */}
-        <Kpi
-          label={t('sd.needsYou')}
-          value={counts.needsDecision}
-          href="/shop/orders?needs=1"
-          hint={counts.failed > counts.needsDecision ? `${counts.failed} failed in total` : 'Retry, return or cancel'}
-          tone={counts.needsDecision > 0 ? 'bad' : 'default'}
-        />
+      {/*
+        MONEY FIRST, THEN THE COUNTS. This was five equal `Kpi` tiles two across
+        — see the docblock on components/shop/shop-stats, which has the 360px
+        arithmetic. The money figure now has the full column width and cannot
+        spill; the four counts sit in a 2x2 beneath it, which is also what
+        removes the orphan tile the old five-in-two-columns left on row three.
+
+        At `lg` the five go back to one row, so the desktop view is unchanged.
+      */}
+      <div className="space-y-3 lg:grid lg:grid-cols-5 lg:gap-3 lg:space-y-0">
+        <div className="lg:order-3">
+          <ShopMoneyCard
+            label={t('sd.codInTransit')}
+            value={formatMmk(codInTransit)}
+            hint={t('sd.codInTransitHint')}
+            tone={codInTransit > 0 ? 'warn' : 'default'}
+          />
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 lg:contents">
+          <div className="lg:order-1">
+            <ShopCountTile
+              label={t('sd.waiting')}
+              value={counts.pending}
+              href="/shop/orders?status=pending"
+              tone={counts.pending > 0 ? 'warn' : 'default'}
+            />
+          </div>
+          <div className="lg:order-2">
+            <ShopCountTile
+              label={t('sd.onTheWay')}
+              value={counts.inFlight}
+              href="/shop/orders?status=assigned"
+              hint={t('sd.onTheWayHint')}
+            />
+          </div>
+          <div className="lg:order-4">
+            <ShopCountTile
+              label={t('sd.delivered')}
+              value={counts.delivered}
+              href="/shop/orders?status=delivered"
+            />
+          </div>
+          {/*
+            Points at the parcels waiting on the SHOP, not at every failure. A
+            parcel that failed while its run is still out is dispatch's problem
+            and there is nothing for the shop to do about it yet.
+          */}
+          <div className="lg:order-5">
+            <ShopCountTile
+              label={t('sd.needsYou')}
+              value={counts.needsDecision}
+              href="/shop/orders?needs=1"
+              hint={
+                counts.failed > counts.needsDecision
+                  ? t('sd.failedTotal').replace('{n}', String(counts.failed))
+                  : t('sd.needsYouHint')
+              }
+              tone={counts.needsDecision > 0 ? 'bad' : 'default'}
+            />
+          </div>
+        </div>
       </div>
 
       <section className="space-y-3">

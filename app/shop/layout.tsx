@@ -153,7 +153,21 @@ export default async function ShopLayout({ children }: { children: React.ReactNo
         which was full-bleed while main is centred, so the two misaligned on any
         wide screen. Moving it fixes both at once.
       */}
-      <main className="mx-auto w-full max-w-6xl flex-1 px-4 pb-28 pt-6 lg:pb-6 print:max-w-none print:p-0">
+      {/*
+        THE BOTTOM RESERVE HAS TO CLEAR THE FAB, NOT THE TAB BAR.
+
+        This was `pb-28` — 112px, which is the 64px tab bar plus a little. But
+        `NewOrderFab` floats ABOVE the tab bar at
+        `bottom-[calc(4rem+1rem+env(safe-area-inset-bottom))]` with `h-12`, so
+        its top edge is 128px up. The last 16px of every shop page sat under it,
+        on the right-hand side where the FAB is.
+
+        Expressed as the same calc the FAB uses rather than a rounder magic
+        number, so the two move together: tab bar + gap + FAB + breathing room.
+        The inset is included because it now resolves to something — see the
+        note on `viewportFit` in app/layout.tsx.
+      */}
+      <main className="mx-auto w-full max-w-6xl flex-1 px-4 pt-6 pb-[calc(4rem+1rem+3rem+1rem+env(safe-area-inset-bottom))] lg:pb-6 print:max-w-none print:p-0">
         <ShopParcelAlert userId={profile.id} />
         {children}
       </main>
