@@ -115,3 +115,102 @@ describe('the address card', () => {
     assert.ok(!/openstreetmap\.org/.test(jobPage), 'the OSM link is back')
   })
 })
+
+/**
+ * WHERE A DELIVERY MAY BE COMMITTED, AND WHAT IT COSTS TO GET THERE.
+ *
+ * The owner asked for the DONE button to exist only in the detail view and to
+ * stay disabled until a photo and a payment method are given. It already did
+ * all three — and nothing tested any of it, which is why the request was
+ * reasonable: from the outside there was no way to tell.
+ *
+ * What was actually wrong sat on the dashboard: a green, full-width button
+ * reading "DONE — DELIVERED" that was a `<Link>`. It committed nothing. These
+ * guards pin both halves — the gate that must stay, and the fake button that
+ * must not come back.
+ */
+const dashboard = readFileSync('components/rider/rider-dashboard.tsx', 'utf8')
+
+describe('a delivery can only be committed behind the gate', () => {
+  /*
+    ANCHORED TO THE `disabled` EXPRESSION, not loose in the file. The comments
+    in these components now discuss `proof`, `collectedVia` and
+    "DONE — DELIVERED" by name, so an unanchored search would read the prose
+    explaining the gate and pass whatever the code did.
+  */
+  const gate = /disabled=\{[\s\S]{0,400}?\}/g
+  const gates = [...actions.matchAll(gate)].map((m) => m[0])
+  const deliverGate = gates.find((g) => g.includes('needsPayment')) ?? ''
+
+  test('the delivery button is gated at all', () => {
+    assert.ok(deliverGate, 'no disabled expression mentions needsPayment — the gate is gone')
+  })
+
+  test('a photo is required', () => {
+    assert.match(deliverGate, /!proof/, 'the proof gate is gone from the delivery button')
+  })
+
+  test('a payment method is required when there is cash to collect', () => {
+    assert.match(
+      deliverGate,
+      /needsPayment\s*&&\s*collectedVia === null/,
+      'a COD delivery can be committed without saying how it was paid',
+    )
+  })
+
+  test('a KPay delivery also needs its receipt', () => {
+    assert.match(
+      deliverGate,
+      /collectedVia === 'kpay'\s*&&\s*!kpayProof/,
+      'a KPay delivery can be committed with no transfer screenshot',
+    )
+  })
+
+  /**
+   * The commit must stay in one place. `advanceOrder` reaching the dashboard
+   * would mean a delivery could be marked done without ever meeting the gate
+   * above — which is exactly what the old green button looked like it did.
+   */
+  test('the dashboard cannot commit a delivery', () => {
+    assert.ok(
+      !/advanceOrder\b/.test(dashboard),
+      'rider-dashboard imports advanceOrder — the gate can now be bypassed',
+    )
+  })
+
+  /**
+   * A navigation link must not wear a commit label. This one said
+   * "DONE — DELIVERED" and "I HAVE THE PARCEL" depending on the leg, and did
+   * neither.
+   */
+  test('no commit label sits on a dashboard link', () => {
+    const jsx = dashboard.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
+    for (const key of ['action.markDelivered', 'action.markPickedUp', 'parcel.returnTo']) {
+      assert.ok(!jsx.includes(key), `${key} is back on the dashboard — it commits nothing there`)
+    }
+  })
+})
+
+describe('the next stop card opens on a tap', () => {
+  test('the card body is a link to the job', () => {
+    assert.match(
+      dashboard,
+      /<Link\s+href=\{`\/rider\/jobs\/\$\{next\.id\}`\}\s+className="block/,
+      'the next-stop card body is not a link — only a button navigates again',
+    )
+  })
+
+  /**
+   * Call and Navigate are `<a>` elements. An anchor inside an anchor is
+   * invalid HTML that browsers resolve by guessing, which is why `JobCard`
+   * carries the note "no nested links or buttons". They must stay siblings of
+   * the card link, not children of it.
+   */
+  test('and the call and map links are not nested inside it', () => {
+    const start = dashboard.indexOf('className="block space-y-2')
+    const end = dashboard.indexOf('</Link>', start)
+    const body = dashboard.slice(start, end)
+    assert.ok(!body.includes('tel:'), 'the call link is nested inside the card link')
+    assert.ok(!body.includes('maps/dir'), 'the map link is nested inside the card link')
+  })
+})

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
   ChevronDown,
+  ChevronRight,
   Coins,
   Navigation,
   PackageCheck,
@@ -254,15 +255,32 @@ export function RiderDashboard({
       ) : null}
       {next ? (
         <section className="space-y-2 rounded-xl border-2 border-primary bg-card p-4">
-          <p className="text-xs font-bold uppercase tracking-wide text-primary">
-            {t('jobs.next')} · {n(1)}/{n(plan.stops.length)}
-          </p>
+          {/*
+            THE CARD BODY IS THE TAP TARGET.
 
-          <p className="text-xl font-bold leading-tight">{next.dropoffAddress}</p>
-          {next.dropoffArea ? (
-            <p className="text-sm text-muted-foreground">{next.dropoffArea}</p>
-          ) : null}
-          <p className="text-sm font-medium">{next.customerName}</p>
+            Every other job on this screen is a whole-card `Link` — `JobCard`
+            has been one all along — and the single card that matters most was
+            the one that ignored a tap. A rider aiming a thumb at an address on
+            a bike mount should not have to find a button.
+
+            THE INFO ONLY, not the whole section: Call and Navigate are `<a>`
+            elements, and an anchor inside an anchor is invalid HTML that
+            browsers resolve by guessing. They stay siblings below. That is the
+            same reason `JobCard` carries the note "no nested links or buttons".
+          */}
+          <Link
+            href={`/rider/jobs/${next.id}`}
+            className="block space-y-2 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <p className="text-xs font-bold uppercase tracking-wide text-primary">
+              {t('jobs.next')} · {n(1)}/{n(plan.stops.length)}
+            </p>
+
+            <p className="text-xl font-bold leading-tight">{next.dropoffAddress}</p>
+            {next.dropoffArea ? (
+              <p className="text-sm text-muted-foreground">{next.dropoffArea}</p>
+            ) : null}
+            <p className="text-sm font-medium">{next.customerName}</p>
 
           {/*
             MONEY ONLY WHERE THE LEG ENDS AT A CUSTOMER.
@@ -277,20 +295,23 @@ export function RiderDashboard({
             stops — but the guard is on the LEG rather than on that, so it stays
             correct if one ever does.
           */}
-          {next.leg === 'return' || next.leg === 'pickup' ? (
-            <p className="rounded-lg bg-muted px-3 py-2 text-base font-semibold">
-              {t('money.collectNothing')}
-            </p>
-          ) : next.paymentMethod === 'cod' ? (
-            <p className="flex items-center gap-2 rounded-lg bg-brand-gold/15 px-3 py-2">
-              <Coins className="size-6 shrink-0 text-brand-gold" aria-hidden="true" />
-              <span className="text-2xl font-bold tabular-nums">{formatMmk(next.codAmount)}</span>
-            </p>
-          ) : (
-            <p className="rounded-lg bg-muted px-3 py-2 text-base font-semibold">
-              {t('money.prepaid')}
-            </p>
-          )}
+            {next.leg === 'return' || next.leg === 'pickup' ? (
+              <p className="rounded-lg bg-muted px-3 py-2 text-base font-semibold">
+                {t('money.collectNothing')}
+              </p>
+            ) : next.paymentMethod === 'cod' ? (
+              <p className="flex items-center gap-2 rounded-lg bg-brand-gold/15 px-3 py-2">
+                <Coins className="size-6 shrink-0 text-brand-gold" aria-hidden="true" />
+                <span className="text-2xl font-bold tabular-nums">
+                  {formatMmk(next.codAmount)}
+                </span>
+              </p>
+            ) : (
+              <p className="rounded-lg bg-muted px-3 py-2 text-base font-semibold">
+                {t('money.prepaid')}
+              </p>
+            )}
+          </Link>
 
           {/*
             The two things done at every doorstep, at full width.
@@ -326,18 +347,31 @@ export function RiderDashboard({
             ) : null}
           </div>
 
+          {/*
+            IT SAID "DONE — DELIVERED" AND DELIVERED NOTHING.
+
+            This was a green, full-width, `action.markDelivered` button that is
+            and always was a `<Link>`: it commits no state, calls no action,
+            holds no proof. A rider tapping the most final-looking thing on the
+            screen got a form instead of a finished job — and the same button
+            read "I HAVE THE PARCEL" on a collection, which is a promise a
+            navigation link cannot keep either.
+
+            The commit lives in JobActions, behind a photo and a stated payment
+            method, and it stays there. This is a way in, so it now says so and
+            is styled like one. The card body above is the primary target; this
+            is the visible affordance for anyone who does not think to tap an
+            address.
+          */}
           <Link
             href={`/rider/jobs/${next.id}`}
             className={cn(
-              buttonVariants({ size: 'touch', block: true }),
-              'bg-emerald-600 text-base font-bold hover:bg-emerald-700',
+              buttonVariants({ variant: 'outline', size: 'touch', block: true }),
+              'text-base font-bold',
             )}
           >
-            {next.leg === 'return'
-              ? t('parcel.returnTo')
-              : next.status === 'assigned'
-                ? t('action.markPickedUp')
-                : t('action.markDelivered')}
+            {t('action.viewDetails')}
+            <ChevronRight />
           </Link>
         </section>
       ) : plan.groups.length > 0 || plan.aboard.length > 0 ? (

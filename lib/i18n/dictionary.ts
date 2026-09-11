@@ -89,6 +89,13 @@ export const DICTIONARY = {
   'money.youEarn': { en: 'You earn', my: 'သင်ရမည့်ငွေ' },
 
   // ---- actions --------------------------------------------------------------
+  /*
+    A WAY IN, NOT A COMMIT. This replaces a green `action.markDelivered` button
+    on the dashboard's next-stop card that was only ever a navigation link --
+    it said "DONE — DELIVERED" and delivered nothing. The real commit is in
+    JobActions behind a photo and a payment method.
+  */
+  'action.viewDetails': { en: 'View details', my: 'အချက်အလက် ကြည့်' },
   'action.call': { en: 'Call', my: 'ဖုန်းဆက်' },
   'action.navigate': { en: 'Directions', my: 'လမ်းကြည့်' },
   'action.markPickedUp': { en: 'I HAVE THE PARCEL', my: 'ပါဆယ် ယူပြီးပါပြီ' },
