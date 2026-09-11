@@ -272,6 +272,34 @@ export function JobActions({
   const collecting = leg === 'pickup'
   // No customer at a shop counter, so nothing to pay and nobody to pay it.
   const needsPayment = codAmount > 0 && !collecting
+
+  /**
+   * What is still standing between the rider and DONE, or null when nothing is.
+   *
+   * ONE EXPRESSION, READ BY BOTH THE BUTTON AND THE HINT. The disabled
+   * condition and the explanation used to be written separately — a four-clause
+   * boolean on the Button, and a hint that only knew about the photo. They
+   * could therefore disagree, and did: with a photo taken and the payment
+   * question unanswered the button was off and the hint said nothing at all.
+   *
+   * Ordered the way the form asks, so the hint names the NEXT thing to do
+   * rather than the last thing outstanding.
+   *
+   * This is a courtesy, not the guarantee. `advance_order` raises
+   * `proof_required` and the `orders_delivered_needs_proof` CHECK constraint
+   * refuses the row regardless of what this returns.
+   */
+  const blocker: 'proof.needBoth' | 'proof.required' | 'proof.needPayment' | 'proof.needReceipt' | null =
+    !proof && needsPayment && collectedVia === null
+      ? 'proof.needBoth'
+      : !proof
+        ? 'proof.required'
+        : needsPayment && collectedVia === null
+          ? 'proof.needPayment'
+          : collectedVia === 'kpay' && !kpayProof
+            ? 'proof.needReceipt'
+            : null
+
   const onDelivered = async () => {
     if (!proof) {
       setFeedback({ tone: 'error', message: t('fail.photoFirst') })
@@ -486,8 +514,19 @@ export function JobActions({
 
       {!collecting && leg !== 'return' && status === 'picked_up' ? (
         <div className="space-y-3 rounded-lg border bg-card p-3">
-          <p className="text-base font-semibold">{t('proof.title')}</p>
-          <ProofCapture onReady={setProof} disabled={busy !== null || completed} />
+          {/*
+            SECTION TWO OF TWO. Everything above this card on the page is read —
+            the money, the address, the contents. Everything in it is answered.
+            The heading is what marks that seam; `proof.title` below still names
+            the photo itself, which is one input within the section rather than
+            the name of it.
+          */}
+          <p className="text-base font-semibold">{t('proof.section')}</p>
+
+          <div className="space-y-2 border-t pt-3">
+            <p className="text-sm font-medium">{t('proof.title')}</p>
+            <ProofCapture onReady={setProof} disabled={busy !== null || completed} />
+          </div>
 
           {/* Only for a parcel with money on it. A prepaid delivery has nothing
               to choose and the question would be noise. */}
@@ -536,33 +575,42 @@ export function JobActions({
             />
           </div>
 
+          {/*
+            THE BAR SAYS WHY IT IS OFF, and it says it in the bar.
+
+            The hint used to be a single line reading "A photo is needed",
+            rendered HERE — in the page flow, above the fold-line of a fixed
+            bar, i.e. not necessarily on screen — and shown only when the photo
+            was missing. So the commonest dead-button case by far, photo taken
+            and the payment question not yet answered, produced a disabled
+            control with no explanation anywhere on the screen. The rider's
+            only available conclusion is that the app is stuck.
+
+            `blocker` names the FIRST thing standing in the way, in the order
+            the form asks for them, and rides with the button so it cannot be
+            scrolled away from it.
+          */}
           <ActionBar>
-          <Button
-            size="touch"
-            block
-            className="bg-emerald-600 text-lg font-bold hover:bg-emerald-700"
-            disabled={
-              busy !== null ||
-              !proof ||
-              completed ||
-              (needsPayment && collectedVia === null) ||
-              (collectedVia === 'kpay' && !kpayProof)
-            }
-            onClick={() => void onDelivered()}
-          >
-            <PackageCheck />
-            {busy === 'delivered'
-              ? t('action.saving')
-              : completed
-                ? t('action.saved')
-                : t('action.markDelivered')}
-          </Button>
+            <Button
+              size="touch"
+              block
+              className="bg-emerald-600 text-lg font-bold hover:bg-emerald-700"
+              disabled={busy !== null || completed || blocker !== null}
+              onClick={() => void onDelivered()}
+            >
+              <PackageCheck />
+              {busy === 'delivered'
+                ? t('action.saving')
+                : completed
+                  ? t('action.saved')
+                  : t('action.markDelivered')}
+            </Button>
+            {blocker && !completed ? (
+              <p className="text-center text-sm font-medium text-muted-foreground">
+                {t(blocker)}
+              </p>
+            ) : null}
           </ActionBar>
-          {!proof && !completed ? (
-            <p className="text-center text-sm font-medium text-muted-foreground">
-              {t('proof.required')}
-            </p>
-          ) : null}
         </div>
       ) : null}
 

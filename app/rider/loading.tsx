@@ -23,7 +23,7 @@ export default function RiderLoading() {
           absence is what makes the page look broken if it is left out. */}
       <Skeleton className="h-18 w-full rounded-xl" />
 
-      <div className="flex items-center justify-between gap-2 rounded-lg border-l-4 bg-card px-3 py-2">
+      <div className="flex items-center justify-between gap-2 rounded-lg border bg-card px-3 py-2">
         <Skeleton className="h-4 w-32" />
         <Skeleton className="h-3 w-20" />
       </div>

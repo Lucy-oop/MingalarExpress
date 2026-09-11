@@ -35,10 +35,10 @@ export function TripVolumeBanner({
     <div
       role={loss ? 'alert' : 'status'}
       className={cn(
-        'flex items-start gap-3 rounded-md border border-l-[3px] p-3 text-sm',
+        'flex items-start gap-3 rounded-md border p-3 text-sm',
         loss
-          ? 'border-destructive/30 border-l-destructive bg-destructive/5 text-destructive'
-          : 'border-amber-300 border-l-amber-500 bg-amber-50 text-amber-900',
+          ? 'border-destructive/30 bg-destructive/5 text-destructive'
+          : 'border-amber-300 bg-amber-50 text-amber-900',
         className,
       )}
     >

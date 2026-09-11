@@ -133,26 +133,36 @@ const dashboard = readFileSync('components/rider/rider-dashboard.tsx', 'utf8')
 
 describe('a delivery can only be committed behind the gate', () => {
   /*
-    ANCHORED TO THE `disabled` EXPRESSION, not loose in the file. The comments
-    in these components now discuss `proof`, `collectedVia` and
-    "DONE — DELIVERED" by name, so an unanchored search would read the prose
-    explaining the gate and pass whatever the code did.
+    ANCHORED TO THE `blocker` EXPRESSION, not loose in the file. The comments in
+    these components discuss `proof`, `collectedVia` and "DONE — DELIVERED" by
+    name, so an unanchored search would read the prose explaining the gate and
+    pass whatever the code did.
+
+    THE GATE MOVED, AND THESE FOLLOWED IT. It used to be a four-clause boolean
+    written inline on the Button's `disabled`; it is now one `blocker`
+    expression that the button and the helper text both read, so the two can no
+    longer disagree about whether the button is off and why. Slicing from `const
+    blocker` skips its own docblock, which sits above.
   */
-  const gate = /disabled=\{[\s\S]{0,400}?\}/g
-  const gates = [...actions.matchAll(gate)].map((m) => m[0])
-  const deliverGate = gates.find((g) => g.includes('needsPayment')) ?? ''
+  const blockerStart = actions.indexOf('const blocker')
+  const gate = actions.slice(blockerStart, actions.indexOf('const onDelivered', blockerStart))
 
   test('the delivery button is gated at all', () => {
-    assert.ok(deliverGate, 'no disabled expression mentions needsPayment — the gate is gone')
+    assert.ok(blockerStart > -1, 'there is no blocker expression — the gate is gone')
+    assert.match(
+      actions,
+      /disabled=\{busy !== null \|\| completed \|\| blocker !== null\}/,
+      'the delivery button no longer reads blocker — it can be pressed past the gate',
+    )
   })
 
   test('a photo is required', () => {
-    assert.match(deliverGate, /!proof/, 'the proof gate is gone from the delivery button')
+    assert.match(gate, /!proof/, 'the proof gate is gone from the delivery button')
   })
 
   test('a payment method is required when there is cash to collect', () => {
     assert.match(
-      deliverGate,
+      gate,
       /needsPayment\s*&&\s*collectedVia === null/,
       'a COD delivery can be committed without saying how it was paid',
     )
@@ -160,10 +170,22 @@ describe('a delivery can only be committed behind the gate', () => {
 
   test('a KPay delivery also needs its receipt', () => {
     assert.match(
-      deliverGate,
+      gate,
       /collectedVia === 'kpay'\s*&&\s*!kpayProof/,
       'a KPay delivery can be committed with no transfer screenshot',
     )
+  })
+
+  /**
+   * THE HELPER TEXT IS THE POINT OF THE REFACTOR. A disabled button with no
+   * explanation is indistinguishable from a broken app, and the commonest case
+   * by far — photo taken, payment question not yet answered — used to produce
+   * exactly that. The hint must ride inside the ActionBar, because a hint
+   * rendered in page flow can be scrolled away from the button it explains.
+   */
+  test('and the bar says which thing is still missing', () => {
+    const bar = actions.slice(actions.lastIndexOf('<ActionBar>', actions.indexOf('markDelivered')))
+    assert.match(bar, /\{t\(blocker\)\}/, 'the disabled button no longer explains itself')
   })
 
   /**
@@ -257,5 +279,94 @@ describe('the cash figure is the bag', () => {
   /** A route rider's biggest ledger line rendered as the raw enum string. */
   test('trip_pay has a human label', () => {
     assert.match(earningsPage, /trip_pay: '/, 'trip_pay is missing from LEDGER_LABEL again')
+  })
+})
+
+/**
+ * The navigation and layout asks from the owner's round of UI feedback.
+ *
+ * Every one of these is invisible to a type and to every other test: the app
+ * stays correct and simply goes back to the shape that was reported as
+ * confusing. That is exactly the class of change that regresses silently.
+ */
+describe('the rider can reach all three of their screens', () => {
+  /**
+   * Way history used to be a text-sm link in the top-right corner of the
+   * earnings page — diagonally opposite the thumb on a one-handed screen, and
+   * the only route to a whole section of the app.
+   */
+  test('history is a tab, not a corner link', () => {
+    assert.match(tabs, /\/rider\/ways/, 'the history tab is gone from the bottom bar')
+    assert.match(tabs, /grid-cols-3/, 'the tab bar is no longer three across')
+    assert.ok(
+      !/href="\/rider\/ways"/.test(earningsPage),
+      'the corner link to way history is back on the earnings page',
+    )
+  })
+
+  /**
+   * All three tabs used to render in the same muted grey on every route, so the
+   * bar showed where a rider could go and never where they were.
+   */
+  test('the current tab is lit in the brand red', () => {
+    assert.match(tabs, /aria-current=\{active \? 'page' : undefined\}/, 'no tab reports itself current')
+    assert.match(tabs, /font-bold text-primary/, 'the active tab is no longer the brand red')
+  })
+})
+
+describe('the job screen leads with the money and nothing else', () => {
+  /**
+   * "You earn" appeared on this card for the first time when migration 0043
+   * stamped the in-flight parcels — directly under "Collect from customer", one
+   * bold figure beneath another. That card answers ONE question, asked at a
+   * doorstep with a customer waiting: how much do I ask for. A second amount in
+   * the same frame is a number the rider has to actively not say out loud.
+   */
+  test('the door card shows no earnings figure', () => {
+    const code = jobPage.replace(/\{\/\*[\s\S]*?\*\/\}/g, '')
+    assert.ok(
+      !code.includes('money.youEarn'),
+      "'You earn' is back on the collect-from-customer card — see the docblock",
+    )
+  })
+
+  /** The one figure said out loud at the gate, taken out of the <dl> and given
+      a filled block of its own so it is read rather than parsed. */
+  test('the collectable total is a filled block', () => {
+    assert.match(jobPage, /bg-brand-gold\/15/, 'the total at the door is back inside the plain table')
+  })
+
+  /**
+   * `lat`/`lng` are NULL for a shop that registered on its address alone, and
+   * the address was then dead text. An https maps search works on iOS too,
+   * where a `geo:` URI fails silently.
+   */
+  test('an address with no pin is still tappable', () => {
+    assert.match(
+      jobPage,
+      /google\.com\/maps\/search/,
+      'the no-pin address is dead text again — the rider has nothing to tap',
+    )
+  })
+})
+
+describe('nothing wears a coloured left stripe', () => {
+  /**
+   * Asked for explicitly, and app-wide rather than on the rider screens alone.
+   * The two that carried real information — route colour, on the rider's run
+   * strip and the office's trip card — kept it: a dot on the run strip, and on
+   * the board the section heading that already names the route in its colour.
+   */
+  test('no component reintroduces border-l-4', () => {
+    const roots = ['components/rider', 'components/routes', 'app/rider']
+    const offenders = []
+    for (const dir of roots) {
+      for (const f of readdirSync(dir)) {
+        if (!/\.tsx$/.test(f)) continue
+        const src = readFileSync(`${dir}/${f}`, 'utf8')
+        if (/border-l-4|border-l-\[/.test(src)) offenders.push(`${dir}/${f}`)
+      }
+    }
+    assert.deepEqual(offenders, [], `left-border stripes are back in: ${offenders.join(', ')}`)
   })
 })

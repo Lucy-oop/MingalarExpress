@@ -91,8 +91,11 @@ export function JobCard({
       href={`/rider/jobs/${job.id}`}
       className={cn(
         'flex items-center gap-3 rounded-xl border bg-card p-3 active:scale-[0.99]',
-        collecting && 'border-l-4 border-l-brand-gold',
-        returning && 'border-l-4 border-l-blue-500',
+        // The left-border stripe is gone from every card in the app. Nothing is
+        // lost here: a pickup already carries a gold Store disc and a "pickup"
+        // badge, a return a blue one, and both sit further left than the stripe
+        // did — so the row was saying the same thing three times, once in a
+        // form that cannot be read by anyone who cannot see colour.
       )}
     >
       {/* The place in the drive, from sortRoute — big enough to find with a

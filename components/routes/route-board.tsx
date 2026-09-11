@@ -355,7 +355,6 @@ export function RouteBoard({ board }: { board: PlanningBoard }) {
                     <div key={trip.id} onClick={() => setTargetTripId(trip.id)}>
                       <TripCard
                         trip={trip}
-                        route={route}
                         riders={board.riders}
                         targeted={trip.id === targetTripId}
                         busy={busyTripId === trip.id}

@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import type { Metadata } from 'next'
-import { ArrowLeft, Coins, MapPin, Navigation, Package, Phone, Store } from 'lucide-react'
+import { ArrowLeft, Coins, MapPin, Navigation, Package, Phone, Search, Store } from 'lucide-react'
 import { requireRider } from '@/lib/auth/guards'
 import { getLocale } from '@/lib/i18n/locale'
 import { translator } from '@/lib/i18n'
@@ -52,11 +52,26 @@ export default async function RiderJobPage({ params }: { params: Promise<{ id: s
 
   return (
     <div className="space-y-3">
+      {/*
+        THE ONE WAY OFF THIS SCREEN, so it is sized like one.
+
+        `RiderTabs` hides itself on a job (see its docblock — the action bar
+        takes that space), which makes this link the entire navigation of the
+        page. It was a 16px chevron on a text-sm label: a target well under the
+        44px floor the rest of the rider surface holds to, at the top of a
+        screen used one-handed, in the rain, with a parcel in the other hand.
+
+        The arrow gets a 44px pill of its own; the label stays outside it so the
+        control reads as "back to jobs" rather than as a lone icon, and costs no
+        extra vertical space — the row is 44px because the pill is.
+      */}
       <Link
         href="/rider/dashboard"
-        className="inline-flex items-center gap-1 text-sm text-muted-foreground"
+        className="-ml-1 inline-flex items-center gap-2 text-sm font-medium text-muted-foreground"
       >
-        <ArrowLeft className="size-4" />
+        <span className="flex size-11 items-center justify-center rounded-full bg-muted active:bg-muted-foreground/20">
+          <ArrowLeft className="size-5" aria-hidden="true" />
+        </span>
         {t('nav.jobs')}
       </Link>
 
@@ -137,10 +152,29 @@ export default async function RiderJobPage({ params }: { params: Promise<{ id: s
                   {money.feeFromCustomer ? formatMmk(money.fee) : '—'}
                 </dd>
               </div>
-              <div className="flex items-baseline justify-between gap-3 border-t pt-1.5">
-                <dt className="font-semibold">{t('money.total')}</dt>
-                <dd className="flex items-center gap-1 text-2xl font-bold tabular-nums">
+              {/*
+                THE FIGURE THE RIDER SAYS OUT LOUD, given its own filled block.
+
+                It was the last row of a three-row <dl>, separated from Goods
+                and Fee by a hairline rule and a font-size step. That is the
+                correct typographic treatment of a sum, and the wrong treatment
+                of THE one thing this screen exists to communicate: a rider at a
+                gate, one-handed, in sun, scanning for "how much do I ask for"
+                had to parse a small table to find it.
+
+                Filled rather than merely bigger, because size alone puts it in
+                competition with the COD figures above it; a solid ground takes
+                it out of the table entirely and makes it the object on the
+                card. Gold is already this app's money colour (the Coins icon
+                here, the pickup accents, `--brand-gold`) — it is not the red,
+                which everywhere else in the rider app means stop or fail.
+              */}
+              <div className="mt-2 flex items-center justify-between gap-3 rounded-lg bg-brand-gold/15 px-3 py-2.5">
+                <dt className="flex items-center gap-1.5 text-sm font-semibold">
                   <Coins className="size-4 text-brand-gold" aria-hidden="true" />
+                  {t('money.total')}
+                </dt>
+                <dd className="text-3xl font-bold leading-none tabular-nums">
                   {formatMmk(money.total)}
                 </dd>
               </div>
@@ -153,21 +187,24 @@ export default async function RiderJobPage({ params }: { params: Promise<{ id: s
           </>
         )}
         {/*
-          ONLY WHERE IT IS A REAL FIGURE. `rider_commission_amount` is written
-          exclusively by `assign_order`, on routes with pay_model =
-          'per_parcel' -- and every route is 'trip', where pay is base + per
-          parcel + per pickup booked once at close. So this line rendered a
-          permanent em-dash on every delivery in the app. A number that is
-          always absent teaches a rider to stop reading the row.
+          "YOU EARN" IS GONE FROM THIS CARD, and the reason is the card's job.
+
+          For most of this app's life the line was invisible: commission is
+          stamped only on a `per_parcel` route, every route was 'trip', so it
+          rendered nothing. Migration 0043 stamped the in-flight parcels and it
+          appeared for the first time — directly beneath "Collect from
+          customer", in the same card, one bold figure under another.
+
+          That card answers exactly one question, asked at a doorstep with a
+          customer waiting: HOW MUCH DO I ASK FOR. A second money figure in it
+          is a number the rider must actively not say out loud. The risk is not
+          that they misread it once; it is that two amounts in one frame make
+          the frame something to interpret rather than read.
+
+          The pay is not hidden, it has moved to where it is the subject rather
+          than a distraction: /rider/earnings (earned today, and the ledger line
+          the delivery books) and /rider/ways, per run. Both are one tab away.
         */}
-        {job.commission !== null ? (
-          <div className="mt-3 flex items-baseline justify-between gap-3 border-t pt-2 text-sm">
-            <span className="text-muted-foreground">{t('money.youEarn')}</span>
-            <span className="font-semibold tabular-nums text-emerald-700">
-              {formatMmk(job.commission)}
-            </span>
-          </div>
-        ) : null}
       </div>
 
       {/* Only while the rider is still going to COLLECT it.
@@ -209,12 +246,20 @@ export default async function RiderJobPage({ params }: { params: Promise<{ id: s
         />
       ) : null}
 
+      {/*
+        SECTION ONE OF TWO: what is in your hand. Section two — the photo, the
+        payment question, the receipt — is the card JobActions renders below,
+        headed `proof.section`. Splitting them is not decoration: everything
+        here is READ, everything there is ANSWERED, and they were previously a
+        continuous run of same-weight cards with no seam between reading and
+        doing.
+      */}
       <div className="rounded-lg border bg-card p-3">
-        <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-          <Package className="size-3.5" />
-          {t('parcel.contents')}
+        <p className="flex items-center gap-1.5 text-sm font-semibold">
+          <Package className="size-4 text-muted-foreground" aria-hidden="true" />
+          {t('parcel.section')}
         </p>
-        <p className="mt-1 text-sm">{job.parcelDesc}</p>
+        <p className="mt-2 text-sm">{job.parcelDesc}</p>
         <p className="mt-0.5 text-xs text-muted-foreground">
           {raw.parcel_weight_g ? `${raw.parcel_weight_g} g` : 'Weight not given'}
           {job.isFragile ? ` · ${t('parcel.fragile')}` : ''}
@@ -283,8 +328,63 @@ function Leg({
         <MapPin className={tone === 'pickup' ? 'size-3.5 text-brand-red' : 'size-3.5 text-brand-gold'} />
         {label}
       </p>
-      {subtitle ? <p className="mt-1 text-sm font-medium">{subtitle}</p> : null}
-      <p className="mt-0.5 text-sm">{address}</p>
+      {/*
+        WHO, AND THE BUTTON THAT REACHES THEM, ON ONE ROW. The name sat alone on
+        a line and Call was a half-width button two rows below, under the
+        address — so "Daw Khin Aye" and the way to ring her were separated by
+        the thing you ring her about. Reuniting them costs nothing: the row was
+        already half empty.
+      */}
+      {subtitle ? (
+        <div className="mt-1.5 flex items-center justify-between gap-2">
+          <p className="min-w-0 flex-1 truncate text-sm font-medium">{subtitle}</p>
+          {phone ? (
+            <a
+              href={`tel:${phone}`}
+              aria-label={`${callLabel} ${subtitle}`}
+              className={cn(
+                buttonVariants({ variant: 'outline', size: 'sm' }),
+                'h-11 shrink-0 gap-1.5 px-3 text-sm font-semibold',
+              )}
+            >
+              <Phone className="size-4" />
+              {callLabel}
+            </a>
+          ) : null}
+        </div>
+      ) : null}
+
+      {/*
+        THE ADDRESS IS THE FALLBACK NAVIGATION when nobody ever placed a pin.
+
+        `lat`/`lng` are NULL for a shop that registered on its address alone
+        (0034/0036), and this used to mean the Directions button simply did not
+        render — the rider was left with a line of text and told to phone. But
+        the text IS a Yangon address, and every maps app can search one; it just
+        had nothing to tap.
+
+        AN https URL, NOT THE `geo:` THE BUTTON BELOW USES, and the difference
+        is deliberate. `geo:` hands off to whatever maps app the phone has,
+        which is the right call in Yangon where coverage differs sharply between
+        Google, OsmAnd and Maps.me — but iOS does not register a `geo:` handler
+        at all, so there it fails SILENTLY. A silent failure is worse than no
+        link: the rider taps, nothing happens, and they learn the screen is
+        broken. The https form works on both, and Android still offers to open
+        it in the app.
+      */}
+      {lat !== null && lng !== null ? (
+        <p className="mt-0.5 text-sm">{address}</p>
+      ) : (
+        <a
+          href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`}
+          target="_blank"
+          rel="noreferrer"
+          className="mt-0.5 flex min-h-11 items-start gap-1.5 text-sm underline decoration-dotted underline-offset-4"
+        >
+          <Search className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+          <span>{address}</span>
+        </a>
+      )}
       {note ? <p className="mt-1 text-xs text-amber-700">Note: {note}</p> : null}
 
       {/*
@@ -301,8 +401,16 @@ function Leg({
         between them. A fourth small target for a rarer fallback was not worth
         the row it broke.
       */}
+      {/*
+        DIRECTIONS TAKES THE FULL WIDTH NOW that Call has moved up beside the
+        name. It is the one thing a rider does from this card while moving, and
+        a full-width target is the easiest thing on the screen to hit.
+
+        On a leg with no name to sit beside — a pickup, where the shop is the
+        card — Call keeps its place here as the second half of the row.
+      */}
       <div className="mt-3 grid grid-cols-2 gap-2">
-        {phone ? (
+        {phone && !subtitle ? (
           <a
             href={`tel:${phone}`}
             className={cn(
@@ -320,19 +428,19 @@ function Leg({
             className={cn(
               buttonVariants({ size: 'touch', block: true }),
               'text-base font-semibold',
-              !phone && 'col-span-2',
+              (subtitle || !phone) && 'col-span-2',
             )}
           >
             <Navigation />
             {navigateLabel}
           </a>
         ) : (
-          /* The address above and the Call button are the whole answer here,
-             and ringing the shop is how this is actually done in Yangon. */
+          /* The address above is now itself the maps search, so this says why
+             there is no button rather than leaving a dead half-row. */
           <p
             className={cn(
               'flex min-h-11 items-center text-xs text-muted-foreground',
-              !phone && 'col-span-2',
+              (subtitle || !phone) && 'col-span-2',
             )}
           >
             {noPinLabel}

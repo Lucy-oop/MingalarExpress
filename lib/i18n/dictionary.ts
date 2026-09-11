@@ -25,6 +25,7 @@ export const DICTIONARY = {
   'app.rider': { en: 'Mingalar Express rider', my: 'Mingalar Express ရိုက်ဒါ' },
   'nav.jobs': { en: 'Jobs', my: 'အလုပ်' },
   'nav.earnings': { en: 'Earnings', my: 'ဝင်ငွေ' },
+  'nav.history': { en: 'History', my: 'မှတ်တမ်း' },
   'action.signOut': { en: 'Sign out', my: 'ထွက်' },
   'lang.label': { en: 'Language', my: 'ဘာသာစကား' },
 
@@ -84,6 +85,8 @@ export const DICTIONARY = {
   'parcel.returnBadge': { en: 'Return', my: 'ပြန်ပို့' },
   'parcel.fragile': { en: 'Fragile', my: 'ကွဲလွယ်' },
   'parcel.contents': { en: 'Parcel', my: 'ပါဆယ်' },
+  'parcel.section': { en: 'Parcel information', my: 'ပါဆယ် အချက်အလက်' },
+  'parcel.searchMaps': { en: 'Search this address in maps', my: 'ဤလိပ်စာကို မြေပုံတွင် ရှာရန်' },
   /* No coordinates for this place — the shop registered on its address alone
      (0034/0036). Ringing them is how this is actually done in Yangon. */
   'parcel.noPinCall': {
@@ -201,6 +204,27 @@ export const DICTIONARY = {
   // ---- proof ----------------------------------------------------------------
   'proof.title': { en: 'Photo of the delivery', my: 'ပို့ပြီးဓာတ်ပုံ' },
   'proof.required': { en: 'A photo is needed before you can finish.', my: 'ဓာတ်ပုံ ရိုက်ပြီးမှ ပြီးဆုံးနိုင်ပါမည်။' },
+  /*
+    ONE LINE PER REASON THE BUTTON IS OFF. `proof.required` only ever named
+    the photo, so a rider who had taken one and not yet answered the payment
+    question saw a dead button and nothing at all explaining it.
+  */
+  'proof.needBoth': {
+    en: 'Take the photo and choose how they paid to finish.',
+    my: 'ဓာတ်ပုံရိုက်ပြီး ငွေပေးပုံ ရွေးမှ ပြီးပါမည်။',
+  },
+  'proof.needPayment': {
+    en: 'Choose how the customer paid to finish.',
+    my: 'ဝယ်သူ ငွေပေးပုံ ရွေးမှ ပြီးပါမည်။',
+  },
+  'proof.needReceipt': {
+    en: 'Add the KBZPay receipt photo to finish.',
+    my: 'KBZPay ပြေစာဓာတ်ပုံ ထည့်မှ ပြီးပါမည်။',
+  },
+  'proof.section': {
+    en: 'Delivery proof & payment',
+    my: 'ပို့ပြီးအထောက်အထား နှင့် ငွေ',
+  },
   'proof.receiver': { en: 'Who received it?', my: 'ဘယ်သူ လက်ခံသလဲ' },
   'proof.receiverOptional': { en: 'optional', my: 'မထည့်လည်းရ' },
   'proof.returnReceiver': { en: 'Who at the shop took it back?', my: 'ဆိုင်မှ ဘယ်သူ လက်ခံသလဲ' },

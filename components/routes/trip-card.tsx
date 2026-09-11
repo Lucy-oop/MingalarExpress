@@ -25,7 +25,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { StatusBadge } from '@/components/orders/status-badge'
 import { cn, formatMmk } from '@/lib/utils'
-import type { BoardRider, BoardTrip, BoardRoute } from '@/lib/routes/queries'
+import type { BoardRider, BoardTrip } from '@/lib/routes/queries'
 import type { OrderStatus } from '@/types/domain'
 
 const TRIP_STATUS_TONE: Record<BoardTrip['status'], 'neutral' | 'gold' | 'blue' | 'green' | 'red'> =
@@ -72,7 +72,6 @@ const TRIP_STATUS_LABEL: Record<BoardTrip['status'], string> = {
  */
 export function TripCard({
   trip,
-  route,
   riders,
   targeted,
   busy,
@@ -86,7 +85,6 @@ export function TripCard({
   onCancel,
 }: {
   trip: BoardTrip
-  route: BoardRoute
   riders: BoardRider[]
   /** This is the run the parcel panel will load into. */
   targeted: boolean
@@ -149,10 +147,15 @@ export function TripCard({
       )}
       onFocusCapture={canReceive ? onTarget : undefined}
     >
-      <header
-        className="space-y-2 border-l-4 p-3"
-        style={{ borderLeftColor: route.colour }}
-      >
+      {/*
+        THE COLOURED EDGE IS GONE, and unlike the rider cards this one needed no
+        replacement: the board's section heading directly above already names
+        the route in its own colour — the same reasoning the title below is
+        written on ("already names the route in its own colour; repeating it
+        here was the card's widest element"). The stripe was a third statement
+        of a fact already made twice.
+      */}
+      <header className="space-y-2 p-3">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
           {/*
             THE FIRST CLICK SELECTS AND OPENS; only later ones fold.

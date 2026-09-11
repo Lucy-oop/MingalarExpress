@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { ChevronRight, Coins, TrendingUp } from 'lucide-react'
+import { Coins, TrendingUp } from 'lucide-react'
 import { requireRider } from '@/lib/auth/guards'
 import { getLocale } from '@/lib/i18n/locale'
 import { translator } from '@/lib/i18n'
@@ -65,22 +65,14 @@ export default async function RiderEarningsPage({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-baseline justify-between gap-3">
-        <h1 className="text-lg font-semibold">{t('earnings.title')}</h1>
-        {/*
-          Linked from here rather than given a third tab. This page answers "how
-          much"; way history answers "what did I do" — the same backward look,
-          so it belongs beside it. A tab would spend primary navigation on a
-          secondary destination.
-        */}
-        <Link
-          href="/rider/ways"
-          className="flex min-h-11 items-center gap-1 text-sm font-medium text-primary"
-        >
-          {t('ways.title')}
-          <ChevronRight className="size-4" aria-hidden="true" />
-        </Link>
-      </div>
+      {/*
+        THE WAY-HISTORY LINK LEFT THIS CORNER for the tab bar. It used to sit
+        here on the reasoning that "how much" and "what did I do" are the same
+        backward look — which is true, and still did not justify reaching a
+        whole screen through a text-sm link in the corner diagonally opposite
+        the thumb. It is a tab now; see RiderTabs.
+      */}
+      <h1 className="text-lg font-semibold">{t('earnings.title')}</h1>
 
       <div className="grid grid-cols-2 gap-2">
         <Tile label={t('stat.earnedToday')} value={formatMmk(Number(s.earned_today ?? 0))} />

@@ -150,11 +150,15 @@ export function RiderDashboard({
       */}
 
       {feed.trip ? (
-        <div
-          className="flex items-center justify-between gap-2 rounded-xl border-l-4 bg-card px-3 py-2"
-          style={{ borderLeftColor: feed.trip.colour }}
-        >
-          <span className="min-w-0 truncate text-sm font-semibold">
+        <div className="flex items-center justify-between gap-2 rounded-xl border bg-card px-3 py-2">
+          {/* The route's colour survives the stripe's removal as a dot on the
+              name it identifies, which is where it was always doing its work. */}
+          <span
+            className="size-2.5 shrink-0 rounded-full"
+            style={{ backgroundColor: feed.trip.colour }}
+            aria-hidden="true"
+          />
+          <span className="min-w-0 flex-1 truncate text-sm font-semibold">
             {locale === 'my' && feed.trip.routeNameMm ? feed.trip.routeNameMm : feed.trip.routeName}
           </span>
           <span className="shrink-0 text-xs font-medium text-muted-foreground">
