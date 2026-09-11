@@ -199,6 +199,16 @@ export const DICTIONARY = {
   'ways.delivered': { en: '{n} delivered', my: 'ပို့ပြီး {n}' },
   'ways.collected': { en: '{n} collected', my: 'ယူပြီး {n}' },
   'ways.unresolved': { en: '{n} unresolved', my: 'မပြီးပြတ် {n}' },
+  'ways.parcels': { en: 'Parcels', my: 'ပါဆယ်များ' },
+  'ways.noParcels': {
+    en: 'No parcels recorded against this run yet.',
+    my: 'ဤလမ်းအတွက် ပါဆယ် မှတ်တမ်း မရှိသေးပါ။',
+  },
+  /*
+    A run still out is listed now, so the card has to say so — otherwise a
+    figure that is still climbing reads as a finished total.
+  */
+  'ways.running': { en: 'On the road now', my: 'လမ်းပေါ်ရောက်နေဆဲ' },
   'way.deliver': { en: 'Deliver to customers', my: 'ဝယ်သူများဆီ ပို့ရန်' },
 
   // ---- proof ----------------------------------------------------------------
