@@ -1669,6 +1669,7 @@ export type Database = {
           open_balance: number
           open_since: string
           phone: string
+          pickup_pay: number
           rider_id: string
           settled_total: number
           trip_pay: number

@@ -2311,4 +2311,70 @@ end $$;
 
 
 \echo ''
+\echo '=== R12. the reporting reads name every pay kind (0047) ==='
+do $$
+declare
+  v_rider uuid;
+  v_cols  bigint;
+  v_bal   bigint;
+  v_pay   bigint;
+  v_rpt   bigint;
+begin
+  /*
+    THE DEFECT, STATED DIRECTLY.
+
+    cod_positions returns a BREAKDOWN -- cod_collected, cod_remitted,
+    commission, trip_pay, pickup_pay, adjustments -- beside an open_balance
+    that is a raw sum over every kind. Before 0047 there was no pickup_pay
+    column, so on any rider who had collected, the columns silently failed to
+    reconcile to the total printed next to them, by exactly their pickup pay.
+
+    /admin/audit is the screen where the office decides whether a rider's cash
+    is right. Columns that do not add up to the total is the shape of wrong
+    that makes somebody stop trusting the screen rather than find the bug.
+
+    Signs: cod_collected is positive (cash in), the pay columns and cod_remitted
+    are stored negative and returned positive, adjustments passes through
+    signed. So the identity is collected - remitted - pay + adjustments.
+  */
+  select rider_id into v_rider
+    from public.cod_positions()
+   where pickup_pay > 0 and commission > 0
+   limit 1;
+
+  if v_rider is null then
+    raise exception 'FAIL: no rider has both pickup and delivery pay — fixture cannot test R12';
+  end if;
+
+  select cod_collected - cod_remitted - commission - trip_pay - pickup_pay + adjustments,
+         open_balance + settled_total
+    into v_cols, v_bal
+    from public.cod_positions()
+   where rider_id = v_rider;
+
+  if v_cols <> v_bal then
+    raise exception 'FAIL: cod_positions columns sum to % but the balance is % (short by %)',
+      v_cols, v_bal, v_bal - v_cols;
+  end if;
+  raise notice 'PASS: the audit breakdown reconciles to the balance beside it';
+
+  -- And admin_overview's rider cost is all three kinds, not two. This is the
+  -- figure "Platform share today" is subtracted from, so a short answer here
+  -- is profit the business does not have.
+  select coalesce(-sum(amount), 0) into v_pay
+    from public.cod_ledger
+   where kind in ('commission_earned','trip_pay','pickup_pay')
+     and created_at >= public.mm_day_start(public.mm_today());
+
+  select (public.admin_overview() ->> 'rider_earnings_today')::bigint into v_rpt;
+
+  if v_rpt <> v_pay then
+    raise exception 'FAIL: admin_overview reports % of rider cost today, the ledger says %',
+      v_rpt, v_pay;
+  end if;
+  raise notice 'PASS: admin_overview counts every kind of rider pay (% today)', v_pay;
+end $$;
+
+
+\echo ''
 \echo '####  ALL ROUTE / TRIP CHECKS PASSED  ####'

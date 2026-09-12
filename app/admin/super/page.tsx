@@ -160,11 +160,23 @@ export default async function SuperAdminOverviewPage() {
           <Kpi
             label="Rider earnings today"
             value={formatMmk(overview.rider_earnings_today)}
-            hint="commission booked"
+            hint="delivery + pickup + run pay"
           />
+          {/*
+            SAY WHAT IT IS. Its neighbours explain themselves — "unsettled, net
+            of commission", "commission booked" — and this one printed a bare
+            number under a label that reads as profit. It is today's GROSS
+            margin: fees taken minus what the riders were paid, and nothing
+            else. No rent, no phones, no fuel, no office time.
+
+            Worth being exact about, because until 0047 it was also arithmetically
+            wrong — rider_earnings_today omitted pickup_pay, so every 500 Ks of
+            collection pay was counted as profit.
+          */}
           <Kpi
             label="Platform share today"
             value={formatMmk(overview.fees_today - overview.rider_earnings_today)}
+            hint="fees less rider pay, before costs"
           />
           <Kpi
             label="Riders over float"

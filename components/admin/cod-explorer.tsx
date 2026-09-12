@@ -60,11 +60,14 @@ export function CodExplorer({
     (acc, p) => ({
       collected: acc.collected + p.cod_collected,
       remitted: acc.remitted + p.cod_remitted,
-      commission: acc.commission + p.commission,
+      // Every kind of rider pay, not just commission. A route day books
+      // trip_pay and a per_parcel day books commission + pickup_pay, so a
+      // single-kind total read as zero on exactly the days it mattered.
+      pay: acc.pay + p.commission + p.trip_pay + p.pickup_pay,
       open: acc.open + p.open_balance,
       settled: acc.settled + p.settled_total,
     }),
-    { collected: 0, remitted: 0, commission: 0, open: 0, settled: 0 },
+    { collected: 0, remitted: 0, pay: 0, open: 0, settled: 0 },
   )
 
   return (
@@ -82,7 +85,12 @@ export function CodExplorer({
         <Kpi label="Settled to date" value={formatMmk(totals.settled)} hint="claimed by settlements" />
         <Kpi label="COD ever collected" value={formatMmk(totals.collected)} />
         <Kpi label="Cash handed in" value={formatMmk(totals.remitted)} />
-        <Kpi label="Commission booked" value={formatMmk(totals.commission)} tone="good" />
+        <Kpi
+          label="Rider pay booked"
+          value={formatMmk(totals.pay)}
+          hint="commission + trip + pickup"
+          tone="good"
+        />
       </div>
 
       <Alert tone="info">
@@ -168,7 +176,7 @@ function RiderPositions({
                 <tr className="border-y bg-muted/50 text-left text-[10px] uppercase tracking-wide text-muted-foreground">
                   <th className="px-3 py-2 font-medium">Rider</th>
                   <th className="px-3 py-2 text-right font-medium">Collected</th>
-                  <th className="px-3 py-2 text-right font-medium">Commission</th>
+                  <th className="px-3 py-2 text-right font-medium">Rider pay</th>
                   <th className="px-3 py-2 text-right font-medium">Handed in</th>
                   <th className="px-3 py-2 text-right font-medium">Adjustments</th>
                   <th className="px-3 py-2 text-right font-medium">Open</th>
@@ -196,8 +204,35 @@ function RiderPositions({
                       <td className="px-3 py-2 text-right tabular-nums">
                         {formatMmk(p.cod_collected)}
                       </td>
+                      {/*
+                        ALL THREE PAY KINDS, WHICH IS WHAT MAKES THE ROW ADD UP.
+
+                        This column was `commission` alone, and the table showed
+                        no trip_pay and no pickup_pay at all — so the breakdown
+                        never reconciled to the Open balance beside it, which is
+                        a raw sum over every kind. On a route day it was short by
+                        the whole run's pay; since 0042, also by 500 a collection.
+                        On the one screen whose job is reconciliation.
+
+                        Summed rather than given three columns: the table is
+                        already min-w-[64rem], and the split is the sub-line —
+                        which keeps 0008's point that an auditor needs to know
+                        WHICH pay model produced the number, without another
+                        3.5rem of width for a figure that is usually zero.
+                      */}
                       <td className="px-3 py-2 text-right tabular-nums text-emerald-700">
-                        {formatMmk(p.commission)}
+                        {formatMmk(p.commission + p.trip_pay + p.pickup_pay)}
+                        {p.trip_pay > 0 || p.pickup_pay > 0 ? (
+                          <span className="block text-[11px] font-normal text-muted-foreground">
+                            {[
+                              p.commission > 0 ? `${formatMmk(p.commission)} deliv` : null,
+                              p.pickup_pay > 0 ? `${formatMmk(p.pickup_pay)} pickup` : null,
+                              p.trip_pay > 0 ? `${formatMmk(p.trip_pay)} run` : null,
+                            ]
+                              .filter(Boolean)
+                              .join(' · ')}
+                          </span>
+                        ) : null}
                       </td>
                       <td className="px-3 py-2 text-right tabular-nums">
                         {formatMmk(p.cod_remitted)}
