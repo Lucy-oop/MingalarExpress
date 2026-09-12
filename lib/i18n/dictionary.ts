@@ -827,6 +827,25 @@ export const DICTIONARY = {
   },
   'contact.follow': { en: 'Follow us', my: 'ကျွန်ုပ်တို့ကို စောင့်ကြည့်ရန်' },
   'contact.backToSignIn': { en: 'Back to sign in', my: 'အကောင့်ဝင်ရန် ပြန်သွားရန်' },
+
+  /*
+    THE ERROR BOUNDARY. There was none in the whole app until now, so an
+    unhandled render error showed Next's bare "Application error: a client-side
+    exception has occurred" — no branding, no way back, no phone number. For a
+    rider that is a blank screen in the street.
+  */
+  'err.title': { en: 'Something went wrong', my: 'တစ်ခုခု မှားယွင်းသွားပါသည်' },
+  'err.body': {
+    en: 'This screen could not load. Your parcels and your money are not affected — nothing was lost.',
+    my: 'ဤစာမျက်နှာကို မဖွင့်နိုင်ပါ။ သင့်ပါဆယ်များနှင့် ငွေကြေး မထိခိုက်ပါ — ဘာမှ ပျောက်ဆုံးမည် မဟုတ်ပါ။',
+  },
+  'err.retry': { en: 'Try again', my: 'ထပ်စမ်းကြည့်ရန်' },
+  'err.persists': {
+    en: 'If it keeps happening, call the office.',
+    my: 'ဆက်ဖြစ်နေပါက ရုံးကို ဖုန်းဆက်ပါ။',
+  },
+  /* The digest is the only handle the office has to find this in the logs. */
+  'err.reference': { en: 'Reference', my: 'ကိုးကားနံပါတ်' },
   // For somebody who arrived already signed in. Offering THEM "Back to sign in"
   // reads as a way to log out, which is the opposite of what the link does.
   // Shop owners get the specific label because they are who actually gets here
