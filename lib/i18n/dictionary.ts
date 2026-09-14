@@ -426,31 +426,46 @@ export const DICTIONARY = {
     the collection entirely.
   */
   'book.paidQuestion': {
-    en: 'What has the customer already paid?',
-    my: 'ဝယ်သူ ဘာကို ရှင်းပြီးပြီလဲ',
+    en: 'How much should take from Customer?',
+    my: 'ဝယ်သူဆီမှ ဘယ်လောက် ကောက်ရမလဲ',
   },
   /*
-    THE BURMESE ANSWERS NAME WHAT THE RIDER COLLECTS, not what the customer
-    paid -- and that is the shop's own wording, not a loose translation.
+    BOTH LANGUAGES NOW NAME WHAT THE RIDER COLLECTS.
 
-    The English reads back the question ("Nothing yet", "The product only").
-    The Burmese was a literal match for that and merchants had to do the
-    subtraction themselves: "they paid nothing" -> so the rider collects goods
-    AND fee. These say the answer directly. `Deliခ` is how the trade writes it,
-    Latin stem and Burmese ခ together; leave it.
+    This block used to say the opposite -- "en and my differ in FRAMING here on
+    purpose, do not correct one to mirror the other" -- and that instruction is
+    obsolete rather than broken. It was written when the question was "What has
+    the customer already paid?", so the English answered the question asked
+    ("Nothing yet") while the Burmese answered the one merchants actually have
+    ("collect goods + Deliခ"), and each was right for its reader.
 
-    So en and my differ in FRAMING here on purpose. Do not "correct" one to
-    mirror the other -- the strings answer the same question from opposite ends
-    and both are right for their reader.
+    The question itself is now a COLLECT question, so the English answers it the
+    same way the Burmese always did and the two finally agree. Keep them
+    agreeing.
+
+    `Deliခ` is how the trade writes it, Latin stem and Burmese ခ together; leave
+    it.
+
+    THE KEY NAMES ARE HISTORICAL and deliberately not renamed. `paidNothing`,
+    `paidProduct` and `paidAll` mirror the `CustomerPaid` values
+    ('nothing' | 'product' | 'all') that lib/orders/booking branches on, and
+    matching the code the logic keys off is worth more than matching the label
+    text, which has now changed twice.
   */
-  'book.paidNothing': { en: 'Nothing yet', my: 'ပစ္စည်းဖိုး+Deliခ ပါကောက်ရန်' },
+  'book.paidNothing': { en: 'Product fees + Deli Fees', my: 'ပစ္စည်းဖိုး+Deliခ ပါကောက်ရန်' },
   'book.paidProduct': {
-    en: 'The product only — collect the delivery fee',
+    en: 'Collect only delivery fees',
     my: 'Deliခ သာကောက်ရန်',
   },
+  /*
+    The parenthetical is a real billing fact, not a softener: `toBooking` maps
+    'all' to `feePayer: 'shop'` (lib/orders/booking.ts:180), so choosing this
+    genuinely moves the delivery fee onto the shop's own account. The old label
+    -- "Everything — collect nothing" -- never said who ended up paying it.
+  */
   'book.paidAll': {
-    en: 'Everything — collect nothing',
-    my: 'ငွေကောက်မရှိပါ',
+    en: 'Collect nothing (deduct deli fee from me)',
+    my: 'ငွေကောက်မရှိပါ (Deliခ ဆိုင်ကပေးမည်)',
   },
   /* Shown under the 'product' choice, so the shop can see what the rider will
      actually ask for before it books. */

@@ -1,5 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { codCollectable } from '@/lib/pricing'
 import {
   bookingBlocker,
@@ -315,5 +316,76 @@ describe('a delivery address needs no map pin', () => {
   /** The address is still what the rider reads, so it is still required. */
   test('and the address is still required', () => {
     assert.equal(bookingBlocker({ ...READY, addressLength: 2 }), 'no_address')
+  })
+})
+
+/**
+ * The payment labels make claims about the booking. Hold them to it.
+ *
+ * These three options are the only place a shop states who pays what, and the
+ * copy has now been rewritten twice — once to make the Burmese say what the
+ * rider collects (ecc50e3), and once to bring the English alongside it. Each
+ * rewrite made the labels MORE specific, which is right, and also made them
+ * falsifiable, which is the part worth a test.
+ *
+ * "Collect nothing (deduct deli fee from me)" is the sharpest: it promises the
+ * shop is billed the delivery fee, and that is only true because `bookingPayment`
+ * maps 'all' to `feePayer: 'shop'`. Change that mapping and the label becomes a
+ * lie about money, on the screen where the shop agrees to pay it — with nothing
+ * failing.
+ */
+describe('the payment labels and the booking agree', () => {
+  /* The two options that ignore the figure entirely. */
+  const NO_AMOUNT = { ok: true, value: 0 } as const
+  const dict = readFileSync(new URL('../i18n/dictionary.ts', import.meta.url), 'utf8')
+  const label = (key: string) =>
+    dict.slice(dict.indexOf(`'${key}'`), dict.indexOf(`'${key}'`) + 400)
+
+  test("'collect nothing' really does move the fee to the shop", () => {
+    const posted = bookingPayment('all', NO_AMOUNT, 'customer')
+    assert.equal(
+      posted.feePayer,
+      'shop',
+      'book.paidAll says "deduct deli fee from me" — this mapping is what makes that true',
+    )
+    assert.equal(posted.paymentMethod, 'prepaid')
+    assert.equal(posted.goodsValue, 0)
+    // Both languages state it, so both would be wrong together.
+    assert.match(label('book.paidAll'), /deduct deli fee from me/)
+    assert.match(label('book.paidAll'), /ဆိုင်ကပေးမည်/)
+  })
+
+  test("'collect only delivery fees' collects exactly that", () => {
+    const posted = bookingPayment('product', NO_AMOUNT, 'shop')
+    assert.equal(posted.goodsValue, 0, 'the goods are already paid, so nothing for them')
+    assert.equal(
+      posted.feePayer,
+      'customer',
+      'book.paidProduct says the rider collects the fee, so the customer owes it',
+    )
+    assert.equal(posted.paymentMethod, 'cod')
+  })
+
+  /**
+   * Both halves of "Product fees + Deli Fees" — the goods figure the shop typed,
+   * and a fee the customer owes. Note the label is written for the default
+   * `feePayer: 'customer'`; a shop that moves the fee to itself on this option
+   * still sees a label naming both, which predates this change and is the one
+   * loose end in the copy.
+   */
+  test("'product fees + deli fees' posts the goods and leaves the fee payable", () => {
+    const posted = bookingPayment('nothing', { ok: true, value: 45_000 }, 'customer')
+    assert.equal(posted.goodsValue, 45_000)
+    assert.equal(posted.feePayer, 'customer')
+    assert.equal(posted.paymentMethod, 'cod')
+  })
+
+  /** The question is a collect question now; the answers must not re-frame. */
+  test('the question and its answers ask and answer the same thing', () => {
+    assert.match(label('book.paidQuestion'), /take from Customer/)
+    assert.ok(
+      !/already paid/.test(label('book.paidQuestion')),
+      'the header went back to the paid framing while the options answer a collect one',
+    )
   })
 })
