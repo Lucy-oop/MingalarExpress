@@ -18,6 +18,8 @@
 export type TripErrorKind =
   | 'below_minimum'
   | 'nothing_to_receive'
+  | 'parcels_not_receivable'
+  | 'unreceived_pickups'
   | 'not_receivable'
   | 'reason_too_short'
   | 'no_rider'
@@ -140,10 +142,31 @@ const MAP: Array<{ match: RegExp; value: ExplainedTripError }> = [
     },
   },
   {
+    // 0049. Receiving ticked parcels is all-or-nothing: one of them moved
+    // since the checklist opened, most likely shelved by someone else.
+    match: /parcels_not_receivable/i,
+    value: {
+      kind: 'parcels_not_receivable',
+      message:
+        'Some ticked parcels are no longer waiting on this run. Nothing was received — refresh and check the list again.',
+      retry: true,
+    },
+  },
+  {
     match: /trip_not_receivable/i,
     value: {
       kind: 'not_receivable',
       message: 'Only a run that has left the hub can bring parcels back to it.',
+      retry: false,
+    },
+  },
+  {
+    // 0050. Close & pay no longer shelves collections nobody ticked off.
+    match: /trip_has_unreceived_pickups/i,
+    value: {
+      kind: 'unreceived_pickups',
+      message:
+        'Some collected parcels have not been received at the office. Tick them off in Received at office before closing the run.',
       retry: false,
     },
   },

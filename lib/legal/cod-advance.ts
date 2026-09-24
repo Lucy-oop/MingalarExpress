@@ -211,7 +211,7 @@ export const COD_ADVANCE_POLICY: PolicyDocument = {
       n: '🔐 ၁၁။',
       heading: 'အရေးကြီးဆုံး စည်းကမ်း',
       paragraphs: [
-        'COD ကြိုရှင်းဝန်ဆောင်မှုသည် Online Shop အားလုံးအတွက် အလိုအလျောက်ရရှိသည့် ဝန်ဆောင်မှုမဟုတ်ပါ။',
+        'ကြိုရှင်းဝန်ဆောင်မှုသည် Online Shop အားလုံးအတွက် အလိုအလျောက်ရရှိသည့် ဝန်ဆောင်မှုမဟုတ်ပါ။',
         'Shop Verification + Order History + Risk Assessment + COD Advance Limit တို့အပေါ်မူတည်၍ Mingalar Delivery Service မှ ခွင့်ပြုမည်ဖြစ်ပါသည်။',
       ],
     },

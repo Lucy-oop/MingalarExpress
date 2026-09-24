@@ -7,6 +7,7 @@ import {
   type TripPayRates,
   type TripVolumeCheck,
 } from '@/lib/pricing'
+import type { TripKind } from '@/lib/routes/ways'
 
 /**
  * Reads for the route planning board.
@@ -55,6 +56,10 @@ export type BoardTripParcel = {
 export type BoardTrip = {
   id: string
   routeId: string
+  /** Pickup or delivery, as recorded when the run was made (0049). Informational. */
+  kind: TripKind | null
+  /** Pickups already received from this run and banked for pay. */
+  bankedPickups: number
   serviceDate: string
   status: 'planned' | 'loading' | 'departed' | 'returned' | 'closed' | 'cancelled'
   riderId: string | null
@@ -83,8 +88,12 @@ export type UnroutedParcel = {
   areaId: string | null
   areaName: string | null
   areaKind: 'ward' | 'township' | null
-  /** Route this parcel's area maps to by default, from route_areas.is_primary. */
-  suggestedRouteId: string | null
+  /*
+    NO SUGGESTED WAY ANY MORE. This carried the route the parcel's area maps
+    to by default (route_areas.is_primary), and the board grouped and pre-
+    selected on it. The office now chooses the way for every parcel by hand;
+    the area is shown so they can.
+  */
   codAmount: number
   deliveryFee: number
   paymentMethod: 'cod' | 'prepaid'
@@ -182,7 +191,7 @@ export async function getPlanningBoard(serviceDate?: string): Promise<PlanningBo
       .from('trips')
       .select(
         `id, route_id, service_date, status, rider_id, departed_at, returned_at, closed_at,
-         depart_override_reason, total_pay,
+         depart_override_reason, total_pay, kind, pickup_count,
          rider:rider_id (profiles!rider_profiles_id_fkey (full_name))`,
       )
       // Closed and cancelled runs are excluded from the board on purpose: a
@@ -296,9 +305,8 @@ export async function getPlanningBoard(serviceDate?: string): Promise<PlanningBo
     basePay: Number(t.base_pay),
   }))
 
-  // area → stop order, per route. Also gives each unrouted parcel its default run.
+  // area → stop order, per route, for sequencing a run's manifest.
   const stopsByRoute = new Map<string, BoardRoute['stops']>()
-  const primaryRouteByArea = new Map<string, string>()
   const stopOrderByRouteArea = new Map<string, number>()
 
   // route → the lowest zone fee among the areas it actually serves.
@@ -315,7 +323,6 @@ export async function getPlanningBoard(serviceDate?: string): Promise<PlanningBo
     })
     stopsByRoute.set(row.route_id, list)
     stopOrderByRouteArea.set(`${row.route_id}:${row.area_id}`, row.stop_order)
-    if (row.is_primary) primaryRouteByArea.set(row.area_id, row.route_id)
   }
 
   const routes: BoardRoute[] = (routeRows ?? []).map((r) => ({
@@ -405,9 +412,13 @@ export async function getPlanningBoard(serviceDate?: string): Promise<PlanningBo
     const parcelCount = live.filter((p) => p.leg === 'delivery').length
     const pickupCount = live.filter((p) => p.leg === 'pickup').length
 
+    const kind = (t.kind as TripKind | null) ?? null
+    const bankedPickups = Number(t.pickup_count ?? 0)
     return {
       id: t.id,
       routeId: t.route_id,
+      kind,
+      bankedPickups,
       serviceDate: t.service_date,
       status: t.status as BoardTrip['status'],
       riderId: t.rider_id,
@@ -451,7 +462,6 @@ export async function getPlanningBoard(serviceDate?: string): Promise<PlanningBo
         areaId,
         areaName: area?.name ?? null,
         areaKind: (area?.kind as 'ward' | 'township' | undefined) ?? null,
-        suggestedRouteId: areaId ? primaryRouteByArea.get(areaId) ?? null : null,
         codAmount: Number(raw.cod_amount ?? 0),
         deliveryFee: Number(raw.delivery_fee ?? 0),
         paymentMethod: raw.payment_method as 'cod' | 'prepaid',

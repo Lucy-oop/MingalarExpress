@@ -27,6 +27,7 @@ import type { ReusedCustomer } from '@/lib/orders/customer-lookup'
 import { CustomerLookup } from '@/components/orders/customer-lookup'
 import { codCollectable } from '@/lib/pricing'
 import { formatMmk, cn } from '@/lib/utils'
+import { areaZoneLabel, zoneGroupLabel, zoneShort } from '@/lib/orders/zone-label'
 import { isInServiceArea } from '@/lib/geo/thingangyun'
 import type { MessageKey } from '@/lib/i18n'
 import { useLocale, useT } from '@/components/shared/i18n-provider'
@@ -383,16 +384,22 @@ export function OrderForm({ shop, areas, codLocked = false }: OrderFormProps) {
       ? t(BLOCKER_MESSAGE[blocker])
       : undefined
 
-  const byRoute = useMemo(
-    () =>
-      Object.entries(
-        areas.reduce<Record<string, AreaRoute[]>>((acc, a) => {
-          ;(acc[a.routeName] ??= []).push(a)
-          return acc
-        }, {}),
-      ),
-    [areas],
-  )
+  /*
+    GROUPED BY ZONE, NOT BY WAY. This grouped by the way each area maps to
+    ("Way 1 — Downtown"), which is the office's internal run planning -- and
+    since 0049 not even the way the parcel will ride, because the office picks
+    that by hand. The zone is what the shop is charged by. See
+    lib/orders/zone-label.
+  */
+  const byZone = useMemo(() => {
+    const groups = new Map<string, AreaRoute[]>()
+    for (const a of [...areas].sort(
+      (x, y) => x.zoneCode.localeCompare(y.zoneCode) || x.areaName.localeCompare(y.areaName),
+    )) {
+      groups.set(a.zoneCode, [...(groups.get(a.zoneCode) ?? []), a])
+    }
+    return [...groups.values()]
+  }, [areas])
 
   return (
     <>
@@ -488,12 +495,11 @@ export function OrderForm({ shop, areas, codLocked = false }: OrderFormProps) {
                 className="h-12 text-base"
               >
                 <option value="">{t('book.areaChoose')}</option>
-                {byRoute.map(([routeName, group]) => (
-                  <optgroup key={routeName} label={routeName}>
+                {byZone.map((group) => (
+                  <optgroup key={group[0]!.zoneCode} label={zoneGroupLabel(group[0]!, locale)}>
                     {group.map((a) => (
                       <option key={a.areaId} value={a.areaId}>
-                        {locale === 'my' && a.areaNameMm ? a.areaNameMm : a.areaName} —{' '}
-                        {formatMmk(a.fee)}
+                        {areaZoneLabel(a, locale)} · {formatMmk(a.fee)}
                       </option>
                     ))}
                   </optgroup>
@@ -941,16 +947,7 @@ function OrderCreatedDialog({
             <span className="text-muted-foreground">{order.dropoffAddress}</span>
           </DetailRow>
           {area ? (
-            <DetailRow label={t('quote.route')}>
-              <span className="inline-flex items-center gap-1.5">
-                <span
-                  className="size-2.5 rounded-full"
-                  style={{ backgroundColor: area.colour }}
-                  aria-hidden="true"
-                />
-                {area.routeName}
-              </span>
-            </DetailRow>
+            <DetailRow label={t('quote.zone')}>{zoneShort(area, locale)}</DetailRow>
           ) : null}
           <DetailRow label={t('quote.fee')}>
             {formatMmk(order.deliveryFee)}
@@ -1021,15 +1018,10 @@ function QuoteSummary({
   return (
     <div className="space-y-1.5 rounded-lg border border-brand-gold/60 bg-brand-gold/5 p-3 text-sm">
       <div className="flex items-center gap-2">
-        <span
-          className="size-2.5 shrink-0 rounded-full"
-          style={{ backgroundColor: area.colour }}
-          aria-hidden="true"
-        />
         <span className="font-medium">
           {locale === 'my' && area.areaNameMm ? area.areaNameMm : area.areaName}
         </span>
-        <span className="truncate text-xs text-muted-foreground">{area.routeName}</span>
+        <span className="truncate text-xs text-muted-foreground">{zoneShort(area, locale)}</span>
       </div>
 
       {/* The goods row belongs to 'nothing' alone. On 'product' it would read

@@ -533,7 +533,9 @@ export const DICTIONARY = {
   'quote.goods': { en: 'Goods', my: 'ကုန်ဖိုး' },
   'quote.fee': { en: 'Delivery fee', my: 'ပို့ဆောင်ခ' },
   'quote.total': { en: 'Rider collects', my: 'ရိုက်ဒါ ကောက်ခံမည်' },
-  'quote.route': { en: 'Route', my: 'လမ်းကြောင်း' },
+  // Was 'quote.route'. Shops see the zone they are charged by, never the
+  // office's internal way (0049). See lib/orders/zone-label.
+  'quote.zone': { en: 'Delivery zone', my: 'ပို့ဆောင်ရေး ဇုန်' },
   /*
     WAS 'Deducted from your money', which was true and badly framed.
 
@@ -647,11 +649,11 @@ export const DICTIONARY = {
   //  headed a SUSPENDED shop "Cash on delivery not unlocked yet".
   'shop.blocked.awaitingTitle': {
     en: 'Cash on delivery not unlocked yet',
-    my: 'COD ကို မဖွင့်ရသေးပါ',
+    my: 'ကြိုရှင်း ကို မဖွင့်ရသေးပါ',
   },
   'shop.blocked.awaiting': {
     en: 'You can book prepaid parcels now. Cash on delivery unlocks once the Mingalar Express office has reviewed your shop.',
-    my: 'ငွေရှင်းပြီးသား ပါဆယ်များကို အခုတင်နိုင်ပါသည်။ ရုံးမှ ဆိုင်ကို စစ်ပြီးလျှင် COD ကို ဖွင့်ပေးပါမည်။',
+    my: 'ငွေရှင်းပြီးသား ပါဆယ်များကို အခုတင်နိုင်ပါသည်။ ရုံးမှ ဆိုင်ကို စစ်ပြီးလျှင် ကြိုရှင်း ကို ဖွင့်ပေးပါမည်။',
   },
   'shop.blocked.suspendedTitle': { en: 'This shop is suspended', my: 'ဆိုင် ရပ်ဆိုင်းထားပါသည်' },
   'shop.blocked.suspended': {
@@ -868,6 +870,68 @@ export const DICTIONARY = {
   'contact.backToShop': { en: 'Back to my shop', my: 'ကျွန်ုပ်၏ ဆိုင်သို့ ပြန်သွားရန်' },
   'contact.back': { en: 'Go back', my: 'ပြန်သွားရန်' },
   'contact.more': { en: 'More ways to reach us', my: 'အခြား ဆက်သွယ်နည်းများ' },
+
+  // ---- Outside Way (admin) ---------------------------------------------------
+  //
+  //  Parcels the office types up from a Telegram, Viber or Facebook message or
+  //  a phone call, for senders who never open the portal. The admin panel is
+  //  otherwise English; these follow the locale cookie because the office asked
+  //  for this screen in Burmese. See app/admin/outside-way.
+  'ow.nav': { en: 'Outside Way', my: 'အပြင်လမ်း' },
+  'ow.title': { en: 'Add an Outside Way parcel', my: 'အပြင်လမ်း ပါဆယ်ထည့်ရန်' },
+  'ow.description': {
+    en: 'For orders that arrive by Telegram, Viber, Facebook or phone. Book them here on the sender’s behalf.',
+    my: 'Telegram၊ Viber၊ Facebook သို့မဟုတ် ဖုန်းဖြင့် ရောက်လာသော အော်ဒါများကို ပို့သူကိုယ်စား ဤနေရာတွင် ထည့်ပါ။',
+  },
+  'ow.section.sender': { en: 'Sender', my: 'ပို့သူ' },
+  'ow.shop': { en: 'Shop', my: 'ဆိုင်' },
+  'ow.shopSearch': { en: 'Search shops by name or phone', my: 'ဆိုင်အမည် သို့မဟုတ် ဖုန်းဖြင့် ရှာရန်' },
+  'ow.shopPlaceholder': { en: 'Choose a shop…', my: 'ဆိုင် ရွေးပါ…' },
+  'ow.direct': { en: 'Direct / unregistered sender', my: 'တိုက်ရိုက် / စာရင်းမသွင်းရသေးသော ပို့သူ' },
+  'ow.directHint': {
+    en: 'Filed under the house Direct shop. The office pays the ကြိုရှင်း to this sender by hand.',
+    my: 'ရုံး၏ Direct ဆိုင်အောက်တွင် သိမ်းပါမည်။ ကောက်ခံငွေကို ဤပို့သူထံ ရုံးမှ ကိုယ်တိုင် ပေးချေပါမည်။',
+  },
+  'ow.notTrading': { en: 'not trading', my: 'ရပ်ဆိုင်းထား' },
+  'ow.channel': { en: 'Order came from', my: 'အော်ဒါ ရောက်လာသည့်နေရာ' },
+  'ow.senderName': { en: 'Sender’s name', my: 'ပို့သူ အမည်' },
+  'ow.senderPhone': { en: 'Sender’s phone', my: 'ပို့သူ ဖုန်း' },
+  'ow.pickupAddress': { en: 'Pickup address', my: 'ပါဆယ်ယူမည့် လိပ်စာ' },
+  'ow.pickupAddressHint': {
+    en: 'Leave blank to collect from the shop’s saved address.',
+    my: 'ဆိုင်၏ သိမ်းထားသော လိပ်စာမှ ယူမည်ဆိုလျှင် ကွက်လပ်ထားပါ။',
+  },
+  'ow.pickupContact': { en: 'Pickup contact', my: 'ပါဆယ်ယူရန် ဆက်သွယ်ရမည့်ဖုန်း' },
+  'ow.township': { en: 'Township', my: 'မြို့နယ်' },
+  'ow.townshipPlaceholder': { en: 'Choose a township…', my: 'မြို့နယ် ရွေးပါ…' },
+  'ow.route': { en: 'Delivery way', my: 'ပို့ဆောင်မည့် လမ်းကြောင်း' },
+  'ow.routeLater': { en: 'Choose later on the board', my: 'နောက်မှ ဘုတ်တွင် ရွေးမည်' },
+  'ow.routeLaterHint': {
+    en: 'The office puts the parcel on a way from the Ways board.',
+    my: 'ရုံးမှ Ways ဘုတ်တွင် လမ်းကြောင်း သတ်မှတ်ပေးပါမည်။',
+  },
+  'ow.paid.all': { en: 'Everything is paid', my: 'အားလုံး ငွေရှင်းပြီး' },
+  // ကြိုရှင်း in both languages: the platform's word for it, not "COD".
+  'ow.cod': { en: 'ကြိုရှင်း amount (goods)', my: 'ကြိုရှင်း ပမာဏ (ပစ္စည်းဖိုး)' },
+  'ow.feePayer.customer': { en: 'Receiver, at the door', my: 'လက်ခံသူ (အိမ်ရောက်မှ)' },
+  'ow.feePayer.shop': { en: 'Shop / sender', my: 'ဆိုင် / ပို့သူ' },
+  'ow.fee': { en: 'Delivery fee (Ks)', my: 'ပို့ဆောင်ခ (ကျပ်)' },
+  'ow.feeHint': { en: 'Zone price {fee}. Change it for a special rate.', my: 'ဇုန်ဈေး {fee}။ အထူးနှုန်းဆိုလျှင် ပြောင်းပါ။' },
+  'ow.feeHintNone': { en: 'Choose a township to fill in the zone price.', my: 'ဇုန်ဈေး သိရန် မြို့နယ် ရွေးပါ။' },
+  'ow.collect': { en: 'Rider collects', my: 'ရိုက်ဒါ ကောက်ခံမည်' },
+  'ow.submit': { en: 'Create parcel', my: 'ပါဆယ် ဖန်တီးရန်' },
+  'ow.submitting': { en: 'Creating…', my: 'ဖန်တီးနေသည်…' },
+  'ow.created': { en: 'Parcel {code} created', my: 'ပါဆယ် {code} ဖန်တီးပြီးပါပြီ' },
+  'ow.createdBody': {
+    en: 'For {receiver}, from {shop}. Rider collects {collect}.',
+    my: '{shop} မှ {receiver} ထံ။ ရိုက်ဒါ ကောက်ခံမည် {collect}။',
+  },
+  'ow.open': { en: 'Open order', my: 'အော်ဒါ ဖွင့်ရန်' },
+  'ow.another': { en: 'Add another', my: 'နောက်တစ်ခု ထည့်ရန်' },
+  'ow.noAreas': {
+    en: 'No township has a route and a delivery rate yet. Set them up under Coverage and Pricing first.',
+    my: 'လမ်းကြောင်းနှင့် ပို့ဆောင်ခနှုန်း သတ်မှတ်ထားသော မြို့နယ် မရှိသေးပါ။ Coverage နှင့် Pricing တွင် အရင် သတ်မှတ်ပါ။',
+  },
 
   // ---- offline --------------------------------------------------------------
   'offline.saved': {

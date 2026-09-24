@@ -180,6 +180,7 @@ create table public.routes (
 
 create index routes_active_idx on public.routes (sort_order, code) where is_active;
 
+drop trigger if exists routes_touch on public.routes;
 create trigger routes_touch before update on public.routes
 for each row execute function public.tg_touch_updated_at();
 
@@ -361,6 +362,7 @@ create index trips_open_idx       on public.trips (status, service_date)
 create unique index trips_rider_open_uk on public.trips (rider_id)
   where rider_id is not null and status in ('planned','loading','departed');
 
+drop trigger if exists trips_touch on public.trips;
 create trigger trips_touch before update on public.trips
 for each row execute function public.tg_touch_updated_at();
 
@@ -395,27 +397,35 @@ alter table public.route_areas     enable row level security;
 alter table public.route_pay_tiers enable row level security;
 alter table public.trips           enable row level security;
 
+drop policy if exists routes_read_all on public.routes;
 create policy routes_read_all on public.routes
   for select to authenticated using (true);
+drop policy if exists routes_write_admin on public.routes;
 create policy routes_write_admin on public.routes
   for all to authenticated using (public.is_admin()) with check (public.is_admin());
 
+drop policy if exists route_areas_read_all on public.route_areas;
 create policy route_areas_read_all on public.route_areas
   for select to authenticated using (true);
+drop policy if exists route_areas_write_admin on public.route_areas;
 create policy route_areas_write_admin on public.route_areas
   for all to authenticated using (public.is_admin()) with check (public.is_admin());
 
 -- Riders need to read the tiers to see how a run's pay was reached.
+drop policy if exists tiers_read_all on public.route_pay_tiers;
 create policy tiers_read_all on public.route_pay_tiers
   for select to authenticated using (true);
+drop policy if exists tiers_write_admin on public.route_pay_tiers;
 create policy tiers_write_admin on public.route_pay_tiers
   for all to authenticated using (public.is_admin()) with check (public.is_admin());
 
 -- A rider sees their own runs and nobody else's.
+drop policy if exists trips_read_own_or_dispatch on public.trips;
 create policy trips_read_own_or_dispatch on public.trips
   for select to authenticated
   using (rider_id = auth.uid() or public.is_dispatch());
 
+drop policy if exists trips_write_dispatch on public.trips;
 create policy trips_write_dispatch on public.trips
   for all to authenticated
   using (public.is_dispatch()) with check (public.is_dispatch());

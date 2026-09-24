@@ -14,6 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { formatDateTimeYangon, formatMmk, formatMyanmarPhone } from '@/lib/utils'
+import { SOURCE_LABEL, isOutsideChannel } from '@/lib/orders/outside-way'
 
 export const metadata: Metadata = { title: 'Order · Admin' }
 
@@ -95,6 +96,10 @@ export default async function AdminOrderDetailPage({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {/* Outside Way: booked by the office from a chat or a call. */}
+          {isOutsideChannel(order.source) ? (
+            <Badge tone="blue">Outside Way · {SOURCE_LABEL[order.source].en}</Badge>
+          ) : null}
           <StatusBadge status={order.status} />
           <Link
             href={`/track/${order.code}`}
@@ -136,7 +141,19 @@ export default async function AdminOrderDetailPage({
             </Detail>
 
             <Detail label="Shop / pickup">
-              <p>{shop?.pickup_address ?? order.pickup_address}</p>
+              {order.sender_name ? (
+                <p className="font-medium">
+                  Sent by {order.sender_name}
+                  {order.sender_phone ? (
+                    <a href={`tel:${order.sender_phone}`} className="ml-2 font-normal text-primary hover:underline">
+                      {formatMyanmarPhone(order.sender_phone)}
+                    </a>
+                  ) : null}
+                </p>
+              ) : null}
+              {/* The order's own pickup address: an Outside Way parcel may be
+                  collected somewhere other than the shop's saved address. */}
+              <p>{order.pickup_address}</p>
               {shop?.phone ? (
                 <a href={`tel:${shop.phone}`} className="text-primary hover:underline">
                   {formatMyanmarPhone(shop.phone)}
@@ -202,7 +219,8 @@ export default async function AdminOrderDetailPage({
               <Row label="Fee paid by" value={order.fee_payer === 'customer' ? 'Customer' : 'Shop'} />
               {route ? (
                 <div className="flex items-baseline justify-between gap-3">
-                  <span className="text-muted-foreground">Route</span>
+                  {/* Recorded when the office loads it onto a delivery way (0049). */}
+                  <span className="text-muted-foreground">Way</span>
                   <span className="flex items-center gap-1.5">
                     <span
                       className="size-2.5 rounded-full"

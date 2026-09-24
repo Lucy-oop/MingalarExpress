@@ -24,6 +24,7 @@ import {
   type LoadTarget,
 } from '@/lib/routes/load-gate'
 import { cn, formatMmk } from '@/lib/utils'
+import { wayLabel } from '@/lib/routes/ways'
 import type { BoardRider, BoardRoute, UnroutedParcel } from '@/lib/routes/queries'
 
 /** An unrouted parcel plus whether the shop has asked for it back. */
@@ -31,7 +32,6 @@ export type PanelParcel = UnroutedParcel & { isReturn: boolean; isHubHeld: boole
 
 /** Everything the panel needs to name and measure the run it will load into. */
 export type PanelTarget = LoadTarget & {
-  /** Drives the panel's default route filter, so the pool follows the run. */
   routeId: string
   label: string
   colour: string
@@ -68,6 +68,7 @@ export function UnroutedPanel({
   onLoad,
   riders,
   onSend,
+  onAssign,
 }: {
   parcels: PanelParcel[]
   routes: BoardRoute[]
@@ -87,40 +88,67 @@ export function UnroutedPanel({
     routeId: string,
     leg: 'delivery' | 'pickup' | 'return',
   ) => void
+  /** The primary path (0049): put the ticked parcels on a way the office chose. */
+  onAssign: (
+    orderIds: string[],
+    routeId: string,
+    leg: 'delivery' | 'pickup' | 'return',
+    riderId: string | undefined,
+  ) => void
 }) {
   const [query, setQuery] = React.useState('')
-  const [routeFilter, setRouteFilter] = React.useState<string>('')
+  /*
+    A TOWNSHIP FILTER, where there used to be a route filter.
 
-  const focusRouteId = target?.routeId ?? null
-  // Follow the targeted run, otherwise the panel silently keeps showing another
-  // route's parcels. The filter is stated on screen so the change is explained.
-  React.useEffect(() => {
-    setRouteFilter(focusRouteId ?? '')
-  }, [focusRouteId])
+    The route filter keyed on the way each parcel's area maps to by default
+    (route_areas.is_primary), and followed whichever run was targeted -- the
+    board deciding the way for the office. The office now decides it by hand,
+    so what they need to narrow by is where the parcel is going.
+  */
+  const [areaFilter, setAreaFilter] = React.useState<string>('')
 
-  const routeById = React.useMemo(() => new Map(routes.map((r) => [r.id, r])), [routes])
+  /*
+    TWO TABS: PICKUP WAYS AND DELIVERY WAYS. The pool is the two halves of the
+    day -- parcels still at their shop, waiting to be collected, and parcels in
+    the hub waiting to go out -- and a run is loaded from one half at a time
+    (load_trip refuses a mixed selection). Returns ride out to a shop, so they
+    sit with the deliveries.
+
+    Switching tab clears the ticks. A selection the operator can no longer see
+    is how "Load 3" quietly loads something else, and a pickup tick carried
+    into the delivery tab could only ever produce the mixed-legs refusal.
+  */
+  const [tab, setTab] = React.useState<'pickup' | 'delivery'>('pickup')
+  const isDeliverySide = (p: PanelParcel) => p.isHubHeld || p.isReturn
+  const pickupCount = parcels.filter((p) => !isDeliverySide(p)).length
+  const deliveryCount = parcels.length - pickupCount
+  const tabParcels = React.useMemo(
+    () => parcels.filter((p) => (tab === 'delivery') === (p.isHubHeld || p.isReturn)),
+    [parcels, tab],
+  )
+  const switchTab = (next: 'pickup' | 'delivery') => {
+    if (next === tab) return
+    setTab(next)
+    setAreaFilter('')
+    onClear()
+  }
+
+  const areaOptions = React.useMemo(() => {
+    const names = new Map<string, number>()
+    for (const p of tabParcels) {
+      if (p.isReturn) continue
+      const name = p.areaName ?? ''
+      names.set(name, (names.get(name) ?? 0) + 1)
+    }
+    return [...names.entries()].sort((a, b) => a[0].localeCompare(b[0]))
+  }, [tabParcels])
 
   const visible = React.useMemo(() => {
     const q = query.trim().toLowerCase()
-    return parcels.filter((p) => {
-      /*
-        Returns travel to the shop, not to the customer's area, so a route
-        filter must never hide them — they belong on whichever run is going.
-
-        EVERYTHING ELSE IS FILTERED, including collections. This block used to
-        be wrapped in `if (p.isHubHeld)`, so choosing a route left the shop
-        groups untouched and the control appeared to do nothing at all — worse
-        than absent, because targeting a run sets the filter silently and the
-        operator then sees a pool that ignored it.
-      */
-      if (!p.isReturn) {
-        // '__none' is its own case: a parcel whose area maps to no route cannot
-        // be loaded anywhere and needs surfacing, not hiding.
-        if (routeFilter === '__none') {
-          if (p.suggestedRouteId !== null) return false
-        } else if (routeFilter && p.suggestedRouteId !== routeFilter) {
-          return false
-        }
+    return tabParcels.filter((p) => {
+      // Returns travel to a shop, so a township filter never hides them.
+      if (!p.isReturn && areaFilter !== '' && (p.areaName ?? '__none') !== areaFilter) {
+        return false
       }
       if (!q) return true
       return (
@@ -130,16 +158,15 @@ export function UnroutedPanel({
         (p.areaName ?? '').toLowerCase().includes(q)
       )
     })
-  }, [parcels, query, routeFilter])
+  }, [tabParcels, query, areaFilter])
 
-  /** Area groups, ordered by the stop sequence of the route they belong to. */
+  /** Returns, then the hub shelf by township, then the shops to collect from. */
   const groups = React.useMemo(() => {
     const map = new Map<
       string,
       {
         key: string
         label: string
-        routeId: string | null
         /** The shop's street address, on a collection group. */
         sub: string | null
         isReturn: boolean
@@ -159,42 +186,24 @@ export function UnroutedPanel({
         DELIVERY run goes out to customers, so it groups by area as before.
       */
       /*
-        0040: A DELIVERY GROUP IS A WAY, NOT A WARD.
-
-        Hub-held parcels used to key on `areaId`, giving one box per ward — and
-        with eight wards across five routes that is a lot of small boxes, none
-        of which is the thing the office actually hands to a rider. The unit of
-        the afternoon is the WAY: sort the shelf into runs, give a run to
-        somebody. Wards survive as rows inside the box, so nothing is lost.
-
-        Collections still key on the pickup address: a collection run visits
-        shops, and ten parcels off one counter is one stop.
+        0049: THE DELIVERY HALF GROUPS BY TOWNSHIP, NOT BY A SUGGESTED WAY.
+        0040 boxed the shelf by the way each area maps to by default, which
+        was the board choosing the way. The office picks the way now, so the
+        box is the thing they decide about: everything going to one township.
       */
       const key = p.isReturn
         ? '__return'
         : p.isHubHeld
-          ? `way:${p.suggestedRouteId ?? 'unmapped'}`
+          ? `area:${p.areaId ?? 'none'}`
           : `shop:${p.pickupAddress.trim().toLowerCase()}`
       const entry = map.get(key) ?? {
         key,
         label: p.isReturn
           ? 'Back to the shop'
           : p.isHubHeld
-            ? (routeById.get(p.suggestedRouteId ?? '')?.name ?? 'No way mapped')
+            ? (p.areaName ?? 'No township set')
             : (p.shopName ?? (p.pickupAddress || 'Unknown shop')),
         sub: p.isHubHeld || p.isReturn ? null : p.pickupAddress,
-        /*
-          A COLLECTION GROUP HAS A ROUTE TOO. This was hard-coded null for
-          anything not hub-held, so every shop group rendered a red "No route"
-          badge even when its parcels map cleanly -- on the half of the pool
-          the office uses FIRST. They then had to guess which route section to
-          press "New run" under, with the answer already computed and thrown
-          away.
-
-          A return genuinely has none: it travels to a shop, and which run
-          carries it is a choice, not a mapping.
-        */
-        routeId: p.isReturn ? null : p.suggestedRouteId,
         isReturn: p.isReturn,
         isHubHeld: p.isHubHeld,
         items: [],
@@ -202,37 +211,14 @@ export function UnroutedPanel({
       entry.items.push(p)
       map.set(key, entry)
     }
-    /*
-      The wards inside each way, derived rather than keyed on: the group is a
-      way now, but the office still sorts by ward within it. Order is by size —
-      the ward with eight parcels is the one worth deciding about first.
-    */
-    const withAreas = [...map.values()].map((g) => {
-      const byArea = new Map<string, string[]>()
-      if (g.isHubHeld) {
-        for (const p of g.items) {
-          const name = p.areaName ?? 'No area set'
-          byArea.set(name, [...(byArea.get(name) ?? []), p.id])
-        }
-      }
-      return {
-        ...g,
-        areas: [...byArea.entries()]
-          .map(([name, ids]) => ({ name, ids }))
-          .sort((x, y) => y.ids.length - x.ids.length || x.name.localeCompare(y.name)),
-      }
-    })
-
-    return withAreas.sort((a, b) => {
+    return [...map.values()].sort((a, b) => {
       if (a.isReturn !== b.isReturn) return a.isReturn ? -1 : 1
       // Then the hub shelf: it is stock already paid for in riding, and it
       // should go out before anything new is collected.
       if (a.isHubHeld !== b.isHubHeld) return a.isHubHeld ? -1 : 1
-      const ra = a.routeId ? routeById.get(a.routeId)?.sortOrder ?? 999 : 999
-      const rb = b.routeId ? routeById.get(b.routeId)?.sortOrder ?? 999 : 999
-      return ra - rb || a.label.localeCompare(b.label)
+      return a.label.localeCompare(b.label)
     })
-  }, [visible, routeById])
+  }, [visible])
 
   /*
     THE THREE HALVES, counted once so each heading can carry its own total.
@@ -249,7 +235,7 @@ export function UnroutedPanel({
   }, [groups])
 
   const KIND_HEADING: Record<string, string> = {
-    deliver: 'READY TO DELIVER',
+    deliver: 'IN HUB · READY TO DELIVER',
     return: 'BACK TO A SHOP',
     collect: 'TO COLLECT',
   }
@@ -261,34 +247,20 @@ export function UnroutedPanel({
   const plan = loadPlan(chosen, target)
 
   /*
-    THE SEND PATH derives what the board used to make the operator choose.
+    THE SEND PATH. The leg is still derived -- `selectionLeg` is the same
+    derivation loadPlan uses, and a second opinion would eventually disagree
+    with load_trip.
 
-    `selectionLeg` is the same derivation loadPlan uses, shared rather than
-    repeated -- a second opinion about "collection or delivery" would
-    eventually disagree with load_trip, and the operator would only find out
-    from an error.
-
-    The ROUTE is the majority `suggestedRouteId` across the ticked parcels,
-    which route_areas.is_primary has been computing all along and which the
-    board used only to count unmapped parcels. Ties and misses fall back to the
-    first active route so the control is never empty; it is a <select>, so a
-    wrong guess costs one click rather than a refusal.
+    THE WAY IS NOT. It used to default to the majority suggested route across
+    the ticked parcels; the office now names it every time (0049). It is only
+    consulted for a NEW run: a rider already out keeps their own run's way,
+    which is why it is not demanded for them.
   */
   const send = selectionLeg(chosen)
-  const suggestedRoute = React.useMemo(() => {
-    const tally = new Map<string, number>()
-    for (const p of chosen) {
-      if (p.suggestedRouteId) tally.set(p.suggestedRouteId, (tally.get(p.suggestedRouteId) ?? 0) + 1)
-    }
-    let best: string | null = null
-    let bestN = 0
-    for (const [id, n] of tally) if (n > bestN) [best, bestN] = [id, n]
-    return best ?? routes[0]?.id ?? null
-  }, [chosen, routes])
-
   const [sendRider, setSendRider] = React.useState<string>('')
   const [sendRoute, setSendRoute] = React.useState<string>('')
-  const routeForSend = sendRoute || suggestedRoute || ''
+  const routeForSend = sendRoute
+  const riderOut = riders.find((r) => r.id === sendRider)?.onOpenTrip ?? false
 
   /*
     A rider already out is NOT barred here, which is the whole point of the
@@ -300,17 +272,35 @@ export function UnroutedPanel({
     if (send.mixed) return LOAD_BLOCKER_MESSAGE.mixed_legs
     if (riders.length === 0) return null
     if (!sendRider) return 'Choose a rider.'
-    if (!routeForSend) return 'No active route to send this on.'
+    if (!riderOut && !routeForSend) return 'Choose a way for the new run.'
     return null
   })()
   const hiddenTicks = selected.size - visible.filter((p) => selected.has(p.id)).length
   const hasReturns = chosen.some((p) => p.isReturn)
   const hasHeld = chosen.some((p) => p.isHubHeld)
 
+  /*
+    ASSIGN TO A WAY -- the office's decision, made here, and the parcels then
+    show under that way on the left. A delivery needs a rider on its run (see
+    `assignToWay`), so the rider picker is offered on the delivery tab; it is
+    only required when the way has no run with a rider yet, which the server
+    works out and says.
+  */
+  const [assignWay, setAssignWay] = React.useState('')
+  const [assignRider, setAssignRider] = React.useState('')
+  const assignBlocker: string | null =
+    chosen.length === 0
+      ? 'Tick parcels, then choose their way.'
+      : send.mixed
+        ? LOAD_BLOCKER_MESSAGE.mixed_legs
+        : !assignWay
+          ? 'Choose a way.'
+          : null
+
   return (
     <div className="flex h-full min-h-0 flex-col gap-2">
       {/* ---- what this will load into ---------------------------------- */}
-      <div className="rounded-md border bg-muted/40 p-2">
+      <div className={cn('rounded-md border bg-muted/40 p-2', !target && 'hidden')}>
         {target ? (
           <>
             <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
@@ -339,6 +329,49 @@ export function UnroutedPanel({
         )}
       </div>
 
+      <div role="tablist" aria-label="Parcels waiting" className="grid grid-cols-2 gap-1 rounded-lg border bg-muted/40 p-1">
+        {(
+          [
+            ['pickup', 'Pickup ways', 'At shops, to collect', pickupCount],
+            ['delivery', 'Delivery ways', 'In hub · ready to deliver', deliveryCount],
+          ] as const
+        ).map(([key, label, sub, n]) => {
+          const on = tab === key
+          return (
+            <button
+              key={key}
+              type="button"
+              role="tab"
+              aria-selected={on}
+              onClick={() => switchTab(key)}
+              className={cn(
+                'flex flex-col items-start rounded-md px-2.5 py-1.5 text-left transition-colors',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                on ? 'bg-card shadow-sm' : 'text-muted-foreground hover:bg-card/60',
+              )}
+            >
+              <span className="flex items-center gap-1.5 text-sm font-semibold">
+                {key === 'pickup' ? (
+                  <Store className="size-3.5" aria-hidden="true" />
+                ) : (
+                  <Warehouse className="size-3.5" aria-hidden="true" />
+                )}
+                {label}
+                <span
+                  className={cn(
+                    'rounded-full px-1.5 text-[10px] tabular-nums',
+                    on ? 'bg-primary text-primary-foreground' : 'bg-muted',
+                  )}
+                >
+                  {n}
+                </span>
+              </span>
+              <span className="text-[10px] text-muted-foreground">{sub}</span>
+            </button>
+          )
+        })}
+      </div>
+
       <div className="flex items-center gap-2">
         <div className="relative min-w-0 flex-1">
           <Search
@@ -354,24 +387,23 @@ export function UnroutedPanel({
           />
         </div>
         <Select
-          value={routeFilter}
-          onChange={(e) => setRouteFilter(e.target.value)}
+          value={areaFilter}
+          onChange={(e) => setAreaFilter(e.target.value)}
           className="w-40 shrink-0"
-          aria-label="Filter by route"
+          aria-label="Filter by township"
         >
-          <option value="">All routes</option>
-          {routes.map((r) => (
-            <option key={r.id} value={r.id}>
-              {r.code.replace('ROUTE_', '')}
+          <option value="">All townships</option>
+          {areaOptions.map(([name, n]) => (
+            <option key={name || '__none'} value={name || '__none'}>
+              {name || 'No township'} ({n})
             </option>
           ))}
-          <option value="__none">Unmapped</option>
         </Select>
       </div>
 
       <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
         <span>
-          {visible.length} of {parcels.length} waiting
+          {visible.length} of {tabParcels.length} waiting
           {/*
             Always the global count. This used to be conditioned on VISIBLE ticks
             while printing the global number, so changing the filter made the
@@ -388,192 +420,216 @@ export function UnroutedPanel({
         ) : null}
       </div>
 
-      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
+      <div className="min-h-0 flex-1 overflow-y-auto rounded-md border">
         {groups.length === 0 ? (
-          <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed p-8 text-center">
+          <div className="flex flex-col items-center gap-2 p-8 text-center">
             <PackageOpen className="size-6 text-muted-foreground" aria-hidden="true" />
             <p className="text-sm font-medium">Nothing waiting</p>
             <p className="text-xs text-muted-foreground">
-              {parcels.length > 0 ? 'No parcels match this filter.' : 'Every parcel is on a run.'}
+              {tabParcels.length > 0
+                ? 'No parcels match this filter.'
+                : tab === 'pickup'
+                  ? 'Nothing waiting at a shop to be collected.'
+                  : 'Nothing in the hub waiting to go out.'}
             </p>
           </div>
         ) : (
-          groups.map((group, i) => {
-            const ids = group.items.map((p) => p.id)
-            const allSelected = ids.every((id) => selected.has(id))
-            const route = group.routeId ? routeById.get(group.routeId) : null
-            /*
-              LEG-AWARE, because a return's cod_amount is money nobody will
-              collect — the rows beneath already say "No fee" and the header
-              was contradicting them.
-            */
-            const cod = group.isReturn
-              ? 0
-              : group.items.reduce((sum, p) => sum + p.codAmount, 0)
-
-            const kind = kindOf(group)
-            const first = i === 0 || kindOf(groups[i - 1]!) !== kind
-
-            return (
-              <React.Fragment key={`k-${group.key}`}>
-                {first ? (
-                  <h3 className="flex items-baseline gap-2 pt-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                    {KIND_HEADING[kind]}
-                    <span className="tabular-nums">
-                      · {kindTotals[kind as keyof typeof kindTotals]}
-                    </span>
-                  </h3>
-                ) : null}
-              <section
-                key={group.key}
-                className={cn(
-                  'rounded-lg border',
-                  group.isReturn && 'border-blue-300',
-                  group.isHubHeld && 'border-amber-300',
-                )}
-              >
-                <header
-                  className={cn(
-                    'flex items-center gap-2 border-b p-2',
-                    group.isReturn
-                      ? 'bg-blue-50'
-                      : group.isHubHeld
-                        ? 'bg-amber-50'
-                        : 'bg-muted/40',
-                  )}
-                >
-                  <input
-                    type="checkbox"
-                    checked={allSelected}
-                    onChange={() => onToggleMany(ids, !allSelected)}
-                    className="size-4 shrink-0 accent-brand-red"
-                    aria-label={`Select all ${group.items.length} parcels for ${group.label}`}
-                  />
-                  <span className="min-w-0 flex-1">
-                    <span className="flex items-center gap-1.5 text-xs font-semibold">
-                      {group.isReturn ? (
-                        <CornerUpLeft className="size-3 shrink-0" aria-hidden="true" />
-                      ) : group.isHubHeld ? (
-                        <MapPin className="size-3 shrink-0" aria-hidden="true" />
-                      ) : (
-                        <Store className="size-3 shrink-0" aria-hidden="true" />
-                      )}
-                      <span className="truncate">{group.label}</span>
-                    </span>
-                    {group.sub ? (
-                      <span className="block truncate text-[10px] font-normal text-muted-foreground">
-                        {group.sub}
+          /*
+            A TABLE, one per tab: the pickup ways table lists parcels still at
+            their shops, grouped by shop; the delivery ways table lists parcels
+            in the hub, grouped by township, with returns first. A group's
+            heading row ticks the whole group.
+          */
+          <table className="w-full text-xs">
+            <thead className="sticky top-0 z-10 bg-card text-left text-[10px] uppercase tracking-wide text-muted-foreground">
+              <tr className="border-b">
+                <th className="w-8 p-2" aria-label="Select" />
+                <th className="p-2 font-medium">Parcel</th>
+                <th className="p-2 font-medium">{tab === 'pickup' ? 'Customer' : 'Deliver to'}</th>
+                <th className="p-2 text-right font-medium">Cash</th>
+              </tr>
+            </thead>
+            {groups.map((group, i) => {
+              const ids = group.items.map((p) => p.id)
+              const allSelected = ids.every((id) => selected.has(id))
+              /*
+                LEG-AWARE, because a return's cod_amount is money nobody will
+                collect — the rows beneath already say "No fee" and the header
+                was contradicting them.
+              */
+              const cod = group.isReturn
+                ? 0
+                : group.items.reduce((sum, p) => sum + p.codAmount, 0)
+              const kind = kindOf(group)
+              const first = i === 0 || kindOf(groups[i - 1]!) !== kind
+              return (
+                <tbody key={group.key}>
+                  {first && tab === 'delivery' ? (
+                    <tr>
+                      <td colSpan={4} className="px-2 pb-1 pt-3 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                        {KIND_HEADING[kind]} · <span className="tabular-nums">{kindTotals[kind as keyof typeof kindTotals]}</span>
+                      </td>
+                    </tr>
+                  ) : null}
+                  <tr
+                    className={cn(
+                      'border-y',
+                      group.isReturn ? 'bg-blue-50' : group.isHubHeld ? 'bg-amber-50' : 'bg-muted/40',
+                    )}
+                  >
+                    <td className="p-2">
+                      <input
+                        type="checkbox"
+                        checked={allSelected}
+                        onChange={() => onToggleMany(ids, !allSelected)}
+                        className="size-4 accent-brand-red"
+                        aria-label={`Select all ${group.items.length} parcels for ${group.label}`}
+                      />
+                    </td>
+                    <td colSpan={2} className="p-2">
+                      <span className="flex items-center gap-1.5 font-semibold">
+                        {group.isReturn ? (
+                          <CornerUpLeft className="size-3 shrink-0" aria-hidden="true" />
+                        ) : group.isHubHeld ? (
+                          <MapPin className="size-3 shrink-0" aria-hidden="true" />
+                        ) : (
+                          <Store className="size-3 shrink-0" aria-hidden="true" />
+                        )}
+                        <span className="truncate">{group.label}</span>
+                        {group.isReturn ? <Badge tone="blue">Return</Badge> : null}
                       </span>
-                    ) : null}
-                  </span>
-                  {/*
-                    "Out only" is gone. It was the only word naming the
-                    delivery half and it never said "deliver" — with a
-                    READY TO DELIVER heading above, it was a puzzle where a
-                    label used to be. A way box now shows its route pill, the
-                    same as a collection group, so both halves are read the
-                    same way.
-                  */}
-                  {group.isReturn ? (
-                    <Badge tone="blue">Return</Badge>
-                  ) : route ? (
-                    <span
-                      className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold text-white"
-                      style={{ backgroundColor: route.colour }}
-                    >
-                      {route.code.replace('ROUTE_', '')}
-                    </span>
-                  ) : (
-                    <Badge tone="red">No route</Badge>
-                  )}
-                  <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">
-                    {group.items.length} · {formatMmk(cod)}
-                  </span>
-                </header>
-
-                {/*
-                  THE WARDS INSIDE THE WAY. The office sorts the shelf into
-                  runs, but it thinks in wards while doing it — "Thitsar has
-                  four, Yadanar three". Each chip ticks its own ward, so a way
-                  can go out whole or be split without hunting individual rows.
-                */}
-                {group.isHubHeld && group.areas.length > 1 ? (
-                  <div className="flex flex-wrap gap-1 border-b bg-amber-50/50 p-2">
-                    {group.areas.map((a) => {
-                      const on = a.ids.every((id) => selected.has(id))
-                      return (
-                        <button
-                          key={a.name}
-                          type="button"
-                          onClick={() => onToggleMany(a.ids, !on)}
-                          aria-pressed={on}
-                          className={cn(
-                            'rounded-full border px-2 py-0.5 text-[10px] font-medium transition-colors',
-                            on
-                              ? 'border-brand-red bg-brand-red text-white'
-                              : 'bg-card hover:bg-muted',
-                          )}
-                        >
-                          {a.name} <span className="tabular-nums">{a.ids.length}</span>
-                        </button>
-                      )
-                    })}
-                  </div>
-                ) : null}
-
-                <ul className="divide-y">
+                      {group.sub ? (
+                        <span className="block truncate text-[10px] text-muted-foreground">{group.sub}</span>
+                      ) : null}
+                    </td>
+                    <td className="p-2 text-right text-[10px] tabular-nums text-muted-foreground">
+                      {group.items.length} · {formatMmk(cod)}
+                    </td>
+                  </tr>
                   {group.items.map((p) => {
                     const isSelected = selected.has(p.id)
                     return (
-                      <li key={p.id}>
-                        <label
-                          className={cn(
-                            'flex cursor-pointer items-start gap-2 p-2 text-xs',
-                            isSelected && 'bg-brand-gold/10',
-                          )}
-                        >
+                      <tr
+                        key={p.id}
+                        className={cn('cursor-pointer border-b last:border-b-0', isSelected && 'bg-brand-gold/10')}
+                        onClick={() => onToggle(p.id)}
+                      >
+                        <td className="p-2 align-top">
                           <input
                             type="checkbox"
                             checked={isSelected}
                             onChange={() => onToggle(p.id)}
-                            className="mt-0.5 size-4 shrink-0 accent-brand-red"
+                            onClick={(e) => e.stopPropagation()}
+                            className="size-4 accent-brand-red"
+                            aria-label={`Select ${p.code}`}
                           />
-                          <span className="min-w-0 flex-1">
-                            <span className="flex flex-wrap items-center gap-1.5">
-                              <span className="font-mono font-semibold">{p.code}</span>
-                              {p.status === 'failed' && !p.isReturn ? (
-                                <Badge tone="red">Retry</Badge>
-                              ) : null}
-                              {p.isFragile ? <Badge tone="amber">Fragile</Badge> : null}
-                            </span>
-                            <span className="block truncate text-muted-foreground">
-                              {p.customerName} · {p.dropoffAddress}
-                            </span>
+                        </td>
+                        <td className="p-2 align-top">
+                          <span className="font-mono font-semibold">{p.code}</span>
+                          <span className="mt-0.5 flex flex-wrap gap-1">
+                            {p.status === 'failed' && !p.isReturn ? <Badge tone="red">Retry</Badge> : null}
+                            {p.isFragile ? <Badge tone="amber">Fragile</Badge> : null}
                           </span>
-                          <span className="shrink-0 text-right tabular-nums">
-                            {p.isReturn ? (
-                              <span className="text-muted-foreground">No fee</span>
-                            ) : p.paymentMethod === 'cod' ? (
-                              <span className="flex items-center gap-1 font-medium">
-                                <Coins className="size-3" aria-hidden="true" />
-                                {formatMmk(p.codAmount)}
-                              </span>
-                            ) : (
-                              <span className="text-muted-foreground">Prepaid</span>
-                            )}
+                        </td>
+                        <td className="max-w-0 p-2 align-top">
+                          <span className="block truncate">{p.customerName}</span>
+                          <span className="block truncate text-muted-foreground">
+                            {tab === 'pickup' && p.areaName ? `${p.areaName} · ` : ''}
+                            {p.dropoffAddress}
                           </span>
-                        </label>
-                      </li>
+                        </td>
+                        <td className="p-2 text-right align-top tabular-nums">
+                          {p.isReturn ? (
+                            <span className="text-muted-foreground">No fee</span>
+                          ) : p.paymentMethod === 'cod' ? (
+                            <span className="inline-flex items-center gap-1 font-medium">
+                              <Coins className="size-3" aria-hidden="true" />
+                              {formatMmk(p.codAmount)}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground">Prepaid</span>
+                          )}
+                        </td>
+                      </tr>
                     )
                   })}
-                </ul>
-              </section>
-              </React.Fragment>
-            )
-          })
+                </tbody>
+              )
+            })}
+          </table>
         )}
       </div>
 
+      {/* ---- ASSIGN TO A WAY: the primary action (0049) ------------------ */}
+      <div className="space-y-1.5 rounded-md border border-primary/30 bg-primary/5 p-2">
+        <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+          Assign to a way
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <Select
+            value={assignWay}
+            onChange={(e) => setAssignWay(e.target.value)}
+            disabled={busy}
+            aria-label="Way"
+            className="min-w-0 flex-1 text-xs"
+          >
+            <option value="">Choose a way…</option>
+            {routes.map((r) => (
+              <option key={r.id} value={r.id}>
+                {wayLabel(r.code)} · {r.name.replace(/^(Way \d+|Local Way)\s*—\s*/, '')}
+              </option>
+            ))}
+          </Select>
+          {tab === 'delivery' && riders.length > 0 ? (
+            <Select
+              value={assignRider}
+              onChange={(e) => setAssignRider(e.target.value)}
+              disabled={busy}
+              aria-label="Rider for the way"
+              className="min-w-0 flex-1 text-xs"
+            >
+              <option value="">Rider (if the way has none yet)</option>
+              {riders.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.name}
+                  {r.onOpenTrip ? ' · on a run' : ''}
+                </option>
+              ))}
+            </Select>
+          ) : null}
+        </div>
+        <Button
+          block
+          disabled={busy || assignBlocker !== null}
+          onClick={() =>
+            onAssign(
+              chosen.map((p) => p.id),
+              assignWay,
+              send.leg,
+              tab === 'delivery' && assignRider ? assignRider : undefined,
+            )
+          }
+        >
+          <PackagePlus />
+          {chosen.length > 0
+            ? `Put ${chosen.length} on ${assignWay ? wayLabel(routes.find((r) => r.id === assignWay)?.code ?? '') : 'a way'}`
+            : 'Put on a way'}
+        </Button>
+        {assignBlocker ? (
+          <p className="text-center text-xs text-muted-foreground">{assignBlocker}</p>
+        ) : null}
+      </div>
+
+      {/*
+        THE OTHER TWO PATHS, kept but folded away. Sending straight to a rider
+        (assign and depart in one) and loading into the run picked on the left
+        both still work exactly as before; putting parcels on a way is simply
+        the one the office asked to lead with.
+      */}
+      <details className="rounded-md border p-2 [&[open]>summary]:mb-2">
+        <summary className="cursor-pointer text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+          Other ways to assign
+        </summary>
       {/* ---- the one load button --------------------------------------- */}
       {/* ---- SEND: the one-action path ---------------------------------- */}
       {/*
@@ -645,23 +701,28 @@ export function UnroutedPanel({
               })}
             </div>
 
-            {/* Derived, and changeable. Only consulted for a NEW run — a rider
-                already out keeps their own run's route. */}
-            {routes.length > 1 ? (
+            {/* Chosen by hand, never guessed from the townships. Only consulted
+                for a NEW run — a rider already out keeps their own run's way. */}
+            {riderOut ? (
+              <p className="text-xs text-muted-foreground">
+                Tops up the way this rider is already on.
+              </p>
+            ) : (
               <Select
                 value={routeForSend}
                 onChange={(e) => setSendRoute(e.target.value)}
                 disabled={busy}
-                aria-label="Route for a new run"
+                aria-label="Way for a new run"
                 className="text-xs"
               >
+                <option value="">Choose a way…</option>
                 {routes.map((r) => (
                   <option key={r.id} value={r.id}>
-                    {r.name}
+                    {wayLabel(r.code)} · {r.name.replace(/^(Way \d+|Local Way)\s*—\s*/, '')}
                   </option>
                 ))}
               </Select>
-            ) : null}
+            )}
 
             <Button
               block
@@ -720,6 +781,7 @@ export function UnroutedPanel({
           </p>
         ) : null}
       </div>
+      </details>
     </div>
   )
 }

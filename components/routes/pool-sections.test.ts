@@ -12,9 +12,8 @@ import { readFileSync } from 'node:fs'
  * having no badge at all. The rider app had proper headings the whole time; the
  * office did not.
  *
- * The delivery half also grouped by WARD, giving one box per area. With eight
- * wards across five routes that is a lot of boxes, none of which is the thing
- * the office hands to a rider. It groups by way now, wards inside.
+ * The delivery half is grouped by township, and the way is the office's own
+ * choice (0049) -- nothing here may suggest one from the parcel's area.
  *
  * There is no DOM harness here, so this is a source scan — the same shape as
  * `shop-nav.test.ts` and `print-chrome.test.ts`. It cannot prove the layout
@@ -38,20 +37,43 @@ describe('the office pool names its halves', () => {
     }
   })
 
-  test('the delivery half groups by way, not by ward', () => {
+  /**
+   * 0049 REVERSED 0040 ON PURPOSE. The shelf used to be boxed by the way each
+   * parcel's area maps to by default -- the board choosing the way. The office
+   * chooses it now, so the shelf is boxed by township and nothing in the panel
+   * may read a suggested way again.
+   */
+  test('the delivery half groups by township', () => {
     assert.match(
       SRC,
-      /isHubHeld\s*\n?\s*\?\s*`way:\$\{p\.suggestedRouteId/,
-      'hub-held parcels are no longer keyed on the route — one box per ward is back',
+      /isHubHeld\s*\n?\s*\?\s*`area:\$\{p\.areaId/,
+      'hub-held parcels are no longer keyed on their township',
     )
   })
 
+  test('no way is suggested from the township', () => {
+    const code = SRC.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
+    assert.ok(!/suggestedRoute/.test(code), 'the panel is suggesting a way again')
+  })
+
   /**
-   * The wards have to survive the regrouping or the office loses the detail it
-   * actually sorts by.
+   * Sending on a new run needs a way the office picked: the select starts
+   * empty, and the blocker names it.
    */
-  test('wards are still offered inside a way', () => {
-    assert.match(SRC, /group\.areas\.map/, 'the ward chips are gone from the way box')
+  test('a new run waits for the office to choose its way', () => {
+    assert.match(SRC, /<option value="">Choose a way…<\/option>/)
+    assert.match(SRC, /Choose a way for the new run\./)
+  })
+
+  /**
+   * The pool is split into two tabs, pickups and deliveries, and switching tab
+   * clears the ticks so a hidden selection can never be loaded.
+   */
+  test('pickup ways and delivery ways are separate tabs', () => {
+    assert.match(SRC, /role="tab"/)
+    assert.match(SRC, /'Pickup ways'/)
+    assert.match(SRC, /'Delivery ways'/)
+    assert.match(SRC, /setTab\(next\)[\s\S]{0,80}onClear\(\)/, 'switching tab no longer clears the ticks')
   })
 
   /**

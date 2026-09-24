@@ -6,6 +6,7 @@ import {
   Banknote,
   Bike,
   LayoutDashboard,
+  MessageSquarePlus,
   Package,
   Radio,
   Scale,
@@ -13,6 +14,7 @@ import {
   Store,
 } from 'lucide-react'
 import { ADMIN_NAV_EXACT, ADMIN_NAV_ITEMS } from '@/lib/admin/nav'
+import { t, type Locale } from '@/lib/i18n'
 import { activeHref } from '@/lib/nav/active'
 import { cn } from '@/lib/utils'
 
@@ -38,6 +40,7 @@ import { cn } from '@/lib/utils'
 const ICONS: Record<string, typeof Radio> = {
   radio: Radio,
   package: Package,
+  message: MessageSquarePlus,
   smartphone: Smartphone,
   dashboard: LayoutDashboard,
   bike: Bike,
@@ -46,7 +49,7 @@ const ICONS: Record<string, typeof Radio> = {
   scale: Scale,
 }
 
-export function AdminNav() {
+export function AdminNav({ locale }: { locale: Locale }) {
   const pathname = usePathname()
   const items = ADMIN_NAV_ITEMS
   // Longest match, so /admin/super/riders lights Riders and not Overview.
@@ -64,9 +67,11 @@ export function AdminNav() {
       aria-label="Admin sections"
       className="mx-auto flex max-w-[1600px] gap-1 overflow-x-auto px-2 pb-2"
     >
-      {items.map(({ href, label, icon }) => {
+      {items.map(({ href, label, labelKey, icon }) => {
         const Icon = ICONS[icon] ?? Radio
         const current = href === active
+        // Only items with a key follow the locale; the rest stay English.
+        const translated = labelKey && locale === 'my'
         return (
           <Link
             key={href}
@@ -81,7 +86,7 @@ export function AdminNav() {
             )}
           >
             <Icon className="size-4" />
-            {label}
+            {translated ? <span lang="my">{t(locale, labelKey)}</span> : label}
           </Link>
         )
       })}

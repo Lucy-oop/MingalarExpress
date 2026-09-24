@@ -33,10 +33,12 @@ alter table public.audit_log           enable row level security;
 -- profiles
 -- ----------------------------------------------------------------------------
 
+drop policy if exists profiles_read_self_or_dispatch on public.profiles;
 create policy profiles_read_self_or_dispatch on public.profiles
   for select to authenticated
   using (id = auth.uid() or public.is_dispatch());
 
+drop policy if exists profiles_update_self on public.profiles;
 create policy profiles_update_self on public.profiles
   for update to authenticated
   using (id = auth.uid() or public.is_admin())
@@ -44,6 +46,7 @@ create policy profiles_update_self on public.profiles
 
 -- Rows normally arrive via the auth signup trigger (definer, bypasses RLS).
 -- This covers Super Admin creating a profile ahead of an invite.
+drop policy if exists profiles_insert_admin on public.profiles;
 create policy profiles_insert_admin on public.profiles
   for insert to authenticated
   with check (public.is_admin());
@@ -55,9 +58,11 @@ create policy profiles_insert_admin on public.profiles
 -- service_areas  — reference data: everyone reads, admin writes
 -- ----------------------------------------------------------------------------
 
+drop policy if exists areas_read_all on public.service_areas;
 create policy areas_read_all on public.service_areas
   for select to authenticated using (true);
 
+drop policy if exists areas_write_admin on public.service_areas;
 create policy areas_write_admin on public.service_areas
   for all to authenticated
   using (public.is_admin()) with check (public.is_admin());
@@ -67,21 +72,25 @@ create policy areas_write_admin on public.service_areas
 -- shops
 -- ----------------------------------------------------------------------------
 
+drop policy if exists shops_owner_all on public.shops;
 create policy shops_owner_all on public.shops
   for all to authenticated
   using (owner_id = auth.uid())
   with check (owner_id = auth.uid());
 
+drop policy if exists shops_read_dispatch on public.shops;
 create policy shops_read_dispatch on public.shops
   for select to authenticated
   using (public.is_dispatch());
 
+drop policy if exists shops_write_admin on public.shops;
 create policy shops_write_admin on public.shops
   for all to authenticated
   using (public.is_admin()) with check (public.is_admin());
 
 -- A rider sees a shop's name, phone and pickup point only while carrying work
 -- for it. Definer helper, so this does not nest an RLS read of orders.
+drop policy if exists shops_read_rider_with_work on public.shops;
 create policy shops_read_rider_with_work on public.shops
   for select to authenticated
   using (public.rider_has_work_at_shop(id));
@@ -94,17 +103,21 @@ create policy shops_read_rider_with_work on public.shops
 --  privileges -- see the note in 0002 §3.
 -- ----------------------------------------------------------------------------
 
+drop policy if exists riders_read_self on public.rider_profiles;
 create policy riders_read_self on public.rider_profiles
   for select to authenticated using (id = auth.uid());
 
+drop policy if exists riders_update_self on public.rider_profiles;
 create policy riders_update_self on public.rider_profiles
   for update to authenticated
   using (id = auth.uid())
   with check (id = auth.uid());
 
+drop policy if exists riders_read_dispatch on public.rider_profiles;
 create policy riders_read_dispatch on public.rider_profiles
   for select to authenticated using (public.is_dispatch());
 
+drop policy if exists riders_write_admin on public.rider_profiles;
 create policy riders_write_admin on public.rider_profiles
   for all to authenticated
   using (public.is_admin()) with check (public.is_admin());
@@ -115,10 +128,12 @@ create policy riders_write_admin on public.rider_profiles
 -- ----------------------------------------------------------------------------
 
 -- Shop: reads its own, creates pending ones, may cancel only while pending.
+drop policy if exists orders_read_shop on public.orders;
 create policy orders_read_shop on public.orders
   for select to authenticated
   using (public.owns_shop(shop_id));
 
+drop policy if exists orders_insert_shop on public.orders;
 create policy orders_insert_shop on public.orders
   for insert to authenticated
   with check (
@@ -131,12 +146,14 @@ create policy orders_insert_shop on public.orders
     and platform_fee_amount     is null
   );
 
+drop policy if exists orders_update_shop on public.orders;
 create policy orders_update_shop on public.orders
   for update to authenticated
   using (public.owns_shop(shop_id) and status = 'pending')
   with check (public.owns_shop(shop_id) and status in ('pending','cancelled'));
 
 -- Rider: reads assigned work plus any live offer aimed at them.
+drop policy if exists orders_read_rider on public.orders;
 create policy orders_read_rider on public.orders
   for select to authenticated
   using (
@@ -152,12 +169,14 @@ create policy orders_read_rider on public.orders
 
 -- Rider UPDATE is belt-and-braces: real transitions go through advance_order().
 -- Scoped so a rider can only ever touch an order that is currently theirs.
+drop policy if exists orders_update_rider on public.orders;
 create policy orders_update_rider on public.orders
   for update to authenticated
   using (rider_id = auth.uid() and status in ('assigned','picked_up'))
   with check (rider_id = auth.uid());
 
 -- Dispatch / admin: full control.
+drop policy if exists orders_all_dispatch on public.orders;
 create policy orders_all_dispatch on public.orders
   for all to authenticated
   using (public.is_dispatch()) with check (public.is_dispatch());
@@ -170,6 +189,7 @@ create policy orders_all_dispatch on public.orders
 --  and none should be added.
 -- ----------------------------------------------------------------------------
 
+drop policy if exists ose_read on public.order_status_events;
 create policy ose_read on public.order_status_events
   for select to authenticated
   using (
@@ -186,16 +206,19 @@ create policy ose_read on public.order_status_events
 -- order_assignments
 -- ----------------------------------------------------------------------------
 
+drop policy if exists oa_read_own_or_dispatch on public.order_assignments;
 create policy oa_read_own_or_dispatch on public.order_assignments
   for select to authenticated
   using (rider_id = auth.uid() or public.is_dispatch());
 
 -- A rider may accept or reject an offer aimed at them, while it is still live.
+drop policy if exists oa_respond_rider on public.order_assignments;
 create policy oa_respond_rider on public.order_assignments
   for update to authenticated
   using (rider_id = auth.uid() and response = 'pending' and expires_at > now())
   with check (rider_id = auth.uid() and response in ('accepted','rejected'));
 
+drop policy if exists oa_write_dispatch on public.order_assignments;
 create policy oa_write_dispatch on public.order_assignments
   for all to authenticated
   using (public.is_dispatch()) with check (public.is_dispatch());
@@ -207,12 +230,14 @@ create policy oa_write_dispatch on public.order_assignments
 --  reversed with an 'adjustment' line. This is the whole point of a ledger.
 -- ----------------------------------------------------------------------------
 
+drop policy if exists cod_read_own_or_dispatch on public.cod_ledger;
 create policy cod_read_own_or_dispatch on public.cod_ledger
   for select to authenticated
   using (rider_id = auth.uid() or public.is_dispatch());
 
 -- Manual adjustments / cash remittance only. The automatic cod_collected and
 -- commission_earned lines are written by the definer trigger.
+drop policy if exists cod_insert_admin on public.cod_ledger;
 create policy cod_insert_admin on public.cod_ledger
   for insert to authenticated
   with check (
@@ -226,10 +251,12 @@ create policy cod_insert_admin on public.cod_ledger
 -- settlements
 -- ----------------------------------------------------------------------------
 
+drop policy if exists stl_read_own_or_dispatch on public.settlements;
 create policy stl_read_own_or_dispatch on public.settlements
   for select to authenticated
   using (rider_id = auth.uid() or public.is_dispatch());
 
+drop policy if exists stl_write_admin on public.settlements;
 create policy stl_write_admin on public.settlements
   for all to authenticated
   using (public.is_admin()) with check (public.is_admin());
@@ -241,9 +268,11 @@ create policy stl_write_admin on public.settlements
 --  makes a second row impossible anyway.
 -- ----------------------------------------------------------------------------
 
+drop policy if exists settings_read_all on public.app_settings;
 create policy settings_read_all on public.app_settings
   for select to authenticated using (true);
 
+drop policy if exists settings_update_admin on public.app_settings;
 create policy settings_update_admin on public.app_settings
   for update to authenticated
   using (public.is_admin()) with check (public.is_admin());
@@ -253,6 +282,7 @@ create policy settings_update_admin on public.app_settings
 -- audit_log  — read: admin only. write: definer functions only.
 -- ----------------------------------------------------------------------------
 
+drop policy if exists audit_read_admin on public.audit_log;
 create policy audit_read_admin on public.audit_log
   for select to authenticated using (public.is_admin());
 

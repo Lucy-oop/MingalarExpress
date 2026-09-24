@@ -32,6 +32,7 @@ on conflict (id) do nothing;
 
 -- The assigned rider may upload, but only while the order is actually live.
 -- A delivered order is closed: no more photos.
+drop policy if exists proofs_insert_rider on storage.objects;
 create policy proofs_insert_rider on storage.objects
   for insert to authenticated
   with check (
@@ -46,6 +47,7 @@ create policy proofs_insert_rider on storage.objects
   );
 
 -- Readable by: the rider who delivered it, the shop that sent it, dispatch/admin.
+drop policy if exists proofs_read_parties on storage.objects;
 create policy proofs_read_parties on storage.objects
   for select to authenticated
   using (
@@ -62,6 +64,7 @@ create policy proofs_read_parties on storage.objects
 
 -- Proof photos are evidence in COD disputes. Only Super Admin may delete, and
 -- there is deliberately no UPDATE policy (no silent overwrite of a proof).
+drop policy if exists proofs_delete_admin on storage.objects;
 create policy proofs_delete_admin on storage.objects
   for delete to authenticated
   using (bucket_id = 'delivery-proofs' and public.is_admin());
@@ -71,6 +74,7 @@ create policy proofs_delete_admin on storage.objects
 -- avatars  — own folder only
 -- ----------------------------------------------------------------------------
 
+drop policy if exists avatars_rw_self on storage.objects;
 create policy avatars_rw_self on storage.objects
   for all to authenticated
   using (
@@ -82,6 +86,7 @@ create policy avatars_rw_self on storage.objects
     and (storage.foldername(name))[1] = auth.uid()::text
   );
 
+drop policy if exists avatars_read_dispatch on storage.objects;
 create policy avatars_read_dispatch on storage.objects
   for select to authenticated
   using (bucket_id = 'avatars' and public.is_dispatch());

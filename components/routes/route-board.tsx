@@ -6,17 +6,20 @@ import { Plus, RefreshCw } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { TripCard } from '@/components/routes/trip-card'
 import { UnroutedPanel, type PanelTarget } from '@/components/routes/unrouted-panel'
+import { ReceiveDialog } from '@/components/routes/receive-dialog'
+import { wayLabel } from '@/lib/routes/ways'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Alert } from '@/components/ui/alert'
 import {
+  assignToWay,
   assignTripRider,
   cancelTrip,
   closeTrip,
   departTrip,
   loadTrip,
   planTrip,
-  receiveTrip,
+  receiveTripParcels,
   returnTrip,
   sendToRider,
   unloadTrip,
@@ -35,9 +38,14 @@ type Feedback = { tone: 'success' | 'error' | 'info'; message: string }
  * right and loads them into a run on the left, over and over, until the runs are
  * full enough to send.
  *
- * Runs are grouped by route and every active route gets a section even with no
- * run planned — an empty ROUTE_C section is information ("nobody has planned the
- * north run yet"), whereas its absence looks like the route does not exist.
+ * Runs are grouped by way and every active way gets a section even with no
+ * run planned -- an empty Way 3 section is information ("nobody has planned the
+ * north run yet"), whereas its absence looks like the way does not exist.
+ *
+ * THE PARCEL PANEL is where pickups and deliveries are split, as two tabs: the
+ * runs stay one list because a rider has one open run and it may carry both.
+ * The way for a new run, and for every parcel, is the office's choice --
+ * nothing is assigned from the township any more (0049).
  *
  * Server state comes from `getPlanningBoard` and is refreshed with
  * `router.refresh()` after every action. No optimistic local mutation: two
@@ -63,6 +71,8 @@ export function RouteBoard({ board }: { board: PlanningBoard }) {
    * button.
    */
   const [targetTripId, setTargetTripId] = React.useState<string | null>(null)
+  /** The pickup run whose Received checklist is open. */
+  const [receiving, setReceiving] = React.useState<string | null>(null)
 
   /*
     Drop ticks for parcels that left the pool (another dispatcher loaded them).
@@ -189,9 +199,13 @@ export function RouteBoard({ board }: { board: PlanningBoard }) {
     }
     return map
   }, [board.trips])
+  const receivingTrip = board.trips.find((t) => t.id === receiving) ?? null
+  const routeName = (routeId: string) => {
+    const r = board.routes.find((x) => x.id === routeId)
+    return r ? wayLabel(r.code) : 'Way'
+  }
 
   const totalUnrouted = board.unrouted.length + board.returns.length + board.hubHeld.length
-  const unmapped = board.unrouted.filter((p) => p.suggestedRouteId === null).length
 
   /**
    * One pool, deliveries and returns together.
@@ -228,7 +242,7 @@ export function RouteBoard({ board }: { board: PlanningBoard }) {
       maxParcels: route.maxParcels,
       maxCod: route.maxCod,
       hasRider: trip.riderId !== null,
-      label: `${route.code.replace('ROUTE_', 'Route ')} · run ${index}`,
+      label: `${wayLabel(route.code)} · run ${index}`,
       colour: route.colour,
       riderName: trip.riderName,
     }
@@ -238,7 +252,7 @@ export function RouteBoard({ board }: { board: PlanningBoard }) {
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
-          <h1 className="text-xl font-semibold">Route planning</h1>
+          <h1 className="text-xl font-semibold">Ways</h1>
           <Badge tone="neutral">{board.serviceDate}</Badge>
           <Badge tone={totalUnrouted > 0 ? 'amber' : 'green'}>
             {totalUnrouted} unrouted
@@ -276,12 +290,12 @@ export function RouteBoard({ board }: { board: PlanningBoard }) {
         thing left is to send it out.
       */}
       {board.hubHeld.length > 0 ? (
-        <Alert tone="warning" title={`${board.hubHeld.length} at the hub, waiting to go out`}>
+        <Alert tone="warning" title={`${board.hubHeld.length} in the hub, ready for delivery`}>
           <ParcelLine parcels={board.hubHeld} />
           <span className="mt-1 block text-xs">
-            Already collected and on the shelf. These are the only parcels a delivery run can
-            carry — grouped by <strong>destination area</strong> in the list, since that is where
-            they are going. Give the run a rider, tick them, and load.
+            Received at the office and ready for delivery. They are listed by{' '}
+            <strong>township</strong> under <em>In hub · ready to deliver</em> — choose the delivery
+            way for them yourself, tick them, and load or send.
           </span>
         </Alert>
       ) : null}
@@ -301,16 +315,8 @@ export function RouteBoard({ board }: { board: PlanningBoard }) {
         </Alert>
       ) : null}
 
-      {unmapped > 0 ? (
-        <Alert tone="error" title="Parcels with no route">
-          {unmapped} parcel{unmapped === 1 ? '' : 's'} sit in an area that is not mapped to any
-          route, so no run can carry them. Map the area under Areas, or the parcels will keep
-          ageing here unseen.
-        </Alert>
-      ) : null}
-
       <div className="grid gap-3 lg:grid-cols-[minmax(0,1.6fr)_minmax(340px,1fr)]">
-        {/* ---- runs, grouped by route --------------------------------- */}
+        {/* ---- runs, grouped by way ----------------------------------- */}
         <div className="space-y-4">
           {board.routes.map((route) => {
             const trips = tripsByRoute.get(route.id) ?? []
@@ -323,7 +329,7 @@ export function RouteBoard({ board }: { board: PlanningBoard }) {
                       style={{ backgroundColor: route.colour }}
                       aria-hidden="true"
                     />
-                    {route.code.replace('ROUTE_', 'Route ')}
+                    {wayLabel(route.code)}
                     <span className="font-normal normal-case tracking-normal">
                       {formatMmk(route.perParcelFee)}/parcel
                     </span>
@@ -348,7 +354,7 @@ export function RouteBoard({ board }: { board: PlanningBoard }) {
 
                 {trips.length === 0 ? (
                   <p className="rounded-lg border border-dashed p-4 text-center text-xs text-muted-foreground">
-                    No run planned on this route yet.
+                    No run planned on this way yet.
                   </p>
                 ) : (
                   trips.map((trip) => (
@@ -365,7 +371,8 @@ export function RouteBoard({ board }: { board: PlanningBoard }) {
                         onUnload={(ids) => void run(trip.id, () => unloadTrip(trip.id, ids))}
                         onDepart={() => void handleDepart(trip)}
                         onReturn={() => void run(trip.id, () => returnTrip(trip.id))}
-                        onReceive={() => void run(trip.id, () => receiveTrip(trip.id), true)}
+                        // 0049: opens the checklist; only ticked parcels are received.
+                        onReceive={() => setReceiving(trip.id)}
                         onClose={() => {
                           if (
                             !window.confirm(
@@ -417,10 +424,33 @@ export function RouteBoard({ board }: { board: PlanningBoard }) {
             onSend={(ids, riderId, routeId, leg) =>
               void run('send', () => sendToRider(ids, riderId, routeId, leg), true)
             }
+            onAssign={(ids, routeId, leg, riderId) =>
+              void run(
+                'assign',
+                () => assignToWay(ids, routeId, leg, board.serviceDate, riderId),
+                true,
+              ).then((r) => {
+                // The run they landed on becomes the target, so the office
+                // sees where they went on the left.
+                if (r.ok && r.tripId) setTargetTripId(r.tripId)
+              })
+            }
           />
         </section>
       </div>
 
+      <ReceiveDialog
+        trip={receivingTrip}
+        wayName={receivingTrip ? routeName(receivingTrip.routeId) : ''}
+        busy={busyTripId !== null}
+        onClose={() => setReceiving(null)}
+        onConfirm={(ids) => {
+          if (!receivingTrip) return
+          void run(receivingTrip.id, () => receiveTripParcels(receivingTrip.id, ids)).then((r) => {
+            if (r.ok) setReceiving(null)
+          })
+        }}
+      />
     </div>
   )
 }

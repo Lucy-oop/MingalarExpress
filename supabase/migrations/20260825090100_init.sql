@@ -165,6 +165,7 @@ create index shops_owner_idx  on public.shops (owner_id);
 create index shops_area_idx   on public.shops (area_id);
 create index shops_pickup_gix on public.shops using gist (pickup_geog);
 
+drop trigger if exists shops_touch on public.shops;
 create trigger shops_touch before update on public.shops
 for each row execute function public.tg_touch_updated_at();
 
@@ -217,6 +218,7 @@ create index riders_dispatch_gix on public.rider_profiles using gist (current_ge
 create index riders_area_idx on public.rider_profiles (base_area_id) where is_online;
 create index riders_ping_idx on public.rider_profiles (last_ping_at desc) where is_online;
 
+drop trigger if exists riders_touch on public.rider_profiles;
 create trigger riders_touch before update on public.rider_profiles
 for each row execute function public.tg_touch_updated_at();
 
@@ -449,6 +451,7 @@ create table public.settlements (
 create index settlements_rider_idx  on public.settlements (rider_id, period_date desc);
 create index settlements_status_idx on public.settlements (status, period_date desc);
 
+drop trigger if exists settlements_touch on public.settlements;
 create trigger settlements_touch before update on public.settlements
 for each row execute function public.tg_touch_updated_at();
 
@@ -511,6 +514,7 @@ create table public.app_settings (
 
 insert into public.app_settings (id) values (true) on conflict (id) do nothing;
 
+drop trigger if exists app_settings_touch on public.app_settings;
 create trigger app_settings_touch before update on public.app_settings
 for each row execute function public.tg_touch_updated_at();
 

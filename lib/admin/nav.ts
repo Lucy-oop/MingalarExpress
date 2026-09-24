@@ -17,9 +17,17 @@
  * list. The filter in components/admin/admin-nav went with the flag.
  */
 
+import type { MessageKey } from '@/lib/i18n'
+
 export type NavItem = {
   href: string
   label: string
+  /**
+   * Translated label, for the few admin items the office wants in Burmese.
+   * The rest of the panel is English; `label` is the fallback and the name
+   * tests match on.
+   */
+  labelKey?: MessageKey
   /** Icon key; the client component owns the actual lucide component. */
   icon: string
 }
@@ -29,6 +37,8 @@ export const ADMIN_NAV_ITEMS: readonly NavItem[] = [
   // The office's landing page. Was /admin/dispatcher; /admin had no index.
   { href: '/admin', label: 'Runs', icon: 'radio' },
   { href: '/admin/orders', label: 'Orders', icon: 'package' },
+  // Parcels booked by hand from a chat or a phone call. See app/admin/outside-way.
+  { href: '/admin/outside-way', label: 'Outside Way', labelKey: 'ow.nav', icon: 'message' },
   { href: '/admin/kpay', label: 'KBZPay', icon: 'smartphone' },
   { href: '/admin/super', label: 'Overview', icon: 'dashboard' },
   { href: '/admin/super/riders', label: 'Riders', icon: 'bike' },

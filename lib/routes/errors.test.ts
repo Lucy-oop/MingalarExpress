@@ -32,6 +32,8 @@ describe('explainTripError', () => {
 
   const cases: Array<[string, string]> = [
     ['trip_has_no_rider', 'no_rider'],
+    ['trip_has_unreceived_pickups: 2', 'unreceived_pickups'],
+    ['parcels_not_receivable: 1 of 3', 'parcels_not_receivable'],
     ['rider_already_on_trip', 'rider_busy'],
     ['trip_empty', 'empty'],
     ['trip_over_cod_cap: 2500000 > 2000000', 'over_cod_cap'],

@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { wayLabel } from '@/lib/routes/ways'
 import { MessageSquare } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { StatusBadge } from '@/components/orders/status-badge'
@@ -124,7 +125,7 @@ export function AdminOrderTable({
                       <span
                         className="size-2 shrink-0 rounded-full"
                         style={{ backgroundColor: o.routes.colour }}
-                        title={o.routes.code}
+                        title={wayLabel(o.routes.code)}
                         aria-hidden="true"
                       />
                     ) : null}

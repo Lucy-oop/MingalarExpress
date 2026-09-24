@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { assertRole } from '@/lib/auth/guards'
 import { explainTripError, validateOverrideReason } from '@/lib/routes/errors'
+import type { TripKind } from '@/lib/routes/ways'
 
 /**
  * Dispatcher write actions for the route model.
@@ -40,13 +41,48 @@ const DENIED: TripResult = {
   retry: false,
 }
 
+/**
+ * Record the way a parcel is going out on, once the office has chosen it.
+ *
+ * `orders.route_id` used to be written at booking from the area's default
+ * route; since 0049 nothing assigns a way automatically, so this is where it
+ * gets its value -- the way of the delivery run the parcel was loaded onto.
+ * Pickup legs do not write it: the run that collects a parcel says nothing
+ * about where it will be delivered.
+ *
+ * Best effort. The load has already succeeded, and a failure here only means
+ * the order list shows no way for this parcel.
+ */
+async function recordWay(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  tripId: string,
+  orderIds: string[],
+  leg: 'delivery' | 'pickup' | 'return',
+) {
+  if (leg !== 'delivery' || orderIds.length === 0) return
+  const { data: trip } = await supabase.from('trips').select('route_id').eq('id', tripId).maybeSingle()
+  if (!trip?.route_id) return
+  await supabase.from('orders').update({ route_id: trip.route_id }).in('id', orderIds)
+}
+
 function fail(raw: string | null | undefined): TripResult {
   const { message, retry } = explainTripError(raw)
   refresh()
   return { ok: false, message, retry }
 }
 
-export async function planTrip(routeId: string, serviceDate?: string): Promise<TripResult> {
+/**
+ * A new, empty run on a way the office chose.
+ *
+ * `kind` is optional and informational (trips.kind, 0049): written straight
+ * onto the row rather than through `plan_trip`, so the RPC's signature stays
+ * what 0008 defined. The board no longer places runs by it.
+ */
+export async function planTrip(
+  routeId: string,
+  serviceDate?: string,
+  kind?: TripKind,
+): Promise<TripResult> {
   let supabase
   try {
     supabase = await dispatchClient()
@@ -60,8 +96,10 @@ export async function planTrip(routeId: string, serviceDate?: string): Promise<T
   })
   if (error) return fail(error.message)
 
-  refresh()
   const trip = data as unknown as { id?: string } | null
+  if (trip?.id && kind) await supabase.from('trips').update({ kind }).eq('id', trip.id)
+
+  refresh()
   return { ok: true, message: 'Run created.', tripId: trip?.id }
 }
 
@@ -104,6 +142,7 @@ export async function loadTrip(
     p_leg: leg,
   })
   if (error) return fail(error.message)
+  await recordWay(supabase, tripId, orderIds, leg)
 
   refresh()
   const n = orderIds.length
@@ -215,6 +254,40 @@ export async function receiveTrip(tripId: string): Promise<TripResult> {
   return {
     ok: true,
     message: `On the shelf. ${shelved} ${shelved === 1 ? 'parcel is' : 'parcels are'} ready to sort.`,
+  }
+}
+
+/**
+ * Receive only the parcels the office ticked off the bike (0049).
+ *
+ * `receiveTrip` above shelves everything collected on the run; this is the
+ * checklist version. Unticked parcels stay on the run, still `picked_up`, so a
+ * parcel the rider says they have but nobody has seen is not silently shelved.
+ * All or nothing over the ticked ids -- see `receive_trip_parcels`.
+ */
+export async function receiveTripParcels(tripId: string, orderIds: string[]): Promise<TripResult> {
+  let supabase
+  try {
+    supabase = await dispatchClient()
+  } catch {
+    return DENIED
+  }
+
+  if (orderIds.length === 0) {
+    return { ok: false, message: 'Tick the parcels that came off the bike.', retry: false }
+  }
+
+  const { data, error } = await supabase.rpc('receive_trip_parcels', {
+    p_trip_id: tripId,
+    p_order_ids: orderIds,
+  })
+  if (error) return fail(error.message)
+
+  refresh()
+  const n = typeof data === 'number' ? data : orderIds.length
+  return {
+    ok: true,
+    message: `${n} ${n === 1 ? 'parcel is' : 'parcels are'} in the hub and ready for a delivery way.`,
   }
 }
 
@@ -358,6 +431,11 @@ export async function sendToRider(
     if (error) return fail(error.message)
     tripId = (data as unknown as { id?: string } | null)?.id
     if (!tripId) return fail('plan_trip returned no run')
+    // A return rides out to a shop, so it is delivery-side work.
+    await supabase
+      .from('trips')
+      .update({ kind: leg === 'pickup' ? 'pickup' : 'delivery' })
+      .eq('id', tripId)
   }
 
   const { error: loadError } = await supabase.rpc('load_trip', {
@@ -366,6 +444,7 @@ export async function sendToRider(
     p_leg: leg,
   })
   if (loadError) return fail(loadError.message)
+  await recordWay(supabase, tripId, orderIds, leg)
 
   // A run that was already out stays out. Only one created here needs sending.
   if (!joinedExisting) {
@@ -381,6 +460,119 @@ export async function sendToRider(
     message: joinedExisting
       ? `${parcels} added to the run already on the road.`
       : `${parcels} sent out.`,
+    tripId,
+  }
+}
+
+/**
+ * Put the ticked parcels on a WAY the office chose (0049).
+ *
+ * The office decides the way; this finds that way's run and loads them onto
+ * it, so they appear under the way on the left of the board. The run is:
+ *
+ *   1. an open run on that way today -- planned or loading, and for delivery
+ *      work one that already HAS a rider (see below) -- oldest first
+ *   2. otherwise the chosen rider's open run, if it is on this same way
+ *   3. otherwise a new run on the way, with the chosen rider if one was given
+ *
+ * WHY DELIVERIES NEED A RIDER. Loading a hub-held parcel marks it `assigned`
+ * to the run's rider, and `orders_assigned_needs_rider` refuses a rider-less
+ * assignment -- the same rule the load button enforces as held_needs_rider.
+ * A collection can wait on a rider-less run; a delivery cannot.
+ *
+ * Composes existing RPCs, like `sendToRider`, and is not atomic across them:
+ * a failure after step 3 leaves an empty, visible, cancellable run.
+ */
+export async function assignToWay(
+  orderIds: string[],
+  routeId: string,
+  leg: 'delivery' | 'pickup' | 'return',
+  serviceDate: string,
+  riderId?: string,
+): Promise<TripResult> {
+  let supabase
+  try {
+    supabase = await dispatchClient()
+  } catch {
+    return DENIED
+  }
+  if (orderIds.length === 0) {
+    return { ok: false, message: 'Tick some parcels first.', retry: false }
+  }
+  if (!routeId) return { ok: false, message: 'Choose a way.', retry: false }
+
+  const needsRider = leg !== 'pickup'
+
+  // 1. An open run already on this way.
+  let query = supabase
+    .from('trips')
+    .select('id, rider_id')
+    .eq('route_id', routeId)
+    .eq('service_date', serviceDate)
+    .in('status', ['planned', 'loading'])
+    .order('created_at', { ascending: true })
+    .limit(1)
+  if (needsRider) query = query.not('rider_id', 'is', null)
+  if (riderId) query = query.eq('rider_id', riderId)
+  const { data: runs, error: runError } = await query
+  if (runError) return fail(runError.message)
+  let tripId: string | undefined = runs?.[0]?.id
+
+  if (!tripId && riderId) {
+    // 2. The rider may already be out on this way (one open run per rider).
+    const { data: open } = await supabase
+      .from('trips')
+      .select('id, route_id')
+      .eq('rider_id', riderId)
+      .in('status', ['planned', 'loading', 'departed'])
+      .maybeSingle()
+    if (open && open.route_id !== routeId) {
+      return {
+        ok: false,
+        message: 'That rider is already on a run on another way. Choose another rider.',
+        retry: false,
+      }
+    }
+    tripId = open?.id
+  }
+
+  if (!tripId) {
+    if (needsRider && !riderId) {
+      return {
+        ok: false,
+        message:
+          'This way has no run with a rider yet. Choose a rider to go with it — parcels in the hub go out with a rider.',
+        retry: false,
+      }
+    }
+    // 3. A new run on the way.
+    const { data, error } = await supabase.rpc('plan_trip', {
+      p_route_id: routeId,
+      p_service_date: serviceDate,
+      ...(riderId ? { p_rider_id: riderId } : {}),
+    })
+    if (error) return fail(error.message)
+    tripId = (data as unknown as { id?: string } | null)?.id
+    if (!tripId) return fail('plan_trip returned no run')
+    await supabase
+      .from('trips')
+      .update({ kind: leg === 'pickup' ? 'pickup' : 'delivery' })
+      .eq('id', tripId)
+  }
+
+  const { error: loadError } = await supabase.rpc('load_trip', {
+    p_trip_id: tripId,
+    p_order_ids: orderIds,
+    p_leg: leg,
+  })
+  if (loadError) return fail(loadError.message)
+  await recordWay(supabase, tripId, orderIds, leg)
+
+  refresh()
+  const n = orderIds.length
+  return {
+    ok: true,
+    message: `${n} ${n === 1 ? 'parcel' : 'parcels'} put on the way.`,
     tripId,
   }
 }

@@ -80,6 +80,7 @@ alter table public.orders
 
 -- Half a pin is not a location. Same hole as 0034/0036: a null LATITUDE with a
 -- real longitude passes the constraint above on its first branch.
+alter table public.orders drop constraint if exists orders_dropoff_pin_complete;
 alter table public.orders
   add constraint orders_dropoff_pin_complete
   check ((dropoff_lat is null) = (dropoff_lng is null));
@@ -97,6 +98,7 @@ alter table public.orders
   failure against historical orders. This says what is actually needed -- one
   locator, either kind -- and leaves the FK alone.
 */
+alter table public.orders drop constraint if exists orders_dropoff_locatable;
 alter table public.orders
   add constraint orders_dropoff_locatable
   check (dropoff_area_id is not null or dropoff_lat is not null);

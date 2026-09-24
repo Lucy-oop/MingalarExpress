@@ -77,6 +77,16 @@
   --color-brand-gold: var(--brand-gold);
   --color-charcoal: var(--charcoal);
 
+  /* Noto Sans Myanmar first, for every Burmese character in the product. Its
+     @font-face is limited to the Myanmar block (lib/fonts.ts), so Latin text
+     falls through to the system stack behind it. */
+  --font-sans:
+    var(--font-myanmar), ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto,
+    'Noto Sans Myanmar', sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, var(--font-myanmar),
+    'Noto Sans Myanmar', monospace;
+
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);

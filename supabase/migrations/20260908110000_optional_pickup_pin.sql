@@ -78,6 +78,7 @@ alter table public.shops
   false... which would fail. It is the reverse case that slips through: null lat
   with a real lng passes on the first branch and stores half a point.
 */
+alter table public.shops drop constraint if exists shops_pickup_pin_complete;
 alter table public.shops
   add constraint shops_pickup_pin_complete
   check ((pickup_lat is null) = (pickup_lng is null));

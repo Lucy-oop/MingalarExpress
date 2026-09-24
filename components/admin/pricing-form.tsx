@@ -3,6 +3,7 @@
 import { useActionState, useMemo, useState } from 'react'
 import { useFormStatus } from 'react-dom'
 import { Percent, Save } from 'lucide-react'
+import { wayLabel } from '@/lib/routes/ways'
 import { updatePricing, type AdminResult } from '@/lib/admin/actions'
 import {
   quoteTripPay,
@@ -278,7 +279,7 @@ export function PricingForm({
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-y bg-muted/50 text-left text-[10px] uppercase tracking-wide text-muted-foreground">
-                    <th className="px-3 py-2 font-medium">Route</th>
+                    <th className="px-3 py-2 font-medium">Way</th>
                     <th className="px-3 py-2 text-right font-medium">Zone fee / parcel</th>
                     <th className="px-3 py-2 text-right font-medium">Rider @ {PREVIEW_PARCELS}</th>
                     <th className="px-3 py-2 text-right font-medium">Margin @ {PREVIEW_PARCELS}</th>
@@ -294,7 +295,7 @@ export function PricingForm({
                             style={{ backgroundColor: route.colour }}
                             aria-hidden="true"
                           />
-                          {route.code.replace('ROUTE_', '')}
+                          {wayLabel(route.code)}
                         </span>
                       </td>
                       <td className="px-3 py-2 text-right font-medium tabular-nums">

@@ -122,6 +122,7 @@ begin
   return new;
 end $$;
 
+drop trigger if exists profiles_guard on public.profiles;
 create trigger profiles_guard before update on public.profiles
 for each row execute function public.tg_profiles_guard();
 
@@ -155,6 +156,7 @@ begin
   return new;
 end $$;
 
+drop trigger if exists riders_guard on public.rider_profiles;
 create trigger riders_guard before update on public.rider_profiles
 for each row execute function public.tg_riders_guard();
 
@@ -168,6 +170,7 @@ begin
   return new;
 end $$;
 
+drop trigger if exists app_settings_audit on public.app_settings;
 create trigger app_settings_audit before update on public.app_settings
 for each row execute function public.tg_settings_audit();
 
@@ -237,9 +240,11 @@ begin
   return new;
 end $$;
 
+drop trigger if exists orders_status_machine on public.orders;
 create trigger orders_status_machine before update on public.orders
 for each row execute function public.tg_orders_status_machine();
 
+drop trigger if exists orders_touch on public.orders;
 create trigger orders_touch before update on public.orders
 for each row execute function public.tg_touch_updated_at();
 
@@ -320,6 +325,7 @@ begin
   return new;
 end $$;
 
+drop trigger if exists orders_audit on public.orders;
 create trigger orders_audit after insert or update on public.orders
 for each row execute function public.tg_orders_audit();
 

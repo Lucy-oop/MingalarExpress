@@ -21,7 +21,7 @@ import { formatMyanmarPhone } from '@/lib/utils'
  */
 
 /** Fallback for `app_settings.support_phone`. Also the KBZPay number (0021). */
-const OFFICE_PHONE = '+959764148037'
+export const OFFICE_PHONE = '+959764148037'
 
 /**
  * Two, and both are real. In Myanmar a Viber account IS a phone number, so

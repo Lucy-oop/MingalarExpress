@@ -21,6 +21,7 @@ import {
 import { RiderPicker } from '@/components/routes/rider-picker'
 import { departBlocker, DEPART_BLOCKER_MESSAGE } from '@/lib/routes/depart-gate'
 import { LOADABLE_STATUSES, summariseManifest } from '@/lib/routes/load-gate'
+import { isReceivable } from '@/lib/routes/ways'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { StatusBadge } from '@/components/orders/status-badge'
@@ -28,7 +29,7 @@ import { cn, formatMmk } from '@/lib/utils'
 import type { BoardRider, BoardTrip } from '@/lib/routes/queries'
 import type { OrderStatus } from '@/types/domain'
 
-const TRIP_STATUS_TONE: Record<BoardTrip['status'], 'neutral' | 'gold' | 'blue' | 'green' | 'red'> =
+export const TRIP_STATUS_TONE: Record<BoardTrip['status'], 'neutral' | 'gold' | 'blue' | 'green' | 'red'> =
   {
     planned: 'neutral',
     loading: 'gold',
@@ -38,7 +39,7 @@ const TRIP_STATUS_TONE: Record<BoardTrip['status'], 'neutral' | 'gold' | 'blue' 
     cancelled: 'red',
   }
 
-const TRIP_STATUS_LABEL: Record<BoardTrip['status'], string> = {
+export const TRIP_STATUS_LABEL: Record<BoardTrip['status'], string> = {
   planned: 'Planned',
   loading: 'Loading',
   departed: 'On the road',
@@ -125,6 +126,8 @@ export function TripCard({
     pickupCount: trip.pickupCount,
   })
   const summary = React.useMemo(() => summariseManifest(trip.parcels), [trip.parcels])
+  // Collected and still on the bike: what the Received checklist can tick.
+  const receivable = trip.parcels.filter(isReceivable).length
   const quiet = isVolumeSilent(trip.status, trip.parcelCount, trip.pickupCount)
 
   // Drop ticks for parcels that have left this run, so "Unload 4" cannot
@@ -396,19 +399,40 @@ export function TripCard({
               drops a load and goes out again on the same run (possible since
               0039) can be received mid-day.
             */}
-            {(trip.status === 'departed' || trip.status === 'returned') &&
-            trip.pickupCount > 0 ? (
+            {/* 0049: opens the checklist, which receives only what is ticked. */}
+            {(trip.status === 'departed' || trip.status === 'returned') && receivable > 0 ? (
               <Button size="sm" disabled={busy} onClick={onReceive}>
                 <Warehouse />
-                Received at office · {trip.pickupCount}
+                Received at office · {receivable}
               </Button>
             ) : null}
 
+            {/*
+              0050: CLOSING NEEDS EVERY COLLECTION RECEIVED. close_trip used to
+              shelve whatever was still aboard, which made the checklist above
+              optional the moment payroll was pressed. It refuses now, and the
+              button says why instead of letting the office find out from an
+              error -- as text, since a disabled button can carry no tooltip.
+            */}
             {trip.status === 'departed' || trip.status === 'returned' ? (
-              <Button size="sm" variant="secondary" disabled={busy} onClick={onClose}>
-                <Coins />
-                Close &amp; pay
-              </Button>
+              <>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={busy || receivable > 0}
+                  onClick={onClose}
+                >
+                  <Coins />
+                  Close &amp; pay
+                </Button>
+                {receivable > 0 ? (
+                  <p className="flex items-center gap-1.5 self-center text-xs text-muted-foreground">
+                    <Info className="size-3.5 shrink-0" aria-hidden="true" />
+                    {receivable} collected parcel{receivable === 1 ? '' : 's'} not received yet —
+                    tick {receivable === 1 ? 'it' : 'them'} off before closing.
+                  </p>
+                ) : null}
+              </>
             ) : null}
           </div>
         </div>

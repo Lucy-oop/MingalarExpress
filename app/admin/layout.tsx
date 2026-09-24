@@ -7,6 +7,8 @@ import { AdminNoticeBell } from '@/components/admin/notice-bell'
 import { getOfficeNotices } from '@/lib/admin/shop-queries'
 import { officeNotices } from '@/lib/admin/notices'
 import { createClient } from '@/lib/supabase/server'
+import { getLocale } from '@/lib/i18n/locale'
+import { LanguageToggle } from '@/components/shared/language-toggle'
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   /*
@@ -32,9 +34,12 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     be, not only on the one page that shows a worklist.
   */
   const supabase = await createClient()
-  const [registrations, { data: me }] = await Promise.all([
+  const [registrations, { data: me }, locale] = await Promise.all([
     getOfficeNotices(),
     supabase.from('profiles').select('notices_seen_at').eq('id', profile.id).maybeSingle(),
+    // Only the Outside Way screen and its nav label follow it; the rest of the
+    // panel is English. The toggle below is how the office switches it.
+    getLocale(),
   ])
   const notices = officeNotices(registrations)
 
@@ -47,6 +52,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
             <BrandMark tagline={false} className="text-left" />
           </Link>
           <div className="flex items-center gap-2 sm:gap-3">
+            <LanguageToggle locale={locale} />
             <AdminNoticeBell notices={notices} seenAt={me?.notices_seen_at ?? null} />
             <span className="hidden text-sm text-muted-foreground sm:inline">
               {profile.full_name}
@@ -54,7 +60,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
             <SignOutButton label="Sign out" />
           </div>
         </div>
-        <AdminNav />
+        <AdminNav locale={locale} />
       </header>
       <main className="mx-auto max-w-[1600px] px-4 py-4">{children}</main>
     </div>

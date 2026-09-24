@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { assertRole } from '@/lib/auth/guards'
+import { wayLabel } from '@/lib/routes/ways'
 import { exportAllOrders } from '@/lib/admin/order-queries'
 import { MAX_EXPORT_ROWS } from '@/lib/orders/queries'
 import { csvFilename, toCsv } from '@/lib/orders/csv'
@@ -25,7 +26,7 @@ const HEADERS = [
   'Shop',
   'Status',
   'Resolution',
-  'Route',
+  'Way',
   'Customer',
   'Phone',
   'Destination area',
@@ -69,7 +70,7 @@ export async function GET(request: NextRequest) {
       o.shops?.name ?? '',
       ORDER_STATUS_LABEL[o.status],
       o.resolution ?? '',
-      o.routes?.code ?? '',
+      o.routes ? wayLabel(o.routes.code) : '',
       o.customer_name,
       o.customer_phone,
       o.dropoff_area?.name ?? '',

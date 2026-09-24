@@ -13,7 +13,9 @@
     "db:types": "bash scripts/db-types.sh",
     "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --import ./scripts/register-ts-resolve.mjs --test 'lib/**/*.test.ts' 'components/**/*.test.ts' 'scripts/**/*.test.ts' 'supabase/**/*.test.ts'",
     "test:watch": "npm run test -- --watch",
-    "db:push": "bash scripts/db-push.sh"
+    "db:push": "bash scripts/db-push.sh",
+    "storybook": "storybook dev -p 6006",
+    "build-storybook": "storybook build"
   },
   "dependencies": {
     "@supabase/ssr": "0.12.5",
@@ -37,6 +39,18 @@
     "@types/react": "19.2.8",
     "@types/react-dom": "19.2.4",
     "tailwindcss": "4.3.3",
-    "typescript": "5.9.3"
+    "typescript": "5.9.3",
+    "storybook": "^10.6.0",
+    "@storybook/nextjs-vite": "^10.6.0",
+    "@chromatic-com/storybook": "latest",
+    "@storybook/addon-vitest": "^10.6.0",
+    "@storybook/addon-a11y": "^10.6.0",
+    "@storybook/addon-docs": "^10.6.0",
+    "@storybook/addon-mcp": "^10.6.0",
+    "vite": "latest",
+    "vitest": "latest",
+    "playwright": "latest",
+    "@vitest/browser-playwright": "latest",
+    "@vitest/coverage-v8": "latest"
   }
 }

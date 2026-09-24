@@ -92,6 +92,7 @@ alter table public.orders
   -- a null LATITUDE with a real longitude passes the constraint above on its
   first branch, so without this it would store half a point.
 */
+alter table public.orders drop constraint if exists orders_pickup_pin_complete;
 alter table public.orders
   add constraint orders_pickup_pin_complete
   check ((pickup_lat is null) = (pickup_lng is null));

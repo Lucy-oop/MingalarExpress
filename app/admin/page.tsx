@@ -4,7 +4,7 @@ import { getPlanningBoard } from '@/lib/routes/queries'
 import { RouteBoard } from '@/components/routes/route-board'
 import { Alert } from '@/components/ui/alert'
 
-export const metadata: Metadata = { title: 'Route planning' }
+export const metadata: Metadata = { title: 'Ways' }
 
 /**
  * The office's home. Signing in lands here, because planning the day's runs is

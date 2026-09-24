@@ -346,10 +346,14 @@ export async function createOrder(
       delivery_fee: fee,
       fee_payer: v.feePayer,
       route_distance_km: crowKm === null ? null : Math.round(crowKm * 100) / 100,
-      // Snapshot, for the same reason the commission split is one (D5): a later
-      // remap of route_areas must not change the answer to "what was this shop
-      // charged, and why".
-      route_id: route.routeId,
+      /*
+        NO WAY AT BOOKING (0049). This used to snapshot the route the area maps
+        to by default, which was the system choosing the delivery way. The
+        office chooses it on the board now, and loading the parcel onto a
+        delivery way is what records it (lib/routes/actions.ts). The PRICE is
+        unaffected: it is `fee` above, from the zone, stored in delivery_fee.
+      */
+      route_id: null,
     })
     .select(
       'id, code, customer_name, dropoff_address, dropoff_area_id, payment_method, fee_payer, delivery_fee, cod_amount',

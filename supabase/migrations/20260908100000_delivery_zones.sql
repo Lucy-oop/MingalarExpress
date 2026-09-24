@@ -72,6 +72,7 @@ comment on column public.delivery_zones.fee is
   'Per parcel, charged to the shop. Copied onto orders.delivery_fee at booking '
   'so a later rate change never rewrites a parcel that has already been quoted.';
 
+drop trigger if exists delivery_zones_touch on public.delivery_zones;
 create trigger delivery_zones_touch before update on public.delivery_zones
 for each row execute function public.tg_touch_updated_at();
 
@@ -85,9 +86,11 @@ for each row execute function public.tg_touch_updated_at();
 */
 alter table public.delivery_zones enable row level security;
 
+drop policy if exists zones_read_all on public.delivery_zones;
 create policy zones_read_all on public.delivery_zones
   for select to authenticated using (true);
 
+drop policy if exists zones_write_admin on public.delivery_zones;
 create policy zones_write_admin on public.delivery_zones
   for all to authenticated
   using (public.is_admin()) with check (public.is_admin());
@@ -149,8 +152,16 @@ create index if not exists service_areas_zone_idx on public.service_areas (zone_
 --  duplicated -- and their zone is set in section 4 like every other area's.
 -- ----------------------------------------------------------------------------
 
+/*
+  WHERE NOT EXISTS as well as ON CONFLICT, so this survives a re-run. By the
+  second run `zone_id` is NOT NULL (set at the end of this file), and Postgres
+  checks NOT NULL while forming the row -- before ON CONFLICT gets to skip it --
+  so the bare insert failed on every township that already existed. Skipping
+  existing names up front means no row without a zone is ever built.
+*/
 insert into public.service_areas (name, name_mm, kind, sort_order, is_active)
-values
+select v.name, v.name_mm, v.kind, v.sort_order, v.is_active
+  from (values
   -- Zone 1, inner Yangon
   ('Thingangyun',            'သင်္ဃန်းကျွန်း',        'township', 110, false),
   ('Dawbon',                 'ဒေါပုံ',               'township', 111, false),
@@ -174,6 +185,8 @@ values
   ('South Dagon (extended)',      'ဒဂုံတောင် (အပြင်ဘက်)',      'ward',     214, false),
   ('Dagon Seikkan (extended)',    'ဒဂုံဆိပ်ကမ်း (အပြင်ဘက်)',   'ward',     215, false),
   ('Hlaing Thar Yar (extended)',  'လှိုင်သာယာ (အပြင်ဘက်)',     'ward',     216, false)
+) as v (name, name_mm, kind, sort_order, is_active)
+ where not exists (select 1 from public.service_areas s where s.name = v.name)
 on conflict (name) do nothing;
 
 -- ----------------------------------------------------------------------------

@@ -231,6 +231,7 @@ create policy orders_read_rider on public.orders
 
 drop policy if exists route_areas_write_admin on public.route_areas;
 
+drop policy if exists route_areas_write_dispatch on public.route_areas;
 create policy route_areas_write_dispatch on public.route_areas
   for all to authenticated
   using (public.is_dispatch()) with check (public.is_dispatch());

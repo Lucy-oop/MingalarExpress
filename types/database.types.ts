@@ -543,7 +543,10 @@ export type Database = {
           rider_id: string | null
           route_distance_km: number | null
           route_id: string | null
+          sender_name: string | null
+          sender_phone: string | null
           shop_id: string
+          source: string
           status: Database["public"]["Enums"]["order_status"]
           trip_id: string | null
           trip_leg: string | null
@@ -604,7 +607,10 @@ export type Database = {
           rider_id?: string | null
           route_distance_km?: number | null
           route_id?: string | null
+          sender_name?: string | null
+          sender_phone?: string | null
           shop_id: string
+          source?: string
           status?: Database["public"]["Enums"]["order_status"]
           trip_id?: string | null
           trip_leg?: string | null
@@ -665,7 +671,10 @@ export type Database = {
           rider_id?: string | null
           route_distance_km?: number | null
           route_id?: string | null
+          sender_name?: string | null
+          sender_phone?: string | null
           shop_id?: string
+          source?: string
           status?: Database["public"]["Enums"]["order_status"]
           trip_id?: string | null
           trip_leg?: string | null
@@ -1113,6 +1122,7 @@ export type Database = {
           goods_type: string | null
           id: string
           is_active: boolean
+          is_direct: boolean
           name: string
           owner_id: string
           phone: string
@@ -1133,6 +1143,7 @@ export type Database = {
           goods_type?: string | null
           id?: string
           is_active?: boolean
+          is_direct?: boolean
           name: string
           owner_id: string
           phone: string
@@ -1153,6 +1164,7 @@ export type Database = {
           goods_type?: string | null
           id?: string
           is_active?: boolean
+          is_direct?: boolean
           name?: string
           owner_id?: string
           phone?: string
@@ -1193,6 +1205,7 @@ export type Database = {
           departed_at: string | null
           departed_by: string | null
           id: string
+          kind: string | null
           notes: string | null
           parcel_count: number
           parcel_pay: number
@@ -1217,6 +1230,7 @@ export type Database = {
           departed_at?: string | null
           departed_by?: string | null
           id?: string
+          kind?: string | null
           notes?: string | null
           parcel_count?: number
           parcel_pay?: number
@@ -1241,6 +1255,7 @@ export type Database = {
           departed_at?: string | null
           departed_by?: string | null
           id?: string
+          kind?: string | null
           notes?: string | null
           parcel_count?: number
           parcel_pay?: number
@@ -1910,6 +1925,10 @@ export type Database = {
       quote_trip_pay: {
         Args: { p_parcels: number; p_pickups?: number; p_route_id?: string }
         Returns: Json
+      }
+      receive_trip_parcels: {
+        Args: { p_trip_id: string; p_order_ids: string[] }
+        Returns: number
       }
       receive_trip: {
         Args: { p_trip_id: string }

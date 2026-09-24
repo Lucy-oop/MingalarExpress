@@ -107,7 +107,7 @@
   predicate cannot be altered in place.
 */
 drop index if exists public.cod_ledger_order_kind_uk;
-create unique index cod_ledger_order_kind_uk on public.cod_ledger (order_id, kind)
+create unique index if not exists cod_ledger_order_kind_uk on public.cod_ledger (order_id, kind)
   where kind in ('cod_collected', 'commission_earned', 'pickup_pay');
 
 -- ----------------------------------------------------------------------------

@@ -1467,6 +1467,32 @@ begin
   perform public.advance_order(ids[3], 'delivered', 16.85, 96.17,
                                ids[3]::text || '/p.webp', 'Received');
   perform public.return_trip(t_id);
+
+  --    0050: CLOSING NO LONGER SHELVES IT. A collected parcel nobody has
+  --    ticked off in Received at office blocks the close, and stays exactly
+  --    where it was -- on the run, picked_up -- rather than landing on the
+  --    shelf unseen.
+  begin
+    perform public.close_trip(t_id);
+    raise exception 'FAIL: close_trip closed a run with an unreceived collection';
+  exception when others then
+    if sqlerrm like 'FAIL:%' then raise; end if;
+    if sqlerrm not like 'trip_has_unreceived_pickups%' then
+      raise exception 'FAIL: close_trip refused for the wrong reason: %', sqlerrm;
+    end if;
+  end;
+  select count(*) into n from public.orders
+   where id = ids[1] and trip_id = t_id and trip_leg = 'pickup' and status = 'picked_up';
+  if n <> 1 then
+    raise exception 'FAIL: the refused close moved the unreceived parcel anyway';
+  end if;
+  if (select status from public.trips where id = t_id) = 'closed' then
+    raise exception 'FAIL: the refused close left the run closed';
+  end if;
+  raise notice 'PASS: close_trip refuses while a collected parcel is unreceived';
+
+  --    Receiving it through the checklist is what lets the run close.
+  perform public.receive_trip_parcels(t_id, array[ids[1]]);
   perform public.close_trip(t_id);
 
   select count(*) into n from public.orders
@@ -1474,7 +1500,7 @@ begin
   if n <> 1 then
     raise exception 'FAIL: a collected pickup leg is still attached to its trip';
   end if;
-  raise notice 'PASS: a finished collection lets go of the run';
+  raise notice 'PASS: a received collection lets go of the run, and the run closes';
 
   -- ------------------------------------------------------------------------
   --  0027 -- THE BLACK HOLE. ids[1] now sits on the hub shelf: trip_id null,
@@ -1615,6 +1641,8 @@ begin
 
   perform public.advance_order(oid, 'picked_up');
   perform public.return_trip(t_id);
+  -- 0050: received before closing, since close no longer shelves it.
+  perform public.receive_trip_parcels(t_id, array[oid]);
   perform public.close_trip(t_id);
 
   -- 3. picked_up_at SURVIVES A BOUNCE BACK TO 'pending'. This is the property
@@ -1910,7 +1938,10 @@ begin
   end if;
   raise notice 'PASS: closed after receiving; pickup_count still 3, pay %', pay_recv;
 
-  -- ---- pass 2: the same run, closed WITHOUT receiving ----------------------
+  -- ---- pass 2: the same run, received through the CHECKLIST ---------------
+  --  Was "closed WITHOUT receiving", which 0050 forbids. The parity that still
+  --  matters is between the two ways of receiving: all at once (receive_trip)
+  --  and parcel by parcel (receive_trip_parcels). Both must bank the same pay.
   ids := '{}'::uuid[];
   for i in 1..3 loop
     insert into public.orders (
@@ -1933,16 +1964,39 @@ begin
     perform public.advance_order(oid, 'picked_up');
   end loop;
   perform public.return_trip(t_id);
+
+  -- 0050: closing with the collections still aboard is refused outright.
+  begin
+    perform public.close_trip(t_id);
+    raise exception 'FAIL: closed a run whose collections were never received';
+  exception when others then
+    if sqlerrm like 'FAIL:%' then raise; end if;
+    if sqlerrm not like 'trip_has_unreceived_pickups: 3%' then
+      raise exception 'FAIL: wrong refusal: %', sqlerrm;
+    end if;
+    raise notice 'PASS: close refused with 3 collections unreceived';
+  end;
+
+  -- Ticked in two goes, the way the office would when a parcel turns up late.
+  perform public.receive_trip_parcels(t_id, ids[1:2]);
+  begin
+    perform public.close_trip(t_id);
+    raise exception 'FAIL: closed with one collection still unreceived';
+  exception when others then
+    if sqlerrm like 'FAIL:%' then raise; end if;
+    raise notice 'PASS: close still refused with 1 of 3 unreceived';
+  end;
+  perform public.receive_trip_parcels(t_id, ids[3:3]);
   perform public.close_trip(t_id);
   select total_pay into pay_plain from public.trips where id = t_id;
 
   -- THE ONE THAT MATTERS
   if pay_recv <> pay_plain then
     raise exception
-      'FAIL: receiving cost the rider their collection pay — % received vs % plain',
+      'FAIL: the checklist cost the rider their collection pay — % all-at-once vs % ticked',
       pay_recv, pay_plain;
   end if;
-  raise notice 'PASS: pay identical whether received first or not (% Ks)', pay_plain;
+  raise notice 'PASS: pay identical whether received all at once or ticked (% Ks)', pay_plain;
 end $$;
 
 \echo '=== R9b. receive_trip refuses a run that has not been out ==='
