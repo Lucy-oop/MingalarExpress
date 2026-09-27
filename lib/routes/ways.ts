@@ -39,3 +39,43 @@ const COLLECTED = new Set(['picked_up', 'delivered'])
 export function isReceivable(p: { leg: string; status: string }): boolean {
   return p.leg === 'pickup' && COLLECTED.has(p.status)
 }
+
+/** A pickup the rider was sent for and has not collected (0051). */
+export function isUncollected(p: { leg: string; status: string }): boolean {
+  return p.leg === 'pickup' && (p.status === 'pending' || p.status === 'assigned')
+}
+
+export type CloseBlocker =
+  | { kind: 'open_deliveries'; count: number }
+  | { kind: 'uncollected'; count: number }
+  | { kind: 'unreceived'; count: number }
+
+/**
+ * Why Close & pay cannot run yet, or null when it can.
+ *
+ * MIRRORS close_trip's refusals, in its order, so the button is disabled for
+ * exactly the runs the database would refuse -- the office is told on the card
+ * rather than by an error after pressing:
+ *
+ *   1. deliveries or returns still out           (trip_has_open_orders)
+ *   2. pickups never collected, not resolved     (trip_has_uncollected_pickups, 0051)
+ *   3. collected pickups not ticked off          (trip_has_unreceived_pickups, 0050)
+ *
+ * (close_trip checks 3 before 1 internally; the order here is the order the
+ * office would fix them in, and any one of them is enough to refuse.)
+ */
+export function closeBlocker(
+  parcels: ReadonlyArray<{ leg: string; status: string }>,
+): CloseBlocker | null {
+  const open = parcels.filter(
+    (p) =>
+      (p.leg === 'delivery' || p.leg === 'return') &&
+      (p.status === 'pending' || p.status === 'assigned' || p.status === 'picked_up'),
+  ).length
+  if (open > 0) return { kind: 'open_deliveries', count: open }
+  const uncollected = parcels.filter(isUncollected).length
+  if (uncollected > 0) return { kind: 'uncollected', count: uncollected }
+  const unreceived = parcels.filter(isReceivable).length
+  if (unreceived > 0) return { kind: 'unreceived', count: unreceived }
+  return null
+}

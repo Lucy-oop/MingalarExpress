@@ -25,6 +25,19 @@ export const DICTIONARY = {
   'app.rider': { en: 'Mingalar Express rider', my: 'Mingalar Express ရိုက်ဒါ' },
   'nav.jobs': { en: 'Jobs', my: 'အလုပ်' },
   'nav.earnings': { en: 'Earnings', my: 'ဝင်ငွေ' },
+  // 0057: the rider's monthly payslips.
+  'nav.payslips': { en: 'Payslips', my: 'လစာ' },
+  'payslips.title': { en: 'My payslips', my: 'ကျွန်ုပ်၏ လစာ ပြေစာများ' },
+  'payslips.hint': {
+    en: 'One per month, once the office has closed that month. Earnings are paid here, never out of the cash you carry.',
+    my: 'လတစ်လ ပိတ်ပြီးတိုင်း တစ်စောင်။ လုပ်အားခကို ဤနေရာမှ ပေးပါသည် — သင်ကိုင်ထားသော ငွေမှ မဖြုတ်ပါ။',
+  },
+  'payslips.empty': { en: 'No payslips yet.', my: 'လစာ ပြေစာ မရှိသေးပါ။' },
+  'payslips.net': { en: 'Net pay', my: 'အသားတင်' },
+  'payslips.paid': { en: 'Paid', my: 'ပေးပြီး' },
+  'payslips.unpaid': { en: 'Not paid yet', my: 'မပေးရသေး' },
+  'payslips.print': { en: 'Print / save PDF', my: 'ပုံနှိပ် / PDF သိမ်း' },
+  'payslips.back': { en: 'All payslips', my: 'ပြေစာ အားလုံး' },
   'nav.history': { en: 'History', my: 'မှတ်တမ်း' },
   'action.signOut': { en: 'Sign out', my: 'ထွက်' },
   'lang.label': { en: 'Language', my: 'ဘာသာစကား' },
@@ -42,16 +55,15 @@ export const DICTIONARY = {
   */
   'earnings.cashHeld': { en: 'Company cash you are holding', my: 'သင် ကိုင်ထားသော ကုမ္ပဏီ ငွေ' },
   'earnings.cashHeldHint': {
-    en: 'COD you have collected, less anything already handed in. Hand it in at settlement.',
-    my: 'သင် ကောက်ထားသော COD ငွေ၊ အပ်ပြီးသည်များ ဖြုတ်ပြီး။ ရှင်းတမ်းတွင် အပ်ပါ။',
+    en: 'COD you have collected, less anything already handed in. Hand all of it in when your run is closed.',
+    my: 'သင် ကောက်ထားသော COD ငွေ၊ အပ်ပြီးသည်များ ဖြုတ်ပြီး။ ခရီးစဉ် ပိတ်သည့်အခါ အားလုံး အပ်ပါ။',
   },
-  'earnings.owedToYou': {
-    en: 'After your pay, the office owes you {amount}.',
-    my: 'သင့် လုပ်အားခ ပြီးလျှင် ရုံးမှ သင့်ကို {amount} ပေးရန် ရှိပါသည်။',
-  },
-  'earnings.netToSettle': {
-    en: '{amount} to settle after your pay is taken off.',
-    my: 'သင့် လုပ်အားခ ဖြုတ်ပြီး ရှင်းရန် {amount}။',
+  // 0053: pay owed is its own figure, never netted against cash. Replaces the
+  // owedToYou / netToSettle lines, which described a net that no longer exists.
+  'earnings.unsettled': { en: 'Unsettled earnings', my: 'မရှင်းရသေးသော လုပ်အားခ' },
+  'earnings.unsettledHint': {
+    en: 'Your run pay, parcel pay and commission so far. Paid to you at the monthly settlement — never taken out of the cash you carry.',
+    my: 'ယခုထိ ရထားသော ခရီးစဉ်ခ၊ ပါဆယ်ခ နှင့် ကော်မရှင်။ လစဉ် ရှင်းတမ်းတွင် ပေးပါမည် — သင်ကိုင်ထားသော ငွေထဲမှ မဖြုတ်ပါ။',
   },
   'cash.warning': {
     en: 'You are holding {amount} of company cash. Hand it in at the end of your shift.',
@@ -777,10 +789,34 @@ export const DICTIONARY = {
   'sm.collected': { en: 'COD collected', my: 'ကောက်ခံရပြီး' },
   'sm.fees': { en: 'Delivery fees', my: 'ပို့ဆောင်ခ' },
   'sm.feesHint': { en: 'Mingalar’s share', my: 'Mingalar အတွက်' },
-  'sm.owed': { en: 'Owed to you', my: 'သင် ရရန်ရှိ' },
+  // 0056: the period figure. The real balance is 'sm.available' above it.
+  'sm.owed': { en: 'Earned in this range', my: 'ဤကာလအတွင်း ရရှိငွေ' },
   'sm.owedHint': { en: 'Goods value, fees deducted', my: 'ကုန်ဖိုးမှ ပို့ဆောင်ခ ဖြတ်ပြီး' },
   'sm.howWorked': { en: 'How this is worked out', my: 'ဘယ်လို တွက်သလဲ' },
   'sm.notReceived': { en: '{amount} not received', my: '{amount} မရရှိသေးပါ' },
+  // ---- the shop's account (0056) --------------------------------------------
+  'sm.accountTitle': { en: 'Your account with Mingalar Express', my: 'Mingalar Express နှင့် သင့်ငွေစာရင်း' },
+  'sm.accountHint': {
+    en: 'All time. Every payout we make to you is recorded here and cannot be changed.',
+    my: 'စာရင်းအားလုံး။ သင့်ထံ ပေးချေသမျှကို ဤနေရာတွင် မှတ်တမ်းတင်ထားပြီး ပြင်၍မရပါ။',
+  },
+  'sm.available': { en: 'Available to pay you', my: 'သင့်ကို ပေးရန် အဆင်သင့်' },
+  'sm.availableHint': {
+    en: 'Money that has reached our office, less delivery fees and payouts already made.',
+    my: 'ရုံးသို့ ရောက်ပြီးသော ငွေမှ ပို့ဆောင်ခ နှင့် ပေးပြီးငွေကို နုတ်ထားပါသည်။',
+  },
+  'sm.goodsCollected': { en: 'Collected for your goods', my: 'သင့်ပစ္စည်းဖိုး ကောက်ခံပြီး' },
+  'sm.feesDeducted': { en: 'Delivery fees deducted', my: 'ဖြတ်ယူသော ပို့ဆောင်ခ' },
+  'sm.paidOut': { en: 'Paid to you', my: 'သင့်ထံ ပေးပြီး' },
+  'sm.pending': { en: 'On its way to us', my: 'ရုံးသို့ ရောက်ရန် ကျန်' },
+  'sm.pendingHint': {
+    en: 'Still with a rider, or a KBZPay payment we are checking.',
+    my: 'ရိုက်ဒါထံတွင် ရှိဆဲ၊ သို့မဟုတ် စစ်ဆေးဆဲ KBZPay ငွေ။',
+  },
+  'sm.payouts': { en: 'Payout history', my: 'ငွေပေးချေမှု မှတ်တမ်း' },
+  'sm.noPayouts': { en: 'No payouts yet.', my: 'ငွေပေးချေမှု မရှိသေးပါ။' },
+  'sm.ref': { en: 'Ref', my: 'အမှတ်' },
+  'sm.periodTitle': { en: 'By date range', my: 'ရက်စွဲအလိုက်' },
 
   // ---- shop settings --------------------------------------------------------
   'ss.title': { en: 'Shop settings', my: 'ဆိုင် အပြင်အဆင်' },

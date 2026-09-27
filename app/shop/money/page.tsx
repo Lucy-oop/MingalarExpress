@@ -2,7 +2,8 @@ import type { Metadata } from 'next'
 import { requireShop } from '@/lib/auth/guards'
 import { getLocale } from '@/lib/i18n/locale'
 import { translator } from '@/lib/i18n'
-import { getShopMoney, searchShopOrders } from '@/lib/orders/queries'
+import { getShopAccount, getShopMoney, searchShopOrders } from '@/lib/orders/queries'
+import { PAYOUT_METHOD_LABEL, isPayoutMethod } from '@/lib/shops/payout'
 import { isoDaysAgo, yangonToday } from '@/lib/admin/day'
 import { MoneyRange } from '@/components/orders/money-range'
 import { OrderTable } from '@/components/orders/order-table'
@@ -10,7 +11,7 @@ import { PageHeader } from '@/components/admin/kpi'
 import { ShopMoneyCard, ShopStatTile } from '@/components/shop/shop-stats'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert } from '@/components/ui/alert'
-import { formatMmk } from '@/lib/utils'
+import { formatDateTimeYangon, formatMmk } from '@/lib/utils'
 
 export const metadata: Metadata = { title: 'Money' }
 export const dynamic = 'force-dynamic'
@@ -33,10 +34,12 @@ export default async function ShopMoneyPage({
 
   let money
   let delivered
+  let account
   try {
-    ;[money, delivered] = await Promise.all([
+    ;[money, delivered, account] = await Promise.all([
       getShopMoney(from, to),
       searchShopOrders({ status: 'delivered', from, to, pageSize: 50 }),
+      getShopAccount(),
     ])
   } catch (error) {
     return (
@@ -53,6 +56,67 @@ export default async function ShopMoneyPage({
         description={t('sm.subtitle')}
       />
 
+      {/*
+        0056: THE ACCOUNT, FIRST. All time, from the payout ledger: what was
+        collected for the shop's goods, what was deducted, what we have paid,
+        and what is available now. This is the answer to "what do you owe me";
+        the date-range figures below are the working, not the balance.
+      */}
+      <section className="space-y-3" aria-labelledby="account-title">
+        <div>
+          <h2 id="account-title" className="font-semibold">{t('sm.accountTitle')}</h2>
+          <p className="text-xs text-muted-foreground">{t('sm.accountHint')}</p>
+        </div>
+        <ShopMoneyCard
+          label={t('sm.available')}
+          value={formatMmk(account.available)}
+          hint={t('sm.availableHint')}
+          tone={account.available > 0 ? 'good' : 'default'}
+        />
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <ShopStatTile label={t('sm.goodsCollected')} value={formatMmk(account.goodsCollected)} />
+          <ShopStatTile label={t('sm.feesDeducted')} value={formatMmk(account.feesDeducted)} />
+          <ShopStatTile label={t('sm.paidOut')} value={formatMmk(account.paidOut)} />
+          <ShopStatTile
+            label={t('sm.pending')}
+            value={formatMmk(account.pendingClearance)}
+            hint={t('sm.pendingHint')}
+          />
+        </div>
+
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm">{t('sm.payouts')}</CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            {account.payouts.length === 0 ? (
+              <p className="px-4 pb-4 text-sm text-muted-foreground">{t('sm.noPayouts')}</p>
+            ) : (
+              <ul className="divide-y border-t">
+                {account.payouts.map((p) => (
+                  <li key={p.id} className="flex items-start justify-between gap-3 px-4 py-2.5 text-sm">
+                    <span className="min-w-0">
+                      <span className="block font-medium">
+                        {p.method && isPayoutMethod(p.method)
+                          ? PAYOUT_METHOD_LABEL[p.method][locale]
+                          : p.method ?? '—'}
+                      </span>
+                      <span className="block text-xs text-muted-foreground">
+                        {formatDateTimeYangon(p.createdAt)}
+                        {p.reference ? ` · ${t('sm.ref')} ${p.reference}` : ''}
+                        {p.memo ? ` · ${p.memo}` : ''}
+                      </span>
+                    </span>
+                    <span className="shrink-0 font-semibold tabular-nums">{formatMmk(p.amount)}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+      </section>
+
+      <h2 className="pt-2 font-semibold">{t('sm.periodTitle')}</h2>
       <MoneyRange from={from} to={to} today={today} />
 
       {/*
@@ -140,16 +204,13 @@ export default async function ShopMoneyPage({
             </p>
           ) : null}
           {/*
-            Said plainly, because it is the difference between a report and a
-            statement. These figures are recomputed from your orders every time
-            this page loads: there is no shop-side ledger, so nothing here can
-            show a payment that has already been made, a part-payment, or a
-            disputed amount. Presenting it as an account would be a lie.
+            0056: these range figures are the WORKING. The balance and the
+            payout history -- the statement -- are in the account section at
+            the top, backed by the append-only shop_ledger.
           */}
-          <p className="rounded-md border border-amber-300 bg-amber-50 p-2.5 text-xs text-amber-900">
-            These totals are calculated from your orders each time this page opens. They are not a
-            statement of account and do not show payouts already made — the office holds the
-            record of what has actually been paid.
+          <p className="rounded-md border bg-muted/40 p-2.5 text-xs">
+            These date-range totals are worked out from your orders. Your balance and every payout
+            we have made are in <strong>Your account with Mingalar Express</strong> above.
           </p>
         </CardContent>
       </Card>

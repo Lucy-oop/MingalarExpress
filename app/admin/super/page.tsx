@@ -22,7 +22,8 @@ export default async function SuperAdminOverviewPage() {
 
   const pending = riders.filter((r) => !r.isActive)
   const overFloat = positions.filter(
-    (p) => p.cod_float_limit > 0 && p.open_balance >= p.cod_float_limit,
+    // CASH against the float, not cash less pay owed (0053).
+    (p) => p.cod_float_limit > 0 && p.cash_in_hand >= p.cod_float_limit,
   )
 
   return (
@@ -99,7 +100,7 @@ export default async function SuperAdminOverviewPage() {
                 >
                   {p.full_name}
                 </Link>{' '}
-                ({formatMmk(p.open_balance)})
+                ({formatMmk(p.cash_in_hand)} cash)
               </span>
             ))}
             {overFloat.length > 4 ? ` and ${overFloat.length - 4} more` : null}.

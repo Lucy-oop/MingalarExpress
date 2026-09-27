@@ -152,25 +152,31 @@ end $$;
 do $$
 declare v_route uuid; v_trip uuid;
 begin
-  select id into v_route from public.routes where code = 'ROUTE_A';
-  insert into public.trips (route_id, rider_id, service_date, status)
-  values (v_route, '55555555-5555-5555-5555-555555555555', public.mm_today(), 'planned')
-  returning id into v_trip;
-
-  insert into public.cod_ledger (trip_id, rider_id, kind, amount, created_by)
-  values (v_trip, '55555555-5555-5555-5555-555555555555', 'trip_pay', -1000,
-          '11111111-1111-1111-1111-111111111111');
+  -- 0055: the fixture is ROLLED BACK, not deleted. cod_ledger refuses DELETE
+  -- from everyone now, so the whole block runs inside a subtransaction that a
+  -- sentinel exception unwinds -- leaving no trip and no ledger line behind.
   begin
+    select id into v_route from public.routes where code = 'ROUTE_A';
+    insert into public.trips (route_id, rider_id, service_date, status)
+    values (v_route, '55555555-5555-5555-5555-555555555555', public.mm_today(), 'planned')
+    returning id into v_trip;
+
     insert into public.cod_ledger (trip_id, rider_id, kind, amount, created_by)
     values (v_trip, '55555555-5555-5555-5555-555555555555', 'trip_pay', -1000,
             '11111111-1111-1111-1111-111111111111');
-    raise exception 'FAIL: a trip booked its pay twice';
-  exception when unique_violation then
-    raise notice 'PASS: cod_ledger_trip_pay_uk blocks a double booking';
-  end;
+    begin
+      insert into public.cod_ledger (trip_id, rider_id, kind, amount, created_by)
+      values (v_trip, '55555555-5555-5555-5555-555555555555', 'trip_pay', -1000,
+              '11111111-1111-1111-1111-111111111111');
+      raise exception 'FAIL: a trip booked its pay twice';
+    exception when unique_violation then
+      raise notice 'PASS: cod_ledger_trip_pay_uk blocks a double booking';
+    end;
 
-  delete from public.cod_ledger where trip_id = v_trip;
-  delete from public.trips where id = v_trip;
+    raise exception 'rollback_fixture';
+  exception when raise_exception then
+    if sqlerrm <> 'rollback_fixture' then raise; end if;
+  end;
 end $$;
 
 
@@ -1559,6 +1565,15 @@ begin
   raise notice 'PASS: a parcel collected from a shop can be delivered to the customer';
 
   perform public.cancel_trip(t2_id, 'test cleanup');
+  -- 0055: the run never left, so cancelling it hands the hub parcel back to
+  -- the hub pool instead of stranding it on the cancelled run.
+  select count(*) into n from public.orders
+   where id = ids[1] and trip_id is null and trip_leg is null
+     and status = 'picked_up' and picked_up_at is not null;
+  if n <> 1 then
+    raise exception 'FAIL: cancelling an undeparted run stranded its hub parcel';
+  end if;
+  raise notice 'PASS: cancelling an undeparted run returns its hub parcels to the hub';
 end $$;
 
 -- ----------------------------------------------------------------------------
@@ -2024,6 +2039,709 @@ begin
 end $$;
 
 
+\echo '=== R9c. close_trip refuses a pickup the rider never collected (0051) ==='
+do $$
+declare v_route uuid; v_rider uuid; v_shop uuid; v_by uuid; t uuid; a uuid; b uuid; n int;
+begin
+  select id into v_route from public.routes where code = 'ROUTE_LOCAL';
+  select r.id into v_rider from public.rider_profiles r
+   where not exists (select 1 from public.trips x
+                      where x.rider_id = r.id and x.status in ('planned','loading','departed'))
+   limit 1;
+  if v_rider is null then
+    raise notice 'SKIP: every rider is already out, cannot test uncollected pickups';
+    return;
+  end if;
+  select id, owner_id into v_shop, v_by from public.shops where is_active limit 1;
+
+  insert into public.orders (shop_id, pickup_address, pickup_lat, pickup_lng, customer_name,
+    customer_phone, dropoff_address, dropoff_area_id, dropoff_lat, dropoff_lng, parcel_desc,
+    payment_method, cod_amount, delivery_fee, created_by)
+  values (v_shop, 'No. 24, Thitsar Road, Thingangyun', 16.8478, 96.1693, 'Uncollected A',
+    '+959780000081', 'Somewhere, Thingangyun', null, 16.85, 96.17, 'Parcel', 'prepaid', 0, 2500, v_by)
+  returning id into a;
+  insert into public.orders (shop_id, pickup_address, pickup_lat, pickup_lng, customer_name,
+    customer_phone, dropoff_address, dropoff_area_id, dropoff_lat, dropoff_lng, parcel_desc,
+    payment_method, cod_amount, delivery_fee, created_by)
+  values (v_shop, 'No. 24, Thitsar Road, Thingangyun', 16.8478, 96.1693, 'Uncollected B',
+    '+959780000082', 'Somewhere, Thingangyun', null, 16.85, 96.17, 'Parcel', 'prepaid', 0, 2500, v_by)
+  returning id into b;
+
+  t := (public.plan_trip(v_route)).id;
+  perform public.assign_trip_rider(t, v_rider);
+  perform public.load_trip(t, array[a, b], 'pickup');
+  perform public.depart_trip(t);
+  perform public.advance_order(a, 'picked_up');     -- b is never collected
+  perform public.return_trip(t);
+  perform public.receive_trip_parcels(t, array[a]);
+
+  -- THE HOLE: this used to close, leaving b attached to a closed run.
+  begin
+    perform public.close_trip(t);
+    raise exception 'FAIL: closed a run with a pickup the rider never collected';
+  exception when others then
+    if sqlerrm like 'FAIL:%' then raise; end if;
+    if sqlerrm not like 'trip_has_uncollected_pickups: 1%' then
+      raise exception 'FAIL: wrong refusal: %', sqlerrm;
+    end if;
+  end;
+  raise notice 'PASS: close refused while a pickup is still uncollected';
+
+  -- The office sends it back to the pickup list; then the run closes.
+  perform public.unload_trip(t, array[b]);
+  select count(*) into n from public.orders
+   where id = b and trip_id is null and status = 'pending' and picked_up_at is null;
+  if n <> 1 then raise exception 'FAIL: the unloaded parcel is not back at its shop'; end if;
+  perform public.close_trip(t);
+  if (select status from public.trips where id = t) <> 'closed' then
+    raise exception 'FAIL: the run did not close once every pickup was resolved';
+  end if;
+  raise notice 'PASS: unloaded back to its shop, and the run closes';
+end $$;
+
+
+\echo '=== R9d. closing a run deposits all of its cash (0052) ==='
+do $$
+declare
+  v_route uuid; v_rider uuid; v_shop uuid; v_by uuid; t uuid; t2 uuid;
+  ids uuid[] := '{}'; oid uuid; i int; n int; v bigint; amounts bigint[] := array[20000, 30000, 0];
+begin
+  select id into v_route from public.routes where code = 'ROUTE_LOCAL';
+  select r.id into v_rider from public.rider_profiles r
+   where not exists (select 1 from public.trips x
+                      where x.rider_id = r.id and x.status in ('planned','loading','departed'))
+   limit 1;
+  if v_rider is null then
+    raise notice 'SKIP: every rider is already out, cannot test the run deposit';
+    return;
+  end if;
+  select id, owner_id into v_shop, v_by from public.shops where is_active and approved_at is not null limit 1;
+
+  -- Two cash parcels (20,000 + 30,000) and one prepaid, already in the hub.
+  for i in 1..3 loop
+    insert into public.orders (shop_id, pickup_address, pickup_lat, pickup_lng, customer_name,
+      customer_phone, dropoff_address, dropoff_area_id, dropoff_lat, dropoff_lng, parcel_desc,
+      payment_method, cod_amount, delivery_fee, created_by, picked_up_at)
+    values (v_shop, 'No. 24, Thitsar Road, Thingangyun', 16.8478, 96.1693, 'Deposit ' || i,
+      '+95978000009' || i, 'Somewhere, Thingangyun', null, 16.85, 96.17, 'Parcel',
+      (case when amounts[i] > 0 then 'cod' else 'prepaid' end)::public.payment_method,
+      amounts[i], 2500, v_by, now())
+    returning id into oid;
+    ids := ids || oid;
+  end loop;
+
+  t := (public.plan_trip(v_route)).id;
+  perform public.assign_trip_rider(t, v_rider);
+  perform public.load_trip(t, ids, 'delivery');
+  perform public.depart_trip(t);
+  foreach oid in array ids loop
+    perform public.advance_order(oid, 'picked_up');
+    perform public.advance_order(oid, 'delivered', 16.85, 96.17, oid::text || '/p.webp', 'Received');
+  end loop;
+  perform public.return_trip(t);
+
+  -- 1. A stale confirmation is refused and changes nothing.
+  begin
+    perform public.close_run_and_deposit(t, 49999);
+    raise exception 'FAIL: closed on a cash figure that was not the run''s';
+  exception when others then
+    if sqlerrm like 'FAIL:%' then raise; end if;
+    if sqlerrm not like 'run_cash_changed%' then raise exception 'FAIL: wrong refusal: %', sqlerrm; end if;
+  end;
+  if (select status from public.trips where id = t) = 'closed' then
+    raise exception 'FAIL: the refused close closed the run anyway';
+  end if;
+  raise notice 'PASS: a stale cash figure is refused';
+
+  -- 2. The right figure closes the run and banks every kyat of it.
+  perform public.close_run_and_deposit(t, 50000);
+  if (select status from public.trips where id = t) <> 'closed' then
+    raise exception 'FAIL: the run did not close';
+  end if;
+  select coalesce(sum(amount), 0) into v from public.cod_ledger
+   where trip_id = t and kind = 'cod_remitted';
+  if v <> -50000 then raise exception 'FAIL: deposit line is %, expected -50000', v; end if;
+  select coalesce(sum(l.amount), 0) into v from public.cod_ledger l
+   where l.kind in ('cod_collected', 'cod_remitted')
+     and (l.trip_id = t or l.order_id = any(ids));
+  if v <> 0 then raise exception 'FAIL: the run leaves % Ks of cash with the rider', v; end if;
+  raise notice 'PASS: closed, and all 50000 Ks recorded as handed in';
+
+  -- 3. The pay is earned, not netted: still unsettled, still owed to the rider.
+  select count(*) into n from public.cod_ledger
+   where trip_id = t and kind in ('trip_pay', 'commission_earned', 'pickup_pay')
+     and settlement_id is null and amount < 0;
+  if n = 0 then raise exception 'FAIL: no unsettled earnings line for the rider'; end if;
+  raise notice 'PASS: the rider''s pay stays unsettled for the monthly settlement';
+
+  -- 4. Never twice.
+  begin
+    perform public.close_run_and_deposit(t, 0);
+    raise exception 'FAIL: a closed run was closed again';
+  exception when others then
+    if sqlerrm like 'FAIL:%' then raise; end if;
+  end;
+  select count(*) into n from public.cod_ledger where trip_id = t and kind = 'cod_remitted';
+  if n <> 1 then raise exception 'FAIL: % deposit lines, expected 1', n; end if;
+  raise notice 'PASS: a run is deposited once';
+
+  -- 5. A run that collected nothing closes with no deposit line at all.
+  insert into public.orders (shop_id, pickup_address, pickup_lat, pickup_lng, customer_name,
+    customer_phone, dropoff_address, dropoff_area_id, dropoff_lat, dropoff_lng, parcel_desc,
+    payment_method, cod_amount, delivery_fee, created_by, picked_up_at)
+  values (v_shop, 'No. 24, Thitsar Road, Thingangyun', 16.8478, 96.1693, 'Prepaid only',
+    '+959780000099', 'Somewhere, Thingangyun', null, 16.85, 96.17, 'Parcel', 'prepaid', 0, 2500,
+    v_by, now())
+  returning id into oid;
+  t2 := (public.plan_trip(v_route)).id;
+  perform public.assign_trip_rider(t2, v_rider);
+  perform public.load_trip(t2, array[oid], 'delivery');
+  perform public.depart_trip(t2);
+  perform public.advance_order(oid, 'picked_up');
+  perform public.advance_order(oid, 'delivered', 16.85, 96.17, oid::text || '/p.webp', 'Received');
+  perform public.close_run_and_deposit(t2, 0);
+  select count(*) into n from public.cod_ledger where trip_id = t2 and kind = 'cod_remitted';
+  if n <> 0 then raise exception 'FAIL: a zero-cash run wrote a deposit line'; end if;
+  raise notice 'PASS: no cash, no deposit line, run closed';
+end $$;
+
+
+\echo '=== R9e. cash in hand and unsettled earnings are two figures (0053) ==='
+do $$
+declare p record; n int := 0;
+begin
+  for p in select * from public.cod_positions() loop
+    if p.cash_in_hand <> public.rider_cash_held(p.rider_id) then
+      raise exception 'FAIL: % cash_in_hand % disagrees with rider_cash_held %',
+        p.full_name, p.cash_in_hand, public.rider_cash_held(p.rider_id);
+    end if;
+    if p.unsettled_earnings <> public.rider_unsettled_earnings(p.rider_id) then
+      raise exception 'FAIL: % unsettled_earnings % disagrees with rider_unsettled_earnings %',
+        p.full_name, p.unsettled_earnings, public.rider_unsettled_earnings(p.rider_id);
+    end if;
+    -- 0057: earnings clear by PAYSLIP and cash by SETTLEMENT, so the two no
+    -- longer sum to the settlement-based net. Each is checked against its own
+    -- ledger lines instead.
+    if p.unsettled_earnings <> coalesce((
+         select -sum(l.amount) from public.cod_ledger l
+          where l.rider_id = p.rider_id and l.payslip_id is null
+            and l.kind in ('commission_earned','trip_pay','pickup_pay','adjustment','platform_fee')), 0) then
+      raise exception 'FAIL: % unsettled_earnings % is not their unpaid earnings lines',
+        p.full_name, p.unsettled_earnings;
+    end if;
+    n := n + 1;
+  end loop;
+  if n = 0 then raise exception 'FAIL: no riders to check'; end if;
+  raise notice 'PASS: for % riders, cash in hand and unsettled earnings each match their own lines', n;
+end $$;
+
+
+\echo '=== R11. Phase 2 ledger integrity (0055) ==='
+-- Shared fixture: a free rider, an approved shop, and a helper that books one
+-- COD parcel already in the hub.
+create or replace function pg_temp.r11_parcel(p_shop uuid, p_by uuid, p_cod bigint, p_name text)
+returns uuid language sql as $f$
+  insert into public.orders (shop_id, pickup_address, pickup_lat, pickup_lng, customer_name,
+    customer_phone, dropoff_address, dropoff_area_id, dropoff_lat, dropoff_lng, parcel_desc,
+    payment_method, cod_amount, delivery_fee, created_by, picked_up_at)
+  values (p_shop, 'No. 24, Thitsar Road, Thingangyun', 16.8478, 96.1693, p_name,
+    '+95978000' || lpad((floor(random() * 10000))::int::text, 4, '0'),
+    'Somewhere, Thingangyun', null, 16.85, 96.17, 'Parcel',
+    (case when p_cod > 0 then 'cod' else 'prepaid' end)::public.payment_method,
+    p_cod, 2500, p_by, now())
+  returning id
+$f$;
+
+do $$
+declare
+  v_route uuid; v_rider uuid; v_shop uuid; v_by uuid; t uuid; oid uuid; v bigint; n int;
+begin
+  select id into v_route from public.routes where code = 'ROUTE_LOCAL';
+  select r.id into v_rider from public.rider_profiles r
+   where not exists (select 1 from public.trips x
+                      where x.rider_id = r.id and x.status in ('planned','loading','departed','returned'))
+   limit 1;
+  if v_rider is null then raise exception 'FAIL: no free rider for R11'; end if;
+  select id, owner_id into v_shop, v_by from public.shops where is_active and approved_at is not null limit 1;
+
+  -- A run with one 30,000 cash delivery, out on the road.
+  oid := pg_temp.r11_parcel(v_shop, v_by, 30000, 'R11 mid-run');
+  t := (public.plan_trip(v_route)).id;
+  perform public.assign_trip_rider(t, v_rider);
+  perform public.load_trip(t, array[oid], 'delivery');
+  perform public.depart_trip(t);
+  perform public.advance_order(oid, 'picked_up');
+  perform public.advance_order(oid, 'delivered', 16.85, 96.17, oid::text || '/p.webp', 'Received');
+
+  -- FIX 2: no settlement while this run can be holding cash.
+  begin
+    perform public.build_settlement(v_rider, public.mm_today());
+    raise exception 'FAIL: built a settlement while the rider''s run was out';
+  exception when others then
+    if sqlerrm like 'FAIL:%' then raise; end if;
+    if sqlerrm not like 'rider_has_open_run%' then raise exception 'FAIL: wrong refusal: %', sqlerrm; end if;
+  end;
+  raise notice 'PASS: fix 2 — settlement refused while the rider has an open run';
+
+  -- FIX 3: a run with a delivered parcel cannot be cancelled.
+  begin
+    perform public.cancel_trip(t, 'trying to cancel a run that happened');
+    raise exception 'FAIL: cancelled a run with a delivered parcel';
+  exception when others then
+    if sqlerrm like 'FAIL:%' then raise; end if;
+    if sqlerrm not like 'trip_has_delivered_parcels%' then raise exception 'FAIL: wrong refusal: %', sqlerrm; end if;
+  end;
+  if (select status from public.trips where id = t) = 'cancelled' then
+    raise exception 'FAIL: the refused cancel cancelled the run anyway';
+  end if;
+  raise notice 'PASS: fix 3 — cancel refused with a delivered parcel aboard';
+
+  -- FIX 1: the office takes 10,000 mid-run with an ordinary deposit.
+  perform public.remit_cod(v_rider, 10000, 'Mid-run deposit');
+  perform public.return_trip(t);
+
+  -- Confirming the old, double-counting figure is refused ...
+  begin
+    perform public.close_run_and_deposit(t, 30000);
+    raise exception 'FAIL: closed on a figure that ignores the mid-run deposit';
+  exception when others then
+    if sqlerrm like 'FAIL:%' then raise; end if;
+    if sqlerrm not like 'run_cash_changed%' then raise exception 'FAIL: wrong refusal: %', sqlerrm; end if;
+  end;
+  -- ... and only the remaining 20,000 is banked.
+  perform public.close_run_and_deposit(t, 20000);
+  select coalesce(sum(amount), 0) into v from public.cod_ledger where trip_id = t and kind = 'cod_remitted';
+  if v <> -20000 then raise exception 'FAIL: close deposited %, expected -20000', v; end if;
+  -- The run's cash nets to zero: 30,000 collected, 10,000 + 20,000 handed in.
+  select coalesce(sum(l.amount), 0) into v from public.cod_ledger l
+   where (l.order_id = oid and l.kind = 'cod_collected')
+      or (l.trip_id = t and l.kind = 'cod_remitted')
+      or (l.kind = 'cod_remitted' and l.trip_id is null and l.rider_id = v_rider
+          and l.memo = 'Mid-run deposit');
+  if v <> 0 then raise exception 'FAIL: the run left % Ks unreconciled', v; end if;
+  raise notice 'PASS: fix 1 — a mid-run deposit is not banked twice at close';
+
+  -- Once closed, the settlement is no longer blocked by this run.
+  if exists (select 1 from public.trips x where x.rider_id = v_rider
+              and x.status in ('planned','loading','departed','returned')) then
+    raise exception 'FAIL: the rider still has an open run after close';
+  end if;
+  raise notice 'PASS: fix 2 — the block lifts once the run is closed';
+end $$;
+
+\echo '=== R11b. manual money is audited; the ledger and audit log are immutable (0055) ==='
+do $$
+declare v_rider uuid := '55555555-5555-5555-5555-555555555555'; v_line bigint; n int;
+begin
+  -- Rolled back at the end: nothing here should touch later suites' balances.
+  begin
+    perform set_config('request.jwt.claims',
+      '{"sub":"11111111-1111-1111-1111-111111111111","role":"authenticated"}', true);
+    execute 'set local role authenticated';
+
+    -- An adjustment WITH a reason is accepted, and audited.
+    insert into public.cod_ledger (rider_id, kind, amount, memo, created_by)
+    values (v_rider, 'adjustment', 1500, 'Short 1,500 on run close', '11111111-1111-1111-1111-111111111111')
+    returning id into v_line;
+
+    -- Without a reason it is refused.
+    begin
+      insert into public.cod_ledger (rider_id, kind, amount, memo, created_by)
+      values (v_rider, 'adjustment', 500, '', '11111111-1111-1111-1111-111111111111');
+      raise exception 'FAIL: an adjustment with no reason was accepted';
+    exception when insufficient_privilege or check_violation then null;
+    end;
+
+    -- A deposit cannot be inserted directly (it must go through remit_cod).
+    begin
+      insert into public.cod_ledger (rider_id, kind, amount, memo, created_by)
+      values (v_rider, 'cod_remitted', -500, 'sneaky', '11111111-1111-1111-1111-111111111111');
+      raise exception 'FAIL: a deposit was inserted around remit_cod';
+    exception when insufficient_privilege then null;
+    end;
+
+    execute 'reset role';
+
+    select count(*) into n from public.audit_log
+     where action = 'ledger.adjustment' and entity_id = v_line::text
+       and (after ->> 'amount')::bigint = 1500
+       and after ->> 'memo' = 'Short 1,500 on run close';
+    if n <> 1 then raise exception 'FAIL: the adjustment wrote % audit entries, expected 1', n; end if;
+    raise notice 'PASS: fix 4 — a manual adjustment writes its audit entry; no reason, no line; no direct deposits';
+
+    -- Immutable for EVERYONE, including a direct SQL session.
+    begin
+      update public.cod_ledger set amount = 1 where id = v_line;
+      raise exception 'FAIL: a ledger line was edited';
+    exception when insufficient_privilege then null;
+    end;
+    begin
+      delete from public.cod_ledger where id = v_line;
+      raise exception 'FAIL: a ledger line was deleted';
+    exception when insufficient_privilege then null;
+    end;
+    begin
+      update public.audit_log set action = 'tampered' where entity_id = v_line::text;
+      raise exception 'FAIL: an audit entry was edited';
+    exception when insufficient_privilege then null;
+    end;
+    begin
+      delete from public.audit_log where entity_id = v_line::text;
+      raise exception 'FAIL: an audit entry was deleted';
+    exception when insufficient_privilege then null;
+    end;
+    -- The one legitimate UPDATE still works: settlement_id.
+    update public.cod_ledger set settlement_id = settlement_id where id = v_line;
+    raise notice 'PASS: fix 4 — ledger and audit log refuse edits and deletes from everyone; settlement_id still updatable';
+
+    raise exception 'rollback_fixture';
+  exception when raise_exception then
+    if sqlerrm <> 'rollback_fixture' then raise; end if;
+  end;
+end $$;
+reset role;
+select set_config('request.jwt.claims', '', false);
+
+
+\echo '=== R12. shop payouts: never more than has reached the office (0056) ==='
+do $$
+declare
+  v_route uuid; v_rider uuid; v_owner uuid; v_other_owner uuid; v_shop uuid; t uuid; oid uuid;
+  b record; v_line bigint; n int; v_after bigint;
+begin
+  select id into v_route from public.routes where code = 'ROUTE_LOCAL';
+  select r.id into v_rider from public.rider_profiles r
+   where not exists (select 1 from public.trips x
+                      where x.rider_id = r.id and x.status in ('planned','loading','departed','returned'))
+   limit 1;
+  if v_rider is null then raise exception 'FAIL: no free rider for R12'; end if;
+  select owner_id into v_owner from public.shops where is_active and approved_at is not null limit 1;
+  select owner_id into v_other_owner from public.shops where owner_id <> v_owner limit 1;
+
+  -- A brand-new shop, so its balance starts at exactly 0.
+  insert into public.shops (owner_id, name, phone, pickup_address, approved_at, is_active)
+  values (v_owner, 'R12 Payout Shop', '+959790001212', 'No. 12, Payout Street, Thingangyun', now(), true)
+  returning id into v_shop;
+
+  select * into b from public.shop_balances(v_shop);
+  if b.available <> 0 or b.owed_total <> 0 then
+    raise exception 'FAIL: a new shop starts with available % owed %', b.available, b.owed_total;
+  end if;
+
+  -- One COD parcel: the customer pays 30,000 at the door, 2,500 of it the fee.
+  oid := pg_temp.r11_parcel(v_shop, v_owner, 30000, 'R12 customer');
+  t := (public.plan_trip(v_route)).id;
+  perform public.assign_trip_rider(t, v_rider);
+  perform public.load_trip(t, array[oid], 'delivery');
+  perform public.depart_trip(t);
+  perform public.advance_order(oid, 'picked_up');
+  perform public.advance_order(oid, 'delivered', 16.85, 96.17, oid::text || '/p.webp', 'Received');
+
+  -- Delivered, but the cash is still with the rider: owed, not yet available.
+  select * into b from public.shop_balances(v_shop);
+  if b.goods_collected <> 27500 or b.fees_deducted <> 0 or b.owed_total <> 27500 then
+    raise exception 'FAIL: goods % fees % owed %, expected 27500 / 0 / 27500',
+      b.goods_collected, b.fees_deducted, b.owed_total;
+  end if;
+  if b.pending_clearance <> 27500 or b.available <> 0 then
+    raise exception 'FAIL: pending % available %, expected 27500 / 0', b.pending_clearance, b.available;
+  end if;
+  raise notice 'PASS: delivered cash on an open run is pending, not available';
+
+  -- Cannot pay out money that has not reached the office.
+  begin
+    perform public.record_shop_payout(v_shop, 1000, 'cash', null, 'too early');
+    raise exception 'FAIL: paid out money still with the rider';
+  exception when others then
+    if sqlerrm like 'FAIL:%' then raise; end if;
+    if sqlerrm not like 'payout_exceeds_available%' then raise exception 'FAIL: wrong refusal: %', sqlerrm; end if;
+  end;
+  raise notice 'PASS: a payout before the cash is deposited is refused';
+
+  -- The run closes and its cash is deposited: now it is available.
+  perform public.return_trip(t);
+  perform public.close_run_and_deposit(t, 30000);
+  select * into b from public.shop_balances(v_shop);
+  if b.pending_clearance <> 0 or b.available <> 27500 then
+    raise exception 'FAIL: after deposit pending % available %, expected 0 / 27500',
+      b.pending_clearance, b.available;
+  end if;
+  raise notice 'PASS: once the run is closed and deposited, 27500 is available';
+
+  -- Over the available balance: refused.
+  begin
+    perform public.record_shop_payout(v_shop, 27501, 'kbzpay', 'TXN-OVER', null);
+    raise exception 'FAIL: paid out more than was available';
+  exception when others then
+    if sqlerrm like 'FAIL:%' then raise; end if;
+    if sqlerrm not like 'payout_exceeds_available%' then raise exception 'FAIL: wrong refusal: %', sqlerrm; end if;
+  end;
+  -- Digital channel with no reference, unknown channel, zero amount: refused.
+  begin
+    perform public.record_shop_payout(v_shop, 1000, 'wavepay', '', null);
+    raise exception 'FAIL: a WavePay payout with no reference was accepted';
+  exception when others then
+    if sqlerrm like 'FAIL:%' then raise; end if;
+  end;
+  begin
+    perform public.record_shop_payout(v_shop, 1000, 'bitcoin', 'x', null);
+    raise exception 'FAIL: an unknown channel was accepted';
+  exception when others then
+    if sqlerrm like 'FAIL:%' then raise; end if;
+  end;
+  begin
+    perform public.record_shop_payout(v_shop, 0, 'cash', null, null);
+    raise exception 'FAIL: a zero payout was accepted';
+  exception when others then
+    if sqlerrm like 'FAIL:%' then raise; end if;
+  end;
+  raise notice 'PASS: over-balance, reference-less, unknown-channel and zero payouts are refused';
+
+  -- Pay 20,000 by KBZPay, then the remaining 7,500 in cash.
+  v_after := public.record_shop_payout(v_shop, 20000, 'kbzpay', 'KBZ-778812', 'Weekly payout');
+  if v_after <> 7500 then raise exception 'FAIL: record_shop_payout returned %, expected 7500', v_after; end if;
+  perform public.record_shop_payout(v_shop, 7500, 'cash', null, 'Rest at the desk');
+  select * into b from public.shop_balances(v_shop);
+  if b.paid_out <> 27500 or b.available <> 0 or b.owed_total <> 27500 then
+    raise exception 'FAIL: paid % available % owed %, expected 27500 / 0 / 27500',
+      b.paid_out, b.available, b.owed_total;
+  end if;
+  raise notice 'PASS: two payouts bring the balance to exactly 0; owed stays 27500, paid out 27500';
+
+  -- Each payout is one ledger row and one audit entry, with its channel and reference.
+  select count(*) into n from public.shop_ledger where shop_id = v_shop and kind = 'payout';
+  if n <> 2 then raise exception 'FAIL: % payout rows, expected 2', n; end if;
+  select id into v_line from public.shop_ledger where shop_id = v_shop and reference = 'KBZ-778812';
+  select count(*) into n from public.audit_log
+   where action = 'shop.payout' and entity_id = v_line::text
+     and (after ->> 'amount')::bigint = -20000 and after ->> 'method' = 'kbzpay'
+     and after ->> 'reference' = 'KBZ-778812';
+  if n <> 1 then raise exception 'FAIL: the KBZPay payout has % audit entries, expected 1', n; end if;
+  raise notice 'PASS: each payout writes one ledger row and one audit entry';
+
+  -- Immutable for everyone.
+  begin
+    update public.shop_ledger set amount = -1 where id = v_line;
+    raise exception 'FAIL: a payout was edited';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+    delete from public.shop_ledger where id = v_line;
+    raise exception 'FAIL: a payout was deleted';
+  exception when insufficient_privilege then null;
+  end;
+  raise notice 'PASS: payouts cannot be edited or deleted, even directly';
+
+  -- The owner reads their own payouts; another shop owner sees none; nobody inserts.
+  perform set_config('request.jwt.claims', format('{"sub":"%s","role":"authenticated"}', v_owner), true);
+  execute 'set local role authenticated';
+  select count(*) into n from public.shop_ledger where shop_id = v_shop;
+  if n <> 2 then raise exception 'FAIL: the owner sees % of their 2 payouts', n; end if;
+  select count(*) into n from public.shop_balances(v_shop);
+  if n <> 1 then raise exception 'FAIL: the owner cannot read their own balance'; end if;
+  begin
+    insert into public.shop_ledger (shop_id, kind, amount, method, created_by)
+    values (v_shop, 'payout', -1, 'cash', v_owner);
+    raise exception 'FAIL: a shop owner inserted a payout';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+    perform public.record_shop_payout(v_shop, 1, 'cash', null, null);
+    raise exception 'FAIL: a shop owner paid themselves';
+  exception when insufficient_privilege then null;
+  end;
+  execute 'reset role';
+  if v_other_owner is not null then
+    perform set_config('request.jwt.claims', format('{"sub":"%s","role":"authenticated"}', v_other_owner), true);
+    execute 'set local role authenticated';
+    select count(*) into n from public.shop_ledger where shop_id = v_shop;
+    if n <> 0 then raise exception 'FAIL: another shop owner sees % payouts', n; end if;
+    select count(*) into n from public.shop_balances(v_shop);
+    if n <> 0 then raise exception 'FAIL: another shop owner reads this shop''s balance'; end if;
+    execute 'reset role';
+  end if;
+  perform set_config('request.jwt.claims', '', true);
+  raise notice 'PASS: owners read only their own payouts and balance, and cannot write either';
+end $$;
+reset role;
+select set_config('request.jwt.claims', '', false);
+
+
+\echo '=== R13. monthly payroll: lock once, pay once (0057) ==='
+do $$
+declare
+  v_route uuid; v_rider uuid; v_other uuid; v_shop uuid; v_by uuid;
+  m date := (date_trunc('month', public.mm_today()) - interval '1 month')::date;
+  cur date := date_trunc('month', public.mm_today())::date;
+  t uuid; t_block uuid; oid uuid; pr record; ps public.payslips; v_pay bigint; n int; v_late bigint;
+begin
+  select id into v_route from public.routes where code = 'ROUTE_LOCAL';
+  select r.id into v_rider from public.rider_profiles r
+   where not exists (select 1 from public.trips x
+                      where x.rider_id = r.id and x.status in ('planned','loading','departed','returned'))
+   order by r.id limit 1;
+  select r.id into v_other from public.rider_profiles r where r.id <> v_rider limit 1;
+  select id, owner_id into v_shop, v_by from public.shops where is_active and approved_at is not null limit 1;
+
+  -- The rider has been on the books since before last month, on 300,000 a month.
+  update public.rider_profiles
+     set base_salary = 300000, created_at = (m - interval '40 days')
+   where id = v_rider;
+
+  -- A run DATED last month: its pay belongs to last month whenever it closes.
+  oid := pg_temp.r11_parcel(v_shop, v_by, 0, 'R13 payroll parcel');
+  t := (public.plan_trip(v_route, m + 10)).id;
+  perform public.assign_trip_rider(t, v_rider);
+  perform public.load_trip(t, array[oid], 'delivery');
+  perform public.depart_trip(t);
+  perform public.advance_order(oid, 'picked_up');
+  perform public.advance_order(oid, 'delivered', 16.85, 96.17, oid::text || '/p.webp', 'Received');
+  perform public.return_trip(t);
+  perform public.close_run_and_deposit(t, 0);
+  select coalesce(-sum(amount), 0) into v_pay from public.cod_ledger
+   where trip_id = t and kind in ('trip_pay', 'commission_earned', 'pickup_pay');
+  if v_pay <= 0 then raise exception 'FAIL: the run booked no pay (%)', v_pay; end if;
+
+  -- A shortfall deduction and a bonus, aimed at last month.
+  insert into public.cod_ledger (rider_id, kind, amount, memo, category, pay_month, created_by)
+  values (v_rider, 'adjustment', 5000, 'Short 5,000 on a run', 'shortfall', m,
+          '11111111-1111-1111-1111-111111111111'),
+         (v_rider, 'adjustment', -2000, 'Top rider of the month', 'bonus', m,
+          '11111111-1111-1111-1111-111111111111');
+
+  -- The preview adds up.
+  select * into pr from public.payroll_preview(m) where rider_id = v_rider;
+  if pr.base_paid <> 300000 then raise exception 'FAIL: base paid %, expected 300000', pr.base_paid; end if;
+  if pr.trip_pay + pr.parcel_pay + pr.pickup_pay <> v_pay then
+    raise exception 'FAIL: variable % <> run pay %', pr.trip_pay + pr.parcel_pay + pr.pickup_pay, v_pay;
+  end if;
+  if pr.deductions <> 5000 or pr.bonuses <> 2000 then
+    raise exception 'FAIL: deductions % bonuses %, expected 5000 / 2000', pr.deductions, pr.bonuses;
+  end if;
+  if pr.net <> 300000 + v_pay + 2000 - 5000 then raise exception 'FAIL: net % is wrong', pr.net; end if;
+  raise notice 'PASS: preview = base 300000 + run pay % + bonus 2000 - deduction 5000 = %', v_pay, pr.net;
+
+  -- The current month has not ended: cannot lock.
+  begin
+    perform public.lock_pay_period(cur);
+    raise exception 'FAIL: locked a month that has not ended';
+  exception when others then
+    if sqlerrm like 'FAIL:%' then raise; end if;
+    if sqlerrm not like 'period_not_ended%' then raise exception 'FAIL: wrong refusal: %', sqlerrm; end if;
+  end;
+
+  -- An open run dated last month blocks the lock.
+  t_block := (public.plan_trip(v_route, m + 20)).id;
+  begin
+    perform public.lock_pay_period(m);
+    raise exception 'FAIL: locked a month with a run still open';
+  exception when others then
+    if sqlerrm like 'FAIL:%' then raise; end if;
+    if sqlerrm not like 'period_has_open_runs%' then raise exception 'FAIL: wrong refusal: %', sqlerrm; end if;
+  end;
+  perform public.cancel_trip(t_block, 'R13: clearing the month');
+  raise notice 'PASS: an unfinished month, or one with an open run, cannot be locked';
+
+  -- Lock last month.
+  perform public.lock_pay_period(m);
+  select * into ps from public.payslips where rider_id = v_rider and month = m;
+  if ps.id is null then raise exception 'FAIL: no payslip was created'; end if;
+  if ps.net <> pr.net or ps.status <> 'locked' then
+    raise exception 'FAIL: payslip net % status %, expected % locked', ps.net, ps.status, pr.net;
+  end if;
+  select count(*) into n from public.cod_ledger where payslip_id = ps.id;
+  if n <> pr.line_count then raise exception 'FAIL: % lines stamped, expected %', n, pr.line_count; end if;
+  if jsonb_array_length(ps.breakdown) <> 2 then
+    raise exception 'FAIL: breakdown itemises % adjustments, expected 2', jsonb_array_length(ps.breakdown);
+  end if;
+  raise notice 'PASS: locking creates the payslip and stamps its % lines', n;
+
+  -- Never twice.
+  begin
+    perform public.lock_pay_period(m);
+    raise exception 'FAIL: a month was locked twice';
+  exception when others then
+    if sqlerrm like 'FAIL:%' then raise; end if;
+    if sqlerrm not like 'period_locked%' then raise exception 'FAIL: wrong refusal: %', sqlerrm; end if;
+  end;
+  begin
+    update public.cod_ledger set payslip_id = null where payslip_id = ps.id;
+    raise exception 'FAIL: a paid line was released from its payslip';
+  exception when insufficient_privilege then null;
+  end;
+  raise notice 'PASS: a month locks once, and its lines stay on their payslip';
+
+  -- A line booked late for the locked month lands on the NEXT payslip.
+  insert into public.cod_ledger (rider_id, kind, amount, memo, category, pay_month, created_by)
+  values (v_rider, 'adjustment', 1000, 'Late penalty for last month', 'penalty', m,
+          '11111111-1111-1111-1111-111111111111');
+  select deductions into v_late from public.payroll_preview(cur) where rider_id = v_rider;
+  if v_late < 1000 then raise exception 'FAIL: the late line did not roll forward (deductions %)', v_late; end if;
+  if (select deductions from public.payslips where id = ps.id) <> 5000 then
+    raise exception 'FAIL: the locked payslip changed';
+  end if;
+  raise notice 'PASS: a late line rolls to next month; the locked payslip is untouched';
+
+  -- Pay it: a transfer needs a reference; then once only.
+  begin
+    perform public.record_payslip_payment(ps.id, 'bank', '');
+    raise exception 'FAIL: a bank payment with no reference was accepted';
+  exception when others then
+    if sqlerrm like 'FAIL:%' then raise; end if;
+  end;
+  ps := public.record_payslip_payment(ps.id, 'bank', 'KBZ-BANK-2026-0001');
+  if ps.status <> 'paid' or ps.paid_at is null or ps.reference <> 'KBZ-BANK-2026-0001' then
+    raise exception 'FAIL: payment not recorded (status %)', ps.status;
+  end if;
+  begin
+    perform public.record_payslip_payment(ps.id, 'cash', null);
+    raise exception 'FAIL: a payslip was paid twice';
+  exception when others then
+    if sqlerrm like 'FAIL:%' then raise; end if;
+    if sqlerrm not like 'payslip_already_paid%' then raise exception 'FAIL: wrong refusal: %', sqlerrm; end if;
+  end;
+  begin
+    update public.payslips set net = net + 1 where id = ps.id;
+    raise exception 'FAIL: a paid payslip was edited';
+  exception when insufficient_privilege or check_violation then null;
+  end;
+  begin
+    insert into public.payslips (rider_id, month, days_in_month, net) values (v_rider, m, 30, 0);
+    raise exception 'FAIL: a second payslip for the same month was created';
+  exception when unique_violation then null;
+  end;
+  select count(*) into n from public.audit_log where action = 'payroll.pay' and entity_id = ps.id::text;
+  if n <> 1 then raise exception 'FAIL: % payment audit entries, expected 1', n; end if;
+  raise notice 'PASS: a payslip is paid once, audited, and cannot be edited or duplicated';
+
+  -- Riders read their own payslips and nobody else's; cannot pay themselves.
+  perform set_config('request.jwt.claims', format('{"sub":"%s","role":"authenticated"}', v_rider), true);
+  execute 'set local role authenticated';
+  select count(*) into n from public.payslips where id = ps.id;
+  if n <> 1 then raise exception 'FAIL: the rider cannot see their own payslip'; end if;
+  begin
+    perform public.lock_pay_period(m);
+    raise exception 'FAIL: a rider locked payroll';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+    update public.rider_profiles set base_salary = 999999 where id = v_rider;
+    raise exception 'FAIL: a rider raised their own salary';
+  exception when insufficient_privilege then null;
+  end;
+  execute 'reset role';
+  perform set_config('request.jwt.claims', format('{"sub":"%s","role":"authenticated"}', v_other), true);
+  execute 'set local role authenticated';
+  select count(*) into n from public.payslips where id = ps.id;
+  if n <> 0 then raise exception 'FAIL: another rider can see this payslip'; end if;
+  execute 'reset role';
+  perform set_config('request.jwt.claims', '', true);
+  raise notice 'PASS: riders see only their own payslips and cannot lock payroll or set their salary';
+end $$;
+reset role;
+select set_config('request.jwt.claims', '', false);
+
+
 -- ============================================================================
 --  R10. The rider's own numbers (0041)
 --
@@ -2046,22 +2764,27 @@ declare
   v_net   bigint;
   v_cod   bigint;
   v_pay   bigint;
+  v_adj   bigint;
 begin
   v_bag := public.rider_cash_held(v_rider);
   v_net := public.rider_cod_in_hand(v_rider);
 
+  -- 0057: the net is EVERY unsettled line, so adjustments (a payroll
+  -- deduction or bonus) and pickup pay belong in the expected figure too.
+  -- This test assumed the rider had none; R13's payroll fixture gives them some.
   select coalesce(sum(amount) filter (where kind in ('cod_collected','cod_remitted')), 0),
-         coalesce(-sum(amount) filter (where kind in ('commission_earned','trip_pay')), 0)
-    into v_cod, v_pay
+         coalesce(-sum(amount) filter (where kind in ('commission_earned','trip_pay','pickup_pay')), 0),
+         coalesce(sum(amount) filter (where kind in ('adjustment','platform_fee')), 0)
+    into v_cod, v_pay, v_adj
     from public.cod_ledger
    where rider_id = v_rider and settlement_id is null;
 
   if v_bag <> v_cod then
     raise exception 'FAIL: cash_held % but the cash lines sum to %', v_bag, v_cod;
   end if;
-  if v_net <> v_cod - v_pay then
-    raise exception 'FAIL: cod_in_hand % but cash % less pay % is %',
-      v_net, v_cod, v_pay, v_cod - v_pay;
+  if v_net <> v_cod - v_pay + v_adj then
+    raise exception 'FAIL: cod_in_hand % but cash % less pay % plus adjustments % is %',
+      v_net, v_cod, v_pay, v_adj, v_cod - v_pay + v_adj;
   end if;
   -- The whole point: with pay booked, the two MUST differ.
   if v_pay > 0 and v_bag = v_net then

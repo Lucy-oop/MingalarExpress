@@ -19,6 +19,37 @@ const RULES: Array<[RegExp, string]> = [
     'Only an approved settlement can be reopened. A paid settlement is final — book an adjustment instead.',
   ],
   [/settlement_not_found/i, 'That settlement no longer exists.'],
+  // 0055. Before the generic 42501 rule below, which would swallow these.
+  [
+    /rider_has_open_run/i,
+    "This rider still has a run out or back at the hub. Close it and deposit its cash on the Ways board, then build the settlement.",
+  ],
+  [
+    /cod_ledger_append_only/i,
+    'Ledger lines are never edited or deleted. Book a correcting adjustment instead.',
+  ],
+  [/cod_ledger_adjustment_reason/i, 'An adjustment needs a reason of at least 3 characters.'],
+  // 0056. Shop payouts.
+  [
+    /payout_exceeds_available/i,
+    'That is more than has reached the office for this shop. Only cleared money — cash from closed runs and confirmed KBZPay — can be paid out.',
+  ],
+  [/payout_reference_required/i, 'Enter the transaction reference for this transfer.'],
+  [/payout_recipient_required/i, 'Name the sender this Direct payout went to.'],
+  [/payout_method_unknown/i, 'Choose how the shop was paid.'],
+  [/shop_ledger_append_only/i, 'Payouts are never edited or deleted.'],
+  // 0057. Payroll.
+  [/period_locked/i, 'That month is already locked. Corrections go on next month as adjustments.'],
+  [/period_not_ended/i, 'A month can only be locked after it ends.'],
+  [
+    /period_has_open_runs/i,
+    'Some runs dated in or before this month are still open. Close or cancel them on the Ways board first.',
+  ],
+  [/payslip_already_paid/i, 'This payslip has already been paid.'],
+  [/payslip_nothing_to_pay/i, 'Deductions cover the whole month — there is nothing to pay.'],
+  [/payslip_reference_required/i, 'Enter the bank or wallet transaction reference.'],
+  [/payslip_immutable|pay_period_immutable/i, 'Payslips and locked months cannot be changed. Book an adjustment next month.'],
+  [/cod_ledger_already_on_payslip/i, 'That line has already been paid on a payslip.'],
   [
     /amount_exceeds_cash_in_hand/i,
     'That is more than the rider is holding. Check the amount against their balance.',

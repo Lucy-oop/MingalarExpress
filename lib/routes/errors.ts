@@ -20,6 +20,9 @@ export type TripErrorKind =
   | 'nothing_to_receive'
   | 'parcels_not_receivable'
   | 'unreceived_pickups'
+  | 'uncollected_pickups'
+  | 'run_cash_changed'
+  | 'delivered_parcels'
   | 'not_receivable'
   | 'reason_too_short'
   | 'no_rider'
@@ -157,6 +160,36 @@ const MAP: Array<{ match: RegExp; value: ExplainedTripError }> = [
     value: {
       kind: 'not_receivable',
       message: 'Only a run that has left the hub can bring parcels back to it.',
+      retry: false,
+    },
+  },
+  {
+    // 0055. A run that delivered or collected parcels happened; close it instead.
+    match: /trip_has_delivered_parcels/i,
+    value: {
+      kind: 'delivered_parcels',
+      message:
+        'This run has delivered or collected parcels, so it cannot be cancelled. Close it and deposit its cash instead.',
+      retry: false,
+    },
+  },
+  {
+    // 0052. The office confirmed one cash figure and the ledger now has another.
+    match: /run_cash_changed/i,
+    value: {
+      kind: 'run_cash_changed',
+      message:
+        "This run's cash changed since you opened the confirmation. Nothing was closed — check the new amount and confirm again.",
+      retry: true,
+    },
+  },
+  {
+    // 0051. A pickup the rider never collected would be left on a closed run.
+    match: /trip_has_uncollected_pickups/i,
+    value: {
+      kind: 'uncollected_pickups',
+      message:
+        'Some parcels on this run were never collected. Send them back to the pickup list before closing the run.',
       retry: false,
     },
   },

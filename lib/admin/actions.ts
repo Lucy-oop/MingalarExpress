@@ -190,6 +190,7 @@ export async function updateRider(riderId: string, formData: FormData): Promise<
     codFloatLimit: formData.get('codFloatLimit'),
     commissionPctOverride: formData.get('commissionPctOverride') || null,
     vehiclePlate: formData.get('vehiclePlate') || '',
+    baseSalary: formData.get('baseSalary') || 0,
   })
   if (!parsed.success) {
     return { ok: false, message: 'Check the fields below.', fieldErrors: parsed.error.flatten().fieldErrors }
@@ -205,6 +206,7 @@ export async function updateRider(riderId: string, formData: FormData): Promise<
       cod_float_limit: v.codFloatLimit,
       commission_pct_override: v.commissionPctOverride,
       vehicle_plate: v.vehiclePlate || null,
+      base_salary: v.baseSalary,
     })
     .eq('id', riderId)
 
@@ -239,7 +241,8 @@ export async function setRiderActive(riderId: string, active: boolean): Promise<
         message: 'This rider is still carrying parcels. Reassign them on the dispatch board first.',
       }
     }
-    const { data: cash } = await supabase.rpc('rider_cod_in_hand', { p_rider_id: riderId })
+    // CASH carried, not cash less pay owed (0053) -- pay does not excuse unreturned cash.
+    const { data: cash } = await supabase.rpc('rider_cash_held', { p_rider_id: riderId })
     if (Number(cash ?? 0) > 0) {
       return {
         ok: false,

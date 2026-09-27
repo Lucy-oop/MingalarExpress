@@ -1,6 +1,13 @@
 import type { Metadata } from 'next'
 import { requireAdmin } from '@/lib/auth/guards'
-import { getCodPositions, getLedger, getShopPositions } from '@/lib/admin/queries'
+import {
+  getCodPositions,
+  getLedger,
+  getRecentShopPayouts,
+  getShopBalances,
+  getShopPositions,
+} from '@/lib/admin/queries'
+import { ShopBalances } from '@/components/admin/shop-balances'
 import { parseDayParam, yangonToday } from '@/lib/admin/day'
 import { LEDGER_KINDS } from '@/lib/admin/ledger'
 import { PageHeader } from '@/components/admin/kpi'
@@ -55,12 +62,15 @@ export default async function CodAuditPage({
   const from = parseDayParam(sp.from, shiftDays(to, -30))
 
   // A rider drilldown lands on the ledger tab, so `rider` alone should focus it.
-  const [positions, shops, ledger] = await Promise.all([
+  const [positions, shops, ledger, balances, payouts] = await Promise.all([
     getCodPositions(),
     view === 'shops' ? getShopPositions(from, to) : Promise.resolve([]),
     view === 'ledger'
       ? getLedger({ riderId: rider || undefined, kind, settled, limit: 200 })
       : Promise.resolve([]),
+    // 0056: the all-time account and payouts, on the shops view only.
+    view === 'shops' ? getShopBalances() : Promise.resolve([]),
+    view === 'shops' ? getRecentShopPayouts() : Promise.resolve([]),
   ])
 
   return (
@@ -69,6 +79,7 @@ export default async function CodAuditPage({
         title="COD audit explorer"
         description="Uncollected versus settled cash, across every rider and every shop. The rider ledger is append-only and is the book of record."
       />
+      {view === 'shops' ? <ShopBalances balances={balances} payouts={payouts} /> : null}
       <CodExplorer
         view={view}
         positions={positions}

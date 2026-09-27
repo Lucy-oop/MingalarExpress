@@ -60,6 +60,13 @@ export type BoardTrip = {
   kind: TripKind | null
   /** Pickups already received from this run and banked for pay. */
   bankedPickups: number
+  /**
+   * Cash this run's deliveries put in the rider's hand, less anything already
+   * deposited against it (0052). From the LEDGER, with the same predicate as
+   * close_run_and_deposit, so the figure the office confirms is the one the
+   * database will bank. KBZPay deliveries book no cash line, so are excluded.
+   */
+  runCash: number
   serviceDate: string
   status: 'planned' | 'loading' | 'departed' | 'returned' | 'closed' | 'cancelled'
   riderId: string | null
@@ -116,8 +123,14 @@ export type BoardRider = {
   isOnline: boolean
   vehiclePlate: string | null
   baseArea: string | null
-  /** Unsettled ledger balance. Positive = holding the platform's cash. */
+  /**
+   * CASH the rider is carrying: cod_collected less cod_remitted, unsettled.
+   * 0 once every run is closed and deposited (0052). Was the blended net of
+   * every unsettled line, which read negative whenever pay was owed (0053).
+   */
   codInHand: number
+  /** Pay owed to the rider, unsettled: run pay, parcel pay, commission, less adjustments. */
+  unsettledEarnings: number
   codFloatLimit: number
   /** True while this rider is already out on a planned/loading/departed run. */
   onOpenTrip: boolean
@@ -292,6 +305,68 @@ export async function getPlanningBoard(serviceDate?: string): Promise<PlanningBo
 
   if (unroutedErr) throw new Error(`unrouted parcels unavailable: ${unroutedErr.message}`)
 
+  /*
+    RUN CASH, per trip (0052). `cod_collected` lines carry the order, not the
+    trip, so they are matched through the delivery-leg orders on each run;
+    `cod_remitted` lines written at close carry the trip itself.
+  */
+  const deliveryOrderTrip = new Map<string, string>()
+  for (const raw of (tripOrderRows ?? []) as unknown as Array<Record<string, unknown>>) {
+    if (raw.trip_leg === 'delivery') deliveryOrderTrip.set(raw.id as string, raw.trip_id as string)
+  }
+  /*
+    0055: a deposit taken while a run is out belongs to that run -- the same
+    rule close_run_and_deposit applies. Untagged deposits since the earliest
+    departure on the board are fetched once and matched per run below.
+  */
+  const departures = (tripRows ?? [])
+    .map((t) => t.departed_at as string | null)
+    .filter((d): d is string => !!d)
+    .sort()
+  const [{ data: cashRows }, { data: depositRows }, { data: untaggedRows }] = await Promise.all([
+    deliveryOrderTrip.size
+      ? supabase
+          .from('cod_ledger')
+          .select('order_id, rider_id, amount')
+          .eq('kind', 'cod_collected')
+          .in('order_id', [...deliveryOrderTrip.keys()])
+      : Promise.resolve({ data: [] as Array<{ order_id: string | null; rider_id: string; amount: number }> }),
+    tripIds.length
+      ? supabase
+          .from('cod_ledger')
+          .select('trip_id, amount')
+          .eq('kind', 'cod_remitted')
+          .in('trip_id', tripIds)
+      : Promise.resolve({ data: [] as Array<{ trip_id: string | null; amount: number }> }),
+    departures.length
+      ? supabase
+          .from('cod_ledger')
+          .select('rider_id, amount, created_at')
+          .eq('kind', 'cod_remitted')
+          .is('trip_id', null)
+          .gte('created_at', departures[0]!)
+      : Promise.resolve({ data: [] as Array<{ rider_id: string; amount: number; created_at: string }> }),
+  ])
+  const riderByTrip = new Map((tripRows ?? []).map((t) => [t.id, t.rider_id as string | null]))
+  const cashByTrip = new Map<string, number>()
+  for (const l of cashRows ?? []) {
+    const tripId = l.order_id ? deliveryOrderTrip.get(l.order_id) : undefined
+    if (!tripId || riderByTrip.get(tripId) !== l.rider_id) continue
+    cashByTrip.set(tripId, (cashByTrip.get(tripId) ?? 0) + Number(l.amount))
+  }
+  for (const l of depositRows ?? []) {
+    if (!l.trip_id) continue
+    cashByTrip.set(l.trip_id, (cashByTrip.get(l.trip_id) ?? 0) + Number(l.amount))
+  }
+  for (const t of tripRows ?? []) {
+    if (!t.departed_at || !t.rider_id) continue
+    for (const l of untaggedRows ?? []) {
+      if (l.rider_id === t.rider_id && l.created_at >= t.departed_at) {
+        cashByTrip.set(t.id, (cashByTrip.get(t.id) ?? 0) + Number(l.amount))
+      }
+    }
+  }
+
   const rates: TripPayRates = {
     parcelRate: Number(settings?.route_parcel_rate ?? 300),
     pickupRate: Number(settings?.route_pickup_rate ?? 500),
@@ -419,6 +494,15 @@ export async function getPlanningBoard(serviceDate?: string): Promise<PlanningBo
       routeId: t.route_id,
       kind,
       bankedPickups,
+      // 0055: capped at the cash the rider still carries, exactly as
+      // close_run_and_deposit caps it, so the dialog shows what will be banked.
+      runCash: Math.max(
+        Math.min(
+          cashByTrip.get(t.id) ?? 0,
+          riders.find((r) => r.id === t.rider_id)?.codInHand ?? Number.POSITIVE_INFINITY,
+        ),
+        0,
+      ),
       serviceDate: t.service_date,
       status: t.status as BoardTrip['status'],
       riderId: t.rider_id,
@@ -511,14 +595,28 @@ async function getBoardRiders(): Promise<Omit<BoardRider, 'onOpenTrip'>[]> {
          service_areas!rider_profiles_base_area_id_fkey (name)`,
       )
       .order('is_online', { ascending: false }),
-    supabase.from('cod_ledger').select('rider_id, amount').is('settlement_id', null),
+    // Cash clears by SETTLEMENT, earnings by PAYSLIP (0057), so fetch either.
+    supabase
+      .from('cod_ledger')
+      .select('rider_id, kind, amount, settlement_id, payslip_id')
+      .or('settlement_id.is.null,payslip_id.is.null'),
   ])
 
   if (error) throw new Error(`riders unavailable: ${error.message}`)
 
+  /*
+    TWO FIGURES (0053), the same split as rider_cash_held and
+    rider_unsettled_earnings: the cash kinds, and everything owed to the rider.
+    They never offset -- a rider hands in all cash and is paid monthly.
+  */
   const cash = new Map<string, number>()
+  const earned = new Map<string, number>()
   for (const row of ledger ?? []) {
-    cash.set(row.rider_id, (cash.get(row.rider_id) ?? 0) + row.amount)
+    if (row.kind === 'cod_collected' || row.kind === 'cod_remitted') {
+      if (row.settlement_id === null) cash.set(row.rider_id, (cash.get(row.rider_id) ?? 0) + row.amount)
+    } else if (row.payslip_id === null) {
+      earned.set(row.rider_id, (earned.get(row.rider_id) ?? 0) - row.amount)
+    }
   }
 
   return (riders ?? [])
@@ -533,6 +631,7 @@ async function getBoardRiders(): Promise<Omit<BoardRider, 'onOpenTrip'>[]> {
         vehiclePlate: r.vehicle_plate,
         baseArea: (r.service_areas as unknown as { name: string } | null)?.name ?? null,
         codInHand: cash.get(r.id) ?? 0,
+        unsettledEarnings: earned.get(r.id) ?? 0,
         codFloatLimit: Number(r.cod_float_limit ?? 0),
       }
     })

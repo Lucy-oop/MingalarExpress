@@ -328,7 +328,7 @@ describe('the cash figure is the bag', () => {
  * stays correct and simply goes back to the shape that was reported as
  * confusing. That is exactly the class of change that regresses silently.
  */
-describe('the rider can reach all three of their screens', () => {
+describe('the rider can reach all four of their screens', () => {
   /**
    * Way history used to be a text-sm link in the top-right corner of the
    * earnings page — diagonally opposite the thumb on a one-handed screen, and
@@ -336,7 +336,9 @@ describe('the rider can reach all three of their screens', () => {
    */
   test('history is a tab, not a corner link', () => {
     assert.match(tabs, /\/rider\/ways/, 'the history tab is gone from the bottom bar')
-    assert.match(tabs, /grid-cols-3/, 'the tab bar is no longer three across')
+    // Four since 0057 added Payslips; each is a tab, never a corner link.
+    assert.match(tabs, /grid-cols-4/, 'the tab bar is no longer four across')
+    assert.match(tabs, /\/rider\/payslips/, 'the payslips tab is gone from the bottom bar')
     assert.ok(
       !/href="\/rider\/ways"/.test(earningsPage),
       'the corner link to way history is back on the earnings page',

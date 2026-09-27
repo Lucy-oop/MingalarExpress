@@ -199,6 +199,18 @@ export function RiderRoster({
                               style={{ width: `${pct}%` }}
                             />
                           </div>
+                          {/*
+                            0053: PAY OWED, ON ITS OWN LINE. Riders hand in all
+                            cash every run and are paid monthly, so what they
+                            are owed is a separate number -- never netted
+                            against the cash above.
+                          */}
+                          <div className="mt-2 flex items-center justify-between text-xs">
+                            <span className="text-muted-foreground">Unsettled earnings</span>
+                            <span className="font-medium tabular-nums">
+                              {formatMmk(r.unsettledEarnings)}
+                            </span>
+                          </div>
                         </div>
                       </div>
 
@@ -361,6 +373,22 @@ function RiderEditor({
             max="100"
             placeholder={String(globalCommissionPct)}
             defaultValue={rider.commissionPctOverride ?? ''}
+          />
+        </Field>
+
+        {/* 0057: paid monthly through Payroll, on top of run and parcel pay. */}
+        <Field
+          label="Monthly base salary (Ks)"
+          htmlFor={`salary-${rider.id}`}
+          hint="Paid through Payroll each month. 0 = variable pay only."
+        >
+          <Input
+            id={`salary-${rider.id}`}
+            name="baseSalary"
+            type="number"
+            min="0"
+            step="1000"
+            defaultValue={rider.baseSalary}
           />
         </Field>
 

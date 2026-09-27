@@ -54,8 +54,13 @@ export function SettlementRunner({
    * `build_settlement` sweeps stragglers from earlier days as well, so a
    * non-zero open balance is the whole signal.
    */
+  /*
+    0053: ANYTHING UNSETTLED, CASH OR EARNINGS. Filtering on the net hid a
+    rider whose cash and pay happened to be equal -- 5,000 in hand and 5,000
+    owed reads as 0 -- which is exactly the rider with the most to sort out.
+  */
   const outstanding = positions
-    .filter((p) => p.open_balance !== 0)
+    .filter((p) => p.cash_in_hand !== 0 || p.unsettled_earnings !== 0)
     .map((p) => {
       const existing = byRider.get(p.rider_id)
       return {
@@ -72,10 +77,12 @@ export function SettlementRunner({
       gross: acc.gross + s.gross_cod,
       earnings: acc.earnings + s.rider_earnings,
       platform: acc.platform + s.platform_share,
-      net: acc.net + s.net_due_platform,
+      // 0053: earnings to disburse and cash still outstanding, apart.
+      toPay: acc.toPay + s.split.earningsToPay,
+      cashOut: acc.cashOut + s.split.cashOutstanding,
       orders: acc.orders + s.order_count,
     }),
-    { gross: 0, earnings: 0, platform: 0, net: 0, orders: 0 },
+    { gross: 0, earnings: 0, platform: 0, toPay: 0, cashOut: 0, orders: 0 },
   )
 
   async function run(key: string, work: () => Promise<AdminResult>) {
@@ -154,12 +161,17 @@ export function SettlementRunner({
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
           <Kpi label="Riders settled" value={settlements.length} hint={`${totals.orders} orders`} />
           <Kpi label="Gross COD collected" value={formatMmk(totals.gross)} />
-          <Kpi label="Rider earnings" value={formatMmk(totals.earnings)} tone="good" />
           <Kpi label="Mingalar share" value={formatMmk(totals.platform)} />
           <Kpi
-            label={totals.net >= 0 ? 'Cash to collect' : 'Cash to pay out'}
-            value={formatMmk(Math.abs(totals.net))}
-            tone={totals.net >= 0 ? 'warn' : 'default'}
+            label="Rider earnings"
+            value={formatMmk(totals.toPay)}
+            hint="paid monthly through Payroll, not here"
+          />
+          <Kpi
+            label="Cash still outstanding"
+            value={formatMmk(totals.cashOut)}
+            hint="0 when every run was closed with its cash deposited"
+            tone={totals.cashOut !== 0 ? 'warn' : 'good'}
           />
         </div>
       ) : null}
@@ -172,7 +184,7 @@ export function SettlementRunner({
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-sm">
               <Wallet className="size-4" />
-              Unsettled balances ({outstanding.length})
+              Unsettled riders ({outstanding.length})
             </CardTitle>
             <p className="text-xs text-muted-foreground">
               These riders hold ledger lines no settlement has claimed. Building the day drafts all
@@ -191,8 +203,7 @@ export function SettlementRunner({
                     {existing ? <SettlementStatusBadge status={existing.status} /> : null}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    Collected {formatMmk(p.cod_collected)} · commission{' '}
-                    {formatMmk(p.commission)} · handed in {formatMmk(p.cod_remitted)}
+                    Cash in hand {formatMmk(p.cash_in_hand)}
                     {p.entry_count ? ` · ${p.entry_count} entries` : ''}
                   </p>
                   {locked ? (
@@ -203,13 +214,14 @@ export function SettlementRunner({
                   ) : null}
                 </div>
                 <div className="flex items-center gap-3">
-                  <span
-                    className={cn(
-                      'text-sm font-semibold tabular-nums',
-                      p.open_balance < 0 && 'text-emerald-700',
-                    )}
-                  >
-                    {formatMmk(p.open_balance)}
+                  {/* What the settlement will pay out: earnings, apart from cash. */}
+                  <span className="text-right">
+                    <span className="block text-[10px] uppercase tracking-wide text-muted-foreground">
+                      Earnings (Payroll)
+                    </span>
+                    <span className="text-sm font-semibold tabular-nums text-emerald-700">
+                      {formatMmk(p.unsettled_earnings)}
+                    </span>
                   </span>
                   <Button
                     size="sm"
@@ -293,16 +305,15 @@ function SettlementTable({
             {showDate ? <th className="px-3 py-2 font-medium">Day</th> : null}
             <th className="px-3 py-2 text-right font-medium">Orders</th>
             <th className="px-3 py-2 text-right font-medium">COD collected</th>
-            <th className="px-3 py-2 text-right font-medium">Rider earns</th>
             <th className="px-3 py-2 text-right font-medium">Mingalar</th>
-            <th className="px-3 py-2 text-right font-medium">Cash movement</th>
+            <th className="px-3 py-2 text-right font-medium">Earnings (via Payroll)</th>
+            <th className="px-3 py-2 text-right font-medium">Cash outstanding</th>
             <th className="px-3 py-2 font-medium">Status</th>
             <th className="px-3 py-2 text-right font-medium">&nbsp;</th>
           </tr>
         </thead>
         <tbody className="divide-y">
           {rows.map((s) => {
-            const payout = s.net_due_platform < 0
             return (
               <tr key={s.id} className="hover:bg-muted/30">
                 <td className="px-3 py-2">
@@ -318,19 +329,19 @@ function SettlementTable({
                 ) : null}
                 <td className="px-3 py-2 text-right tabular-nums">{s.order_count}</td>
                 <td className="px-3 py-2 text-right tabular-nums">{formatMmk(s.gross_cod)}</td>
-                <td className="px-3 py-2 text-right tabular-nums text-emerald-700">
-                  {formatMmk(s.rider_earnings)}
-                </td>
                 <td className="px-3 py-2 text-right tabular-nums">
                   {formatMmk(s.platform_share)}
                 </td>
-                <td className="px-3 py-2 text-right">
-                  <span className="font-semibold tabular-nums">
-                    {formatMmk(Math.abs(s.net_due_platform))}
-                  </span>
-                  <span className="block text-[10px] uppercase text-muted-foreground">
-                    {payout ? 'we pay rider' : 'rider hands in'}
-                  </span>
+                <td className="px-3 py-2 text-right font-semibold tabular-nums text-emerald-700">
+                  {formatMmk(s.split.earningsToPay)}
+                </td>
+                <td
+                  className={cn(
+                    'px-3 py-2 text-right tabular-nums',
+                    s.split.cashOutstanding !== 0 ? 'font-semibold text-amber-700' : 'text-muted-foreground',
+                  )}
+                >
+                  {formatMmk(s.split.cashOutstanding)}
                 </td>
                 <td className="px-3 py-2">
                   <SettlementStatusBadge status={s.status} />

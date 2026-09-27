@@ -64,10 +64,12 @@ export function CodExplorer({
       // trip_pay and a per_parcel day books commission + pickup_pay, so a
       // single-kind total read as zero on exactly the days it mattered.
       pay: acc.pay + p.commission + p.trip_pay + p.pickup_pay,
-      open: acc.open + p.open_balance,
+      // 0053: cash and pay owed, apart. The blended open balance is not shown.
+      cash: acc.cash + p.cash_in_hand,
+      earned: acc.earned + p.unsettled_earnings,
       settled: acc.settled + p.settled_total,
     }),
-    { collected: 0, remitted: 0, pay: 0, open: 0, settled: 0 },
+    { collected: 0, remitted: 0, pay: 0, cash: 0, earned: 0, settled: 0 },
   )
 
   return (
@@ -75,12 +77,17 @@ export function CodExplorer({
       {/* ---------------------------------------------------------------- */}
       {/* Fleet position                                                    */}
       {/* ---------------------------------------------------------------- */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         <Kpi
-          label="Uncollected (open)"
-          value={formatMmk(totals.open)}
-          hint="net cash riders still hold"
-          tone={totals.open > 0 ? 'warn' : 'good'}
+          label="Cash in hand"
+          value={formatMmk(totals.cash)}
+          hint="cash riders still carry; 0 once every run is deposited"
+          tone={totals.cash > 0 ? 'warn' : 'good'}
+        />
+        <Kpi
+          label="Unsettled earnings"
+          value={formatMmk(totals.earned)}
+          hint="owed to riders at the next settlement"
         />
         <Kpi label="Settled to date" value={formatMmk(totals.settled)} hint="claimed by settlements" />
         <Kpi label="COD ever collected" value={formatMmk(totals.collected)} />
@@ -179,7 +186,8 @@ function RiderPositions({
                   <th className="px-3 py-2 text-right font-medium">Rider pay</th>
                   <th className="px-3 py-2 text-right font-medium">Handed in</th>
                   <th className="px-3 py-2 text-right font-medium">Adjustments</th>
-                  <th className="px-3 py-2 text-right font-medium">Open</th>
+                  <th className="px-3 py-2 text-right font-medium">Cash in hand</th>
+                  <th className="px-3 py-2 text-right font-medium">Unsettled earnings</th>
                   <th className="px-3 py-2 text-right font-medium">Settled</th>
                   <th className="px-3 py-2 font-medium">Open since</th>
                   <th className="px-3 py-2 text-right font-medium">&nbsp;</th>
@@ -187,7 +195,8 @@ function RiderPositions({
               </thead>
               <tbody className="divide-y">
                 {positions.map((p) => {
-                  const over = p.cod_float_limit > 0 && p.open_balance >= p.cod_float_limit
+                  // The float limits CASH carried, never cash less pay owed (0053).
+                  const over = p.cod_float_limit > 0 && p.cash_in_hand >= p.cod_float_limit
                   return (
                     <tr key={p.rider_id} className={cn(over && 'bg-destructive/5')}>
                       <td className="px-3 py-2">
@@ -244,10 +253,12 @@ function RiderPositions({
                         className={cn(
                           'px-3 py-2 text-right font-semibold tabular-nums',
                           over && 'text-destructive',
-                          p.open_balance < 0 && 'text-emerald-700',
                         )}
                       >
-                        {formatMmk(p.open_balance)}
+                        {formatMmk(p.cash_in_hand)}
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums">
+                        {formatMmk(p.unsettled_earnings)}
                       </td>
                       <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
                         {formatMmk(p.settled_total)}
@@ -597,7 +608,8 @@ function AdjustmentForm({
                 <option value="">Select a rider</option>
                 {positions.map((p) => (
                   <option key={p.rider_id} value={p.rider_id}>
-                    {p.full_name} ({formatMmk(p.open_balance)} open)
+                    {p.full_name} (cash {formatMmk(p.cash_in_hand)} · earned{' '}
+                    {formatMmk(p.unsettled_earnings)})
                   </option>
                 ))}
               </Select>

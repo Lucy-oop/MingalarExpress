@@ -150,7 +150,7 @@ function RiderChip({
   const note = barred
     ? 'on a run'
     : overFloat
-      ? `holding ${formatMmk(rider.codInHand)}`
+      ? 'over cash float'
       : !rider.isOnline
         ? 'offline'
         : (rider.vehiclePlate ?? '')
@@ -175,6 +175,23 @@ function RiderChip({
         {current ? <Check className="size-3 shrink-0" aria-hidden="true" /> : null}
         {rider.name}
       </span>
+      {/*
+        0053: CASH AND PAY, SEPARATELY. The chip used to carry one blended
+        balance, which read negative when pay was owed and hid the cash in the
+        bag. Shown only when there is something to show, so a clean rider's chip
+        stays short.
+      */}
+      {rider.codInHand !== 0 || rider.unsettledEarnings !== 0 ? (
+        <span
+          className={cn(
+            'text-[10px] leading-tight tabular-nums',
+            current ? 'text-primary-foreground/80' : 'text-muted-foreground',
+          )}
+          title={`Cash in hand ${formatMmk(rider.codInHand)} · Unsettled earnings ${formatMmk(rider.unsettledEarnings)}`}
+        >
+          cash {formatMmk(rider.codInHand)} · earned {formatMmk(rider.unsettledEarnings)}
+        </span>
+      ) : null}
       {note ? (
         <span
           className={cn(

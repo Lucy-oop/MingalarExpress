@@ -332,6 +332,40 @@ export async function closeTrip(tripId: string): Promise<TripResult> {
   }
 }
 
+/**
+ * Close a run and record the rider handing in all of its cash (0052).
+ *
+ * The office's model: a rider hands in 100% of the cash every run and is paid
+ * monthly, so closing is the moment the cash comes back. `expectedCash` is the
+ * figure the office confirmed on screen; `close_run_and_deposit` refuses if the
+ * ledger now says anything else, and does the close and the deposit in one
+ * transaction. The rider's pay is booked unsettled, for the monthly settlement.
+ */
+export async function closeRunWithDeposit(tripId: string, expectedCash: number): Promise<TripResult> {
+  let supabase
+  try {
+    supabase = await dispatchClient()
+  } catch {
+    return DENIED
+  }
+
+  const { error } = await supabase.rpc('close_run_and_deposit', {
+    p_trip_id: tripId,
+    p_expected_cash: expectedCash,
+  })
+  if (error) return fail(error.message)
+
+  refresh()
+  revalidatePath('/admin/audit')
+  return {
+    ok: true,
+    message:
+      expectedCash > 0
+        ? `Run closed. ${expectedCash.toLocaleString()} Ks recorded as handed in; the rider's pay is kept for the monthly settlement.`
+        : "Run closed. No cash to hand in; the rider's pay is kept for the monthly settlement.",
+  }
+}
+
 export async function cancelTrip(tripId: string, reason: string): Promise<TripResult> {
   let supabase
   try {

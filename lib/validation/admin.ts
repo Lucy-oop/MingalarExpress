@@ -87,6 +87,13 @@ export const riderUpdateSchema = z.object({
    * clearing this is how a rider is put back on the standard split.
    */
   commissionPctOverride: nullableNumber(commissionPct),
+  /** Monthly base salary in MMK, paid through payroll (0057). Blank = 0. */
+  baseSalary: z.coerce
+    .number({ error: 'Enter an amount in kyat' })
+    .int('Whole kyat only')
+    .min(0, 'Cannot be negative')
+    .max(10_000_000, 'Check the amount — over 10,000,000 a month')
+    .default(0),
 })
 
 // ---------------------------------------------------------------------------

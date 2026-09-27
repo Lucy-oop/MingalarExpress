@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/client'
 import { TripCard } from '@/components/routes/trip-card'
 import { UnroutedPanel, type PanelTarget } from '@/components/routes/unrouted-panel'
 import { ReceiveDialog } from '@/components/routes/receive-dialog'
+import { CloseRunDialog } from '@/components/routes/close-run-dialog'
 import { wayLabel } from '@/lib/routes/ways'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -15,7 +16,7 @@ import {
   assignToWay,
   assignTripRider,
   cancelTrip,
-  closeTrip,
+  closeRunWithDeposit,
   departTrip,
   loadTrip,
   planTrip,
@@ -73,6 +74,8 @@ export function RouteBoard({ board }: { board: PlanningBoard }) {
   const [targetTripId, setTargetTripId] = React.useState<string | null>(null)
   /** The pickup run whose Received checklist is open. */
   const [receiving, setReceiving] = React.useState<string | null>(null)
+  /** The run whose close-and-deposit confirmation is open (0052). */
+  const [closing, setClosing] = React.useState<string | null>(null)
 
   /*
     Drop ticks for parcels that left the pool (another dispatcher loaded them).
@@ -200,6 +203,7 @@ export function RouteBoard({ board }: { board: PlanningBoard }) {
     return map
   }, [board.trips])
   const receivingTrip = board.trips.find((t) => t.id === receiving) ?? null
+  const closingTrip = board.trips.find((t) => t.id === closing) ?? null
   const routeName = (routeId: string) => {
     const r = board.routes.find((x) => x.id === routeId)
     return r ? wayLabel(r.code) : 'Way'
@@ -373,15 +377,8 @@ export function RouteBoard({ board }: { board: PlanningBoard }) {
                         onReturn={() => void run(trip.id, () => returnTrip(trip.id))}
                         // 0049: opens the checklist; only ticked parcels are received.
                         onReceive={() => setReceiving(trip.id)}
-                        onClose={() => {
-                          if (
-                            !window.confirm(
-                              'Close this run and book the rider’s pay? The ledger is append-only, so this cannot be undone — a correction would be a new adjustment line.',
-                            )
-                          )
-                            return
-                          void run(trip.id, () => closeTrip(trip.id))
-                        }}
+                        // 0052: a dialog showing the run's cash, not a bare confirm.
+                        onClose={() => setClosing(trip.id)}
                         onCancel={() => {
                           const reason = window.prompt('Why is this run being cancelled?')
                           if (reason === null) return
@@ -438,6 +435,21 @@ export function RouteBoard({ board }: { board: PlanningBoard }) {
           />
         </section>
       </div>
+
+      <CloseRunDialog
+        trip={closingTrip}
+        wayName={closingTrip ? routeName(closingTrip.routeId) : ''}
+        busy={busyTripId !== null}
+        onClose={() => setClosing(null)}
+        onConfirm={(expectedCash) => {
+          if (!closingTrip) return
+          void run(closingTrip.id, () => closeRunWithDeposit(closingTrip.id, expectedCash)).then(
+            (r) => {
+              if (r.ok) setClosing(null)
+            },
+          )
+        }}
+      />
 
       <ReceiveDialog
         trip={receivingTrip}

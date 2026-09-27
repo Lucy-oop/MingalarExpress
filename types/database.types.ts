@@ -178,6 +178,9 @@ export type Database = {
       cod_ledger: {
         Row: {
           amount: number
+          category: string | null
+          pay_month: string | null
+          payslip_id: string | null
           created_at: string
           created_by: string | null
           id: number
@@ -190,6 +193,9 @@ export type Database = {
         }
         Insert: {
           amount: number
+          category?: string | null
+          pay_month?: string | null
+          payslip_id?: string | null
           created_at?: string
           created_by?: string | null
           id?: number
@@ -202,6 +208,9 @@ export type Database = {
         }
         Update: {
           amount?: number
+          category?: string | null
+          pay_month?: string | null
+          payslip_id?: string | null
           created_at?: string
           created_by?: string | null
           id?: number
@@ -746,6 +755,105 @@ export type Database = {
           },
         ]
       }
+      pay_periods: {
+        Row: {
+          locked_at: string
+          locked_by: string | null
+          month: string
+          payslip_count: number
+          total_net: number
+        }
+        Insert: {
+          locked_at?: string
+          locked_by?: string | null
+          month: string
+          payslip_count?: number
+          total_net?: number
+        }
+        Update: {
+          locked_at?: string
+          locked_by?: string | null
+          month?: string
+          payslip_count?: number
+          total_net?: number
+        }
+        Relationships: []
+      }
+      payslips: {
+        Row: {
+          base_days: number
+          base_paid: number
+          base_salary: number
+          bonuses: number
+          breakdown: Json
+          created_at: string
+          created_by: string | null
+          days_in_month: number
+          deductions: number
+          id: string
+          line_count: number
+          method: string | null
+          month: string
+          net: number
+          paid_at: string | null
+          paid_by: string | null
+          parcel_pay: number
+          pickup_pay: number
+          reference: string | null
+          rider_id: string
+          status: string
+          trip_pay: number
+        }
+        Insert: {
+          base_days?: number
+          base_paid?: number
+          base_salary?: number
+          bonuses?: number
+          breakdown?: Json
+          created_at?: string
+          created_by?: string | null
+          days_in_month: number
+          deductions?: number
+          id?: string
+          line_count?: number
+          method?: string | null
+          month: string
+          net: number
+          paid_at?: string | null
+          paid_by?: string | null
+          parcel_pay?: number
+          pickup_pay?: number
+          reference?: string | null
+          rider_id: string
+          status?: string
+          trip_pay?: number
+        }
+        Update: {
+          base_days?: number
+          base_paid?: number
+          base_salary?: number
+          bonuses?: number
+          breakdown?: Json
+          created_at?: string
+          created_by?: string | null
+          days_in_month?: number
+          deductions?: number
+          id?: string
+          line_count?: number
+          method?: string | null
+          month?: string
+          net?: number
+          paid_at?: string | null
+          paid_by?: string | null
+          parcel_pay?: number
+          pickup_pay?: number
+          reference?: string | null
+          rider_id?: string
+          status?: string
+          trip_pay?: number
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           avatar_path: string | null
@@ -790,6 +898,7 @@ export type Database = {
           active_order_count: number
           availability: Database["public"]["Enums"]["rider_availability"]
           base_area_id: string | null
+          base_salary: number
           cod_float_limit: number
           commission_pct_override: number | null
           coverage_km: number
@@ -810,6 +919,7 @@ export type Database = {
           active_order_count?: number
           availability?: Database["public"]["Enums"]["rider_availability"]
           base_area_id?: string | null
+          base_salary?: number
           cod_float_limit?: number
           commission_pct_override?: number | null
           coverage_km?: number
@@ -830,6 +940,7 @@ export type Database = {
           active_order_count?: number
           availability?: Database["public"]["Enums"]["rider_availability"]
           base_area_id?: string | null
+          base_salary?: number
           cod_float_limit?: number
           commission_pct_override?: number | null
           coverage_km?: number
@@ -1112,6 +1223,45 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      shop_ledger: {
+        Row: {
+          amount: number
+          created_at: string
+          created_by: string | null
+          id: number
+          kind: string
+          memo: string | null
+          method: string | null
+          recipient: string | null
+          reference: string | null
+          shop_id: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          created_by?: string | null
+          id?: number
+          kind: string
+          memo?: string | null
+          method?: string | null
+          recipient?: string | null
+          reference?: string | null
+          shop_id: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          created_by?: string | null
+          id?: number
+          kind?: string
+          memo?: string | null
+          method?: string | null
+          recipient?: string | null
+          reference?: string | null
+          shop_id?: string
+        }
+        Relationships: []
       }
       shops: {
         Row: {
@@ -1678,6 +1828,8 @@ export type Database = {
           cod_remitted: number
           commission: number
           entry_count: number
+          cash_in_hand: number
+          unsettled_earnings: number
           full_name: string
           is_active: boolean
           last_entry_at: string
@@ -1925,6 +2077,68 @@ export type Database = {
       quote_trip_pay: {
         Args: { p_parcels: number; p_pickups?: number; p_route_id?: string }
         Returns: Json
+      }
+      close_run_and_deposit: {
+        Args: { p_trip_id: string; p_expected_cash: number }
+        Returns: Database["public"]["Tables"]["trips"]["Row"]
+      }
+      rider_unsettled_earnings: {
+        Args: { p_rider_id: string }
+        Returns: number
+      }
+      record_shop_payout: {
+        Args: {
+          p_shop_id: string
+          p_amount: number
+          p_method: string
+          p_reference?: string
+          p_memo?: string
+          p_recipient?: string
+        }
+        Returns: number
+      }
+      shop_balances: {
+        Args: { p_shop_id?: string }
+        Returns: {
+          shop_id: string
+          shop_name: string
+          is_direct: boolean
+          delivered: number
+          goods_collected: number
+          fees_deducted: number
+          owed_total: number
+          pending_clearance: number
+          unreceived: number
+          paid_out: number
+          available: number
+          last_payout_at: string | null
+        }[]
+      }
+      lock_pay_period: {
+        Args: { p_month: string }
+        Returns: number
+      }
+      payroll_preview: {
+        Args: { p_month: string }
+        Returns: {
+          rider_id: string
+          full_name: string
+          base_salary: number
+          base_days: number
+          days_in_month: number
+          base_paid: number
+          trip_pay: number
+          parcel_pay: number
+          pickup_pay: number
+          bonuses: number
+          deductions: number
+          net: number
+          line_count: number
+        }[]
+      }
+      record_payslip_payment: {
+        Args: { p_payslip_id: string; p_method: string; p_reference?: string }
+        Returns: Database["public"]["Tables"]["payslips"]["Row"]
       }
       receive_trip_parcels: {
         Args: { p_trip_id: string; p_order_ids: string[] }

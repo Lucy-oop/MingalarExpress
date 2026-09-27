@@ -44,6 +44,8 @@ export const ADMIN_NAV_ITEMS: readonly NavItem[] = [
   { href: '/admin/super/riders', label: 'Riders', icon: 'bike' },
   { href: '/admin/shops', label: 'Shops', icon: 'store' },
   { href: '/admin/super/settlements', label: 'Settlements', icon: 'banknote' },
+  // Monthly rider pay (0057). Settlements reconcile cash; Payroll pays earnings.
+  { href: '/admin/payroll', label: 'Payroll', icon: 'wallet' },
   { href: '/admin/audit', label: 'COD audit', icon: 'scale' },
 ] as const
 

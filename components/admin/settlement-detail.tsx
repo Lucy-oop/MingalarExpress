@@ -12,6 +12,7 @@ import {
 } from '@/lib/admin/actions'
 import type { SettlementDetail as SettlementDetailData } from '@/lib/admin/queries'
 import { LEDGER_LABEL } from '@/lib/admin/ledger'
+import { splitSettlement } from '@/lib/admin/settlement-split'
 import { SettlementStatusBadge } from '@/components/admin/settlement-status'
 import { Stat } from '@/components/admin/kpi'
 import { Button } from '@/components/ui/button'
@@ -34,7 +35,14 @@ export function SettlementDetail({ data }: { data: SettlementDetailData }) {
   const [reopening, setReopening] = useState(false)
   const [, startTransition] = useTransition()
 
-  const payout = s.net_due_platform < 0
+  /*
+    0053: TWO QUESTIONS, NOT ONE NET. Riders hand in all cash every run and are
+    paid monthly, so this page answers "what do we pay the rider?" and "is all
+    their cash in?" separately. `net_due_platform` still exists on the row -- it
+    is what the ledger nets to -- but it muddled a zeroed-out cash deposit with
+    a payout, so it is no longer the headline.
+  */
+  const split = splitSettlement(lines)
 
   async function run(key: string, work: () => Promise<AdminResult>) {
     setBusy(key)
@@ -87,37 +95,41 @@ export function SettlementDetail({ data }: { data: SettlementDetailData }) {
           <CardTitle className="text-sm">How this settles</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
-            <Stat label="COD collected" value={formatMmk(s.gross_cod)} emphasis />
-            <Stat label="Delivery fees" value={formatMmk(s.delivery_fees)} />
-            <Stat label="Rider earnings" value={formatMmk(s.rider_earnings)} emphasis />
-            <Stat label="Mingalar share" value={formatMmk(s.platform_share)} />
-            <Stat
-              label={payout ? 'Payout to rider' : 'Cash rider hands in'}
-              value={formatMmk(Math.abs(s.net_due_platform))}
-              emphasis
-            />
+          {/* ---- earnings: shown, but PAID THROUGH PAYROLL (0057) ------- */}
+          <div className="rounded-md border border-blue-200 bg-blue-50 p-3">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-blue-900">
+              Earnings for {rider?.full_name ?? 'the rider'} — paid through monthly Payroll
+            </p>
+            <p className="text-2xl font-semibold tabular-nums">{formatMmk(split.earningsToPay)}</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {formatMmk(split.earnings)} run pay, parcel pay and commission
+              {split.deductions !== 0
+                ? ` ${split.deductions > 0 ? '−' : '+'} ${formatMmk(Math.abs(split.deductions))} adjustments`
+                : ''}
+              . Paid on the rider&rsquo;s monthly payslip under <strong>Payroll</strong>, never here
+              and never out of the cash below.
+            </p>
           </div>
 
-          <div
-            className={cn(
-              'rounded-md border p-3 text-sm',
-              payout ? 'border-blue-200 bg-blue-50' : 'border-amber-300 bg-amber-50',
-            )}
-          >
-            <p className="font-medium">
-              {payout
-                ? `Mingalar pays ${rider?.full_name ?? 'the rider'} ${formatMmk(Math.abs(s.net_due_platform))}.`
-                : `${rider?.full_name ?? 'The rider'} hands in ${formatMmk(s.net_due_platform)}.`}
-            </p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {formatMmk(s.gross_cod)} collected − {formatMmk(s.rider_earnings)} commission ={' '}
-              {formatMmk(s.net_due_platform)}.{' '}
-              {payout
-                ? 'Negative because prepaid deliveries earn commission with no cash collected.'
-                : 'Any cash already handed in mid-shift is netted off — it is a negative line below.'}
-            </p>
+          {/* ---- cash: collected and handed in, apart ------------------- */}
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+            <Stat label="Cash collected" value={formatMmk(split.cashCollected)} />
+            <Stat label="Cash handed in" value={formatMmk(split.cashDeposited)} />
+            <Stat
+              label="Cash still outstanding"
+              value={formatMmk(split.cashOutstanding)}
+              emphasis
+            />
+            <Stat label="Delivery fees" value={formatMmk(s.delivery_fees)} />
           </div>
+
+          {split.cashOutstanding !== 0 ? (
+            <Alert tone="warning">
+              {split.cashOutstanding > 0
+                ? `${formatMmk(split.cashOutstanding)} of cash was collected but never recorded as handed in. Every run should be closed with its cash deposited — find the run, or record the deposit before paying out.`
+                : `${formatMmk(-split.cashOutstanding)} more was recorded as handed in than was collected. Check the deposits below before paying out.`}
+            </Alert>
+          ) : null}
 
           <Alert tone="info">
             These ledger lines are already <strong>claimed</strong>: the rider&rsquo;s open balance
@@ -171,13 +183,13 @@ export function SettlementDetail({ data }: { data: SettlementDetailData }) {
               <Field
                 label="Payment note"
                 htmlFor="payNote"
-                hint="Optional — receipt number, who took the cash, KBZPay reference."
+                hint="Optional — anything worth noting about the cash reconciliation."
               >
                 <Input
                   id="payNote"
                   value={payNote}
                   onChange={(e) => setPayNote(e.target.value)}
-                  placeholder="Cash taken by U Aung, receipt 0412"
+                  placeholder="All cash accounted for"
                 />
               </Field>
               <div className="flex flex-wrap items-center gap-3">
@@ -187,7 +199,7 @@ export function SettlementDetail({ data }: { data: SettlementDetailData }) {
                   onClick={() => run('pay', () => markSettlementPaid(s.id, payNote))}
                 >
                   <Banknote />
-                  {busy === 'pay' ? 'Recording…' : payout ? 'Mark paid out' : 'Mark cash received'}
+                  {busy === 'pay' ? 'Recording…' : 'Mark settlement closed'}
                 </Button>
                 <Button
                   variant="outline"

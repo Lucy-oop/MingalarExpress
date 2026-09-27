@@ -21,7 +21,7 @@ import {
 import { RiderPicker } from '@/components/routes/rider-picker'
 import { departBlocker, DEPART_BLOCKER_MESSAGE } from '@/lib/routes/depart-gate'
 import { LOADABLE_STATUSES, summariseManifest } from '@/lib/routes/load-gate'
-import { isReceivable } from '@/lib/routes/ways'
+import { closeBlocker, isReceivable, isUncollected } from '@/lib/routes/ways'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { StatusBadge } from '@/components/orders/status-badge'
@@ -113,8 +113,10 @@ export function TripCard({
   */
   const canLoad = trip.status === 'planned' || trip.status === 'loading'
   const canReceive = LOADABLE_STATUSES.includes(trip.status)
-  // Open where there is a decision to make, closed where there is not.
-  const [expanded, setExpanded] = React.useState(canLoad)
+  // Open where there is a decision to make, closed where there is not. A run
+  // back at the hub has one -- receive what it brought, then close and pay --
+  // and starting it folded hid both buttons behind the expander.
+  const [expanded, setExpanded] = React.useState(canLoad || trip.status === 'returned')
   const [showParcels, setShowParcels] = React.useState(false)
   const [picked, setPicked] = React.useState<Set<string>>(new Set())
 
@@ -128,6 +130,10 @@ export function TripCard({
   const summary = React.useMemo(() => summariseManifest(trip.parcels), [trip.parcels])
   // Collected and still on the bike: what the Received checklist can tick.
   const receivable = trip.parcels.filter(isReceivable).length
+  // Sent for but never collected, and not reported failed (0051).
+  const uncollected = trip.parcels.filter(isUncollected)
+  // Why Close & pay would be refused, mirroring close_trip. Null = it can run.
+  const closeBlock = closeBlocker(trip.parcels)
   const quiet = isVolumeSilent(trip.status, trip.parcelCount, trip.pickupCount)
 
   // Drop ticks for parcels that have left this run, so "Unload 4" cannot
@@ -408,28 +414,59 @@ export function TripCard({
             ) : null}
 
             {/*
-              0050: CLOSING NEEDS EVERY COLLECTION RECEIVED. close_trip used to
-              shelve whatever was still aboard, which made the checklist above
-              optional the moment payroll was pressed. It refuses now, and the
-              button says why instead of letting the office find out from an
-              error -- as text, since a disabled button can carry no tooltip.
+              0051: PICKUPS THE RIDER NEVER COLLECTED. Closing used to leave them
+              attached to the closed run, where no pool could see them. The
+              office resolves them here: back to the pickup list, at their shop,
+              for another run to collect.
+            */}
+            {(trip.status === 'departed' || trip.status === 'returned') && uncollected.length > 0 ? (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={busy}
+                onClick={() => {
+                  if (
+                    !window.confirm(
+                      `Send ${uncollected.length} uncollected parcel${uncollected.length === 1 ? '' : 's'} back to the pickup list? The rider will no longer collect ${uncollected.length === 1 ? 'it' : 'them'} on this run.`,
+                    )
+                  )
+                    return
+                  onUnload(uncollected.map((p) => p.id))
+                }}
+              >
+                <Undo2 />
+                Back to pickup list · {uncollected.length}
+              </Button>
+            ) : null}
+
+            {/*
+              CLOSE & PAY IS DISABLED EXACTLY WHEN close_trip WOULD REFUSE, and
+              says why as text beside it -- a disabled button carries no
+              tooltip. Three reasons, see `closeBlocker`: deliveries still out,
+              pickups never collected (0051), collections not received (0050).
+              It used to be enabled for all of them and fail after the press,
+              or -- before 0050/0051 -- succeed and quietly lose parcels.
             */}
             {trip.status === 'departed' || trip.status === 'returned' ? (
               <>
                 <Button
                   size="sm"
                   variant="secondary"
-                  disabled={busy || receivable > 0}
+                  disabled={busy || closeBlock !== null}
                   onClick={onClose}
                 >
                   <Coins />
-                  Close &amp; pay
+                  {/* 0052: closing is where the rider hands in the cash; pay is monthly. */}
+                  Close run &amp; deposit cash
                 </Button>
-                {receivable > 0 ? (
+                {closeBlock ? (
                   <p className="flex items-center gap-1.5 self-center text-xs text-muted-foreground">
                     <Info className="size-3.5 shrink-0" aria-hidden="true" />
-                    {receivable} collected parcel{receivable === 1 ? '' : 's'} not received yet —
-                    tick {receivable === 1 ? 'it' : 'them'} off before closing.
+                    {closeBlock.kind === 'open_deliveries'
+                      ? `${closeBlock.count} parcel${closeBlock.count === 1 ? ' is' : 's are'} still out for delivery — close once ${closeBlock.count === 1 ? 'it is' : 'they are'} delivered, failed or returned.`
+                      : closeBlock.kind === 'uncollected'
+                        ? `${closeBlock.count} parcel${closeBlock.count === 1 ? ' was' : 's were'} never collected — send ${closeBlock.count === 1 ? 'it' : 'them'} back to the pickup list first.`
+                        : `${closeBlock.count} collected parcel${closeBlock.count === 1 ? '' : 's'} not received yet — tick ${closeBlock.count === 1 ? 'it' : 'them'} off in Received at office first.`}
                   </p>
                 ) : null}
               </>

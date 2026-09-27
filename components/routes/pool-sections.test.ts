@@ -76,6 +76,12 @@ describe('the office pool names its halves', () => {
     assert.match(SRC, /setTab\(next\)[\s\S]{0,80}onClear\(\)/, 'switching tab no longer clears the ticks')
   })
 
+  /** The rider picker is offered on the pickup tab too, not only deliveries. */
+  test('assigning to a way offers a rider on both tabs', () => {
+    assert.ok(!/tab === 'delivery' && riders\.length > 0/.test(SRC), 'rider picker is delivery-only again')
+    assert.match(SRC, /'Rider \(optional\)'/)
+  })
+
   /**
    * "Out only" was the whole problem: the only word for the delivery half, and
    * it did not say deliver. It must not come back as a JSX string.

@@ -130,6 +130,7 @@ export function UnroutedPanel({
     if (next === tab) return
     setTab(next)
     setAreaFilter('')
+    setAssignRider('')
     onClear()
   }
 
@@ -281,10 +282,14 @@ export function UnroutedPanel({
 
   /*
     ASSIGN TO A WAY -- the office's decision, made here, and the parcels then
-    show under that way on the left. A delivery needs a rider on its run (see
-    `assignToWay`), so the rider picker is offered on the delivery tab; it is
-    only required when the way has no run with a rider yet, which the server
-    works out and says.
+    show under that way on the left. The rider picker is on BOTH tabs:
+
+      pickups     optional. Chosen, the parcels go on that rider's run on the
+                  way (or a new one with them); left blank, they wait on a
+                  rider-less run and the rider is given on the left later.
+      deliveries  required only when the way has no run with a rider yet,
+                  because a hub-held parcel is assigned to the run's rider
+                  (see `assignToWay`); the server works that out and says.
   */
   const [assignWay, setAssignWay] = React.useState('')
   const [assignRider, setAssignRider] = React.useState('')
@@ -580,7 +585,7 @@ export function UnroutedPanel({
               </option>
             ))}
           </Select>
-          {tab === 'delivery' && riders.length > 0 ? (
+          {riders.length > 0 ? (
             <Select
               value={assignRider}
               onChange={(e) => setAssignRider(e.target.value)}
@@ -588,7 +593,9 @@ export function UnroutedPanel({
               aria-label="Rider for the way"
               className="min-w-0 flex-1 text-xs"
             >
-              <option value="">Rider (if the way has none yet)</option>
+              <option value="">
+                {tab === 'pickup' ? 'Rider (optional)' : 'Rider (if the way has none yet)'}
+              </option>
               {riders.map((r) => (
                 <option key={r.id} value={r.id}>
                   {r.name}
@@ -606,7 +613,7 @@ export function UnroutedPanel({
               chosen.map((p) => p.id),
               assignWay,
               send.leg,
-              tab === 'delivery' && assignRider ? assignRider : undefined,
+              assignRider || undefined,
             )
           }
         >

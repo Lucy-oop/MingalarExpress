@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { splitSettlement, type SettlementSplit } from '@/lib/admin/settlement-split'
 import type { Functions, LedgerKind, ServiceArea, Settlement } from '@/types/domain'
 
 export type AdminOverview = {
@@ -47,7 +48,12 @@ export type AdminRider = {
   activeOrders: number
   lastPingAt: string | null
   createdAt: string
+  /** CASH carried: cod_collected less cod_remitted, unsettled (0053). Not the net. */
   codInHand: number
+  /** Pay owed to the rider, not yet on a payslip: run pay, parcel pay, commission, less adjustments. */
+  unsettledEarnings: number
+  /** Monthly base salary, paid through payroll (0057). */
+  baseSalary: number
 }
 
 export async function getRiders(): Promise<AdminRider[]> {
@@ -58,7 +64,7 @@ export async function getRiders(): Promise<AdminRider[]> {
       .from('rider_profiles')
       .select(
         `id, base_area_id, coverage_km, max_active_orders, cod_float_limit,
-         commission_pct_override, vehicle_plate, is_online, availability,
+         commission_pct_override, vehicle_plate, is_online, availability, base_salary,
          active_order_count, last_ping_at, created_at,
          profiles!rider_profiles_id_fkey (full_name, phone, is_active),
          service_areas!rider_profiles_base_area_id_fkey (name)`,
@@ -69,8 +75,9 @@ export async function getRiders(): Promise<AdminRider[]> {
 
   if (error) throw new Error(`riders unavailable: ${error.message}`)
 
-  const cash = new Map(
-    ((positions ?? []) as unknown as CodPosition[]).map((p) => [p.rider_id, p.open_balance]),
+  // 0053: the two figures, never the blended open_balance.
+  const byRider = new Map(
+    ((positions ?? []) as unknown as CodPosition[]).map((p) => [p.rider_id, p]),
   )
 
   return (riders ?? []).map((r) => {
@@ -97,7 +104,9 @@ export async function getRiders(): Promise<AdminRider[]> {
       activeOrders: r.active_order_count,
       lastPingAt: r.last_ping_at,
       createdAt: r.created_at,
-      codInHand: cash.get(r.id) ?? 0,
+      codInHand: byRider.get(r.id)?.cash_in_hand ?? 0,
+      unsettledEarnings: byRider.get(r.id)?.unsettled_earnings ?? 0,
+      baseSalary: Number(r.base_salary ?? 0),
     }
   })
 }
@@ -234,6 +243,8 @@ export async function getPricingSettings() {
 
 export type SettlementRow = Settlement & {
   rider: { full_name: string; phone: string | null } | null
+  /** Earnings to pay and cash, apart (0053) -- from this settlement's own lines. */
+  split: SettlementSplit
 }
 
 export async function getSettlements(period?: string): Promise<SettlementRow[]> {
@@ -254,6 +265,23 @@ export async function getSettlements(period?: string): Promise<SettlementRow[]> 
   // `settlements`. One extra query beats an ambiguous nested embed.
   const ids = [...new Set((data ?? []).map((s) => s.rider_id))]
   const names = new Map<string, { full_name: string; phone: string | null }>()
+
+  // 0053: each settlement's lines, so a row can show earnings to pay and cash
+  // separately instead of the one netted `net_due_platform`.
+  const settlementIds = (data ?? []).map((s) => s.id)
+  const linesBySettlement = new Map<string, Array<{ kind: string; amount: number }>>()
+  if (settlementIds.length > 0) {
+    const { data: lines } = await supabase
+      .from('cod_ledger')
+      .select('settlement_id, kind, amount')
+      .in('settlement_id', settlementIds)
+    for (const l of lines ?? []) {
+      if (!l.settlement_id) continue
+      const list = linesBySettlement.get(l.settlement_id) ?? []
+      list.push({ kind: l.kind, amount: Number(l.amount) })
+      linesBySettlement.set(l.settlement_id, list)
+    }
+  }
   if (ids.length > 0) {
     const { data: profiles } = await supabase
       .from('profiles')
@@ -265,6 +293,7 @@ export async function getSettlements(period?: string): Promise<SettlementRow[]> 
   return (data ?? []).map((s) => ({
     ...(s as unknown as Settlement),
     rider: names.get(s.rider_id) ?? null,
+    split: splitSettlement(linesBySettlement.get(s.id) ?? []),
   }))
 }
 
@@ -360,4 +389,50 @@ export async function getLedger(filters: {
   const { data, error } = await query
   if (error) throw new Error(`ledger unavailable: ${error.message}`)
   return (data ?? []) as LedgerLine[]
+}
+
+// ---------------------------------------------------------------------------
+// Shop balances and payouts (0056)
+// ---------------------------------------------------------------------------
+
+export type ShopBalance = Functions['shop_balances']['Returns'][number]
+export type ShopPayoutRow = {
+  id: number
+  shopId: string
+  amount: number
+  method: string | null
+  reference: string | null
+  memo: string | null
+  recipient: string | null
+  createdAt: string
+}
+
+/** Every shop's all-time account. `shop_balances` lets the office read all. */
+export async function getShopBalances(): Promise<ShopBalance[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('shop_balances')
+  if (error) throw new Error(`shop balances unavailable: ${error.message}`)
+  return (data ?? []) as ShopBalance[]
+}
+
+/** The most recent payouts across all shops, for the office's history. */
+export async function getRecentShopPayouts(limit = 50): Promise<ShopPayoutRow[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('shop_ledger')
+    .select('id, shop_id, amount, method, reference, memo, recipient, created_at')
+    .eq('kind', 'payout')
+    .order('created_at', { ascending: false })
+    .limit(limit)
+  if (error) throw new Error(`payouts unavailable: ${error.message}`)
+  return (data ?? []).map((r) => ({
+    id: r.id,
+    shopId: r.shop_id,
+    amount: -Number(r.amount),
+    method: r.method,
+    reference: r.reference,
+    memo: r.memo,
+    recipient: r.recipient,
+    createdAt: r.created_at,
+  }))
 }

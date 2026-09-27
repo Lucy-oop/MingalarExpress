@@ -173,8 +173,10 @@ export type RiderFeed = {
     lastPingAt: string | null
   } | null
   earnings: {
-    /** Net unsettled position — goes NEGATIVE once pay is owed. */
+    /** Net unsettled position — goes NEGATIVE once pay is owed. Not shown (0053). */
     codInHand: number
+    /** Pay owed to the rider at the next settlement, apart from cash (0053). */
+    unsettledEarnings: number
     /** The notes in the bag: COD collected less cash handed in. */
     cashHeld: number
     earnedToday: number
@@ -368,6 +370,7 @@ export async function getRiderFeed(riderId: string): Promise<RiderFeed> {
       : null,
     earnings: {
       codInHand: Number(s.cod_in_hand ?? 0),
+      unsettledEarnings: Number(s.unsettled_earnings ?? 0),
       cashHeld: Number(s.cash_held ?? 0),
       earnedToday: Number(s.earned_today ?? 0),
       earnedWeek: Number(s.earned_week ?? 0),

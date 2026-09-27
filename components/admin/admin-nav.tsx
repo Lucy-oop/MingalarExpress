@@ -12,6 +12,7 @@ import {
   Scale,
   Smartphone,
   Store,
+  Wallet,
 } from 'lucide-react'
 import { ADMIN_NAV_EXACT, ADMIN_NAV_ITEMS } from '@/lib/admin/nav'
 import { t, type Locale } from '@/lib/i18n'
@@ -47,6 +48,7 @@ const ICONS: Record<string, typeof Radio> = {
   store: Store,
   banknote: Banknote,
   scale: Scale,
+  wallet: Wallet,
 }
 
 export function AdminNav({ locale }: { locale: Locale }) {

@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Coins, History, LayoutList } from 'lucide-react'
+import { Coins, FileText, History, LayoutList } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useT } from '@/components/shared/i18n-provider'
 
@@ -40,7 +40,7 @@ export function RiderTabs() {
 
   return (
     <nav className="fixed inset-x-0 bottom-0 z-20 border-t bg-background pb-[env(safe-area-inset-bottom)]">
-      <div className="grid grid-cols-3">
+      <div className="grid grid-cols-4">
         <Tab
           href="/rider/dashboard"
           label={t('nav.jobs')}
@@ -58,6 +58,13 @@ export function RiderTabs() {
           label={t('nav.earnings')}
           icon={<Coins className="size-6" />}
           active={pathname.startsWith('/rider/earnings')}
+        />
+        {/* 0057: monthly payslips. */}
+        <Tab
+          href="/rider/payslips"
+          label={t('nav.payslips')}
+          icon={<FileText className="size-6" />}
+          active={pathname.startsWith('/rider/payslips')}
         />
       </div>
     </nav>

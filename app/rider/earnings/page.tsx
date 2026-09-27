@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { Coins, TrendingUp } from 'lucide-react'
+import { Coins, TrendingUp, Wallet } from 'lucide-react'
 import { requireRider } from '@/lib/auth/guards'
 import { getLocale } from '@/lib/i18n/locale'
 import { translator } from '@/lib/i18n'
@@ -61,7 +61,9 @@ export default async function RiderEarningsPage({
     to print that negative figure under the words "cash you are holding".
   */
   const cashHeld = Number(s.cash_held ?? 0)
-  const codInHand = Number(s.cod_in_hand ?? 0)
+  // 0053: pay owed, its own figure. Riders hand in all cash each run and are
+  // paid monthly, so the two are never netted into one number here.
+  const unsettledEarnings = Number(s.unsettled_earnings ?? 0)
 
   return (
     <div className="space-y-4">
@@ -98,23 +100,29 @@ export default async function RiderEarningsPage({
             outstanding." directly underneath. Two contradictory claims about
             the same money, and the reason this was reported as broken.
 
-            The net is worth showing too: it is what settlement will actually
-            net to zero, and a rider who has earned more than they are carrying
-            is owed the difference rather than holding it.
+            0053: THE NET IS NO LONGER SHOWN. Cash and pay never offset -- the
+            rider hands in all cash each run and is paid monthly -- so pay owed
+            is its own card below, not a line netted against this one.
           */}
           <p className="mt-1 text-xs text-muted-foreground">{t('earnings.cashHeldHint')}</p>
-          {codInHand !== cashHeld ? (
-            <p className="mt-1 text-xs tabular-nums text-muted-foreground">
-              {codInHand < 0
-                ? t('earnings.owedToYou').replace('{amount}', formatMmk(-codInHand))
-                : t('earnings.netToSettle').replace('{amount}', formatMmk(codInHand))}
-            </p>
-          ) : null}
           {s.unsettled_since ? (
             <p className="mt-1 text-xs text-amber-800">
               Unsettled since {formatDateTimeYangon(String(s.unsettled_since))}
             </p>
           ) : null}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="flex items-center gap-2 text-sm">
+            <Wallet className="size-4" />
+            {t('earnings.unsettled')}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-2xl font-semibold tabular-nums">{formatMmk(unsettledEarnings)}</p>
+          <p className="mt-1 text-xs text-muted-foreground">{t('earnings.unsettledHint')}</p>
         </CardContent>
       </Card>
 

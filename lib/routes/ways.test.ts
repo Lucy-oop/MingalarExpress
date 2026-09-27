@@ -1,7 +1,7 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { isReceivable, wayLabel } from './ways'
+import { closeBlocker, isReceivable, isUncollected, wayLabel } from './ways'
 
 describe('wayLabel', () => {
   test('lettered routes become numbered ways', () => {
@@ -36,5 +36,37 @@ describe('isReceivable', () => {
     assert.equal(isReceivable({ leg: 'pickup', status: 'assigned' }), false)
     assert.equal(isReceivable({ leg: 'pickup', status: 'failed' }), false)
     assert.equal(isReceivable({ leg: 'delivery', status: 'picked_up' }), false)
+  })
+})
+
+describe('closeBlocker — Close & pay is disabled exactly when close_trip refuses', () => {
+  const p = (leg: string, status: string) => ({ leg, status })
+
+  test('a finished run can close', () => {
+    assert.equal(closeBlocker([p('delivery', 'delivered'), p('pickup', 'failed'), p('return', 'returned')]), null)
+  })
+
+  test('deliveries still out block it', () => {
+    assert.deepEqual(closeBlocker([p('delivery', 'picked_up'), p('delivery', 'delivered')]), {
+      kind: 'open_deliveries',
+      count: 1,
+    })
+  })
+
+  /** 0051: the hole. An uncollected pickup used to close onto a dead run. */
+  test('a pickup the rider never collected blocks it', () => {
+    assert.deepEqual(closeBlocker([p('pickup', 'assigned'), p('pickup', 'pending')]), {
+      kind: 'uncollected',
+      count: 2,
+    })
+    assert.equal(isUncollected(p('pickup', 'picked_up')), false)
+  })
+
+  test('a collected pickup not yet received blocks it (0050)', () => {
+    assert.deepEqual(closeBlocker([p('pickup', 'picked_up')]), { kind: 'unreceived', count: 1 })
+  })
+
+  test('cancelled parcels never block it', () => {
+    assert.equal(closeBlocker([p('delivery', 'cancelled'), p('pickup', 'cancelled')]), null)
   })
 })

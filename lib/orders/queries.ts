@@ -852,3 +852,68 @@ export async function exportShopOrders(filters: OrderFilters): Promise<ShopOrder
   if (error) throw new Error(`export failed: ${error.message}`)
   return (data ?? []) as unknown as ShopOrderRow[]
 }
+
+// ---------------------------------------------------------------------------
+// The shop's own account (0056)
+// ---------------------------------------------------------------------------
+
+export type ShopAccount = {
+  goodsCollected: number
+  feesDeducted: number
+  owedTotal: number
+  pendingClearance: number
+  unreceived: number
+  paidOut: number
+  available: number
+  payouts: Array<{
+    id: number
+    amount: number
+    method: string | null
+    reference: string | null
+    memo: string | null
+    createdAt: string
+  }>
+}
+
+/**
+ * All-time account for the signed-in owner's shop(s): what was collected,
+ * what was deducted, what has been paid, and what is available now.
+ *
+ * `shop_balances` returns only shops the caller owns, and `shop_ledger`'s read
+ * policy does the same, so an owner with two shops sees their sum.
+ */
+export async function getShopAccount(): Promise<ShopAccount> {
+  const supabase = await createClient()
+  const [{ data: balances, error }, { data: payouts, error: payoutError }] = await Promise.all([
+    supabase.rpc('shop_balances'),
+    supabase
+      .from('shop_ledger')
+      .select('id, amount, method, reference, memo, created_at')
+      .eq('kind', 'payout')
+      .order('created_at', { ascending: false })
+      .limit(100),
+  ])
+  if (error) throw new Error(`account unavailable: ${error.message}`)
+  if (payoutError) throw new Error(`payouts unavailable: ${payoutError.message}`)
+
+  const sum = (k: 'goods_collected' | 'fees_deducted' | 'owed_total' | 'pending_clearance' | 'unreceived' | 'paid_out' | 'available') =>
+    (balances ?? []).reduce((acc, b) => acc + Number(b[k] ?? 0), 0)
+
+  return {
+    goodsCollected: sum('goods_collected'),
+    feesDeducted: sum('fees_deducted'),
+    owedTotal: sum('owed_total'),
+    pendingClearance: sum('pending_clearance'),
+    unreceived: sum('unreceived'),
+    paidOut: sum('paid_out'),
+    available: sum('available'),
+    payouts: (payouts ?? []).map((p) => ({
+      id: p.id,
+      amount: -Number(p.amount),
+      method: p.method,
+      reference: p.reference,
+      memo: p.memo,
+      createdAt: p.created_at,
+    })),
+  }
+}

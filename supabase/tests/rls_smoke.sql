@@ -29,7 +29,8 @@ begin
   -- a table shipped without RLS being considered at all -- and it did exactly
   -- that for schema_migrations, which arrived with the grants revoked but RLS
   -- off.
-  if t <> 19 then raise exception 'FAIL: expected 19 public tables, found %', t; end if;
+  -- 20 since 0056 added shop_ledger; 22 since 0057 added payslips and pay_periods.
+  if t <> 22 then raise exception 'FAIL: expected 22 public tables, found %', t; end if;
   if e <> 9  then raise exception 'FAIL: expected 9 enums, found %', e; end if;
 
   -- And the count is only useful because of this: a new table with RLS left off
@@ -794,6 +795,123 @@ begin
   update public.shops set is_active = true, approved_at = now() where id = v_shop;
   delete from public.orders where customer_name in
     ('Instant Prepaid','Reviewed COD');
+end $$;
+
+\echo '=== 0054a. anon cannot run a single money function ==='
+--  The hole the cash-flow audit found: EXECUTE was PUBLIC's by default, and
+--  every guard accepted is_service_ctx() = "no user signed in" -- which is
+--  also what an anonymous request looks like. Each call below must be refused
+--  on privilege, before its body ever runs.
+reset role;
+select set_config('request.jwt.claims', '', false);
+set role anon;
+do $$
+declare
+  calls text[] := array[
+    $q$select public.remit_cod('44444444-4444-4444-4444-444444444444', 1, 'anon')$q$,
+    $q$select public.build_settlement('44444444-4444-4444-4444-444444444444', public.mm_today())$q$,
+    $q$select public.mark_settlement_paid(gen_random_uuid(), 'anon')$q$,
+    $q$select public.approve_settlement(gen_random_uuid())$q$,
+    $q$select public.confirm_kpay_payment(gen_random_uuid())$q$,
+    $q$select public.cancel_trip(gen_random_uuid(), 'anon')$q$,
+    $q$select public.close_run_and_deposit(gen_random_uuid(), 0)$q$,
+    $q$select public.receive_trip_parcels(gen_random_uuid(), array[gen_random_uuid()])$q$,
+    $q$select public.write_audit('anon.spam', 'orders', 'x', null, null)$q$
+  ];
+  c text;
+  n int := 0;
+begin
+  foreach c in array calls loop
+    begin
+      execute c;
+      raise exception 'FAIL: anon ran %', c;
+    exception
+      when insufficient_privilege then n := n + 1;
+    end;
+  end loop;
+  raise notice 'PASS: anon refused on all % money functions', n;
+end $$;
+
+\echo '=== 0054b. anon keeps exactly the two public RPCs ==='
+do $$
+declare j jsonb;
+begin
+  perform public.public_settings();
+  -- An unknown code is a legitimate answer (null), not a privilege error.
+  perform public.track_order('MGE-000000-000000');
+  raise notice 'PASS: anon can still read public settings and track a parcel';
+end $$;
+reset role;
+
+\echo '=== 0054c. is_service_ctx is a role, not an absence ==='
+do $$
+begin
+  if not public.is_service_ctx() then
+    raise exception 'FAIL: a direct SQL session is not treated as the service';
+  end if;
+end $$;
+set role anon;
+do $$
+begin
+  -- anon cannot even execute it now; that alone is the guarantee.
+  perform public.is_service_ctx();
+  raise exception 'FAIL: anon executed is_service_ctx';
+exception when insufficient_privilege then
+  raise notice 'PASS: anon cannot reach the service check at all';
+end $$;
+reset role;
+select set_config('request.jwt.claims',
+  '{"sub":"44444444-4444-4444-4444-444444444444","role":"authenticated"}', false);
+set role authenticated;
+do $$
+begin
+  if public.is_service_ctx() then
+    raise exception 'FAIL: a signed-in rider counts as the service';
+  end if;
+  raise notice 'PASS: direct SQL is the service; a signed-in user is not';
+end $$;
+
+\echo '=== 0054d. a rider cannot edit an order''s money directly ==='
+--  orders_update_rider let a rider PATCH cod_amount, collected_via or the
+--  commission split on their own assigned order. It is gone; advance_order is
+--  the only way a rider changes an order.
+reset role;
+select set_config('request.jwt.claims', '', false);
+do $$
+declare oid uuid;
+begin
+  select id into oid from public.orders
+   where rider_id = '44444444-4444-4444-4444-444444444444' and status in ('assigned','picked_up')
+   limit 1;
+  if oid is null then
+    select id into oid from public.orders where status = 'pending' and trip_id is null
+     order by created_at limit 1;
+    perform public.assign_order(oid, '44444444-4444-4444-4444-444444444444');
+  end if;
+  perform set_config('mge.test_oid', oid::text, false);
+end $$;
+select set_config('request.jwt.claims',
+  '{"sub":"44444444-4444-4444-4444-444444444444","role":"authenticated"}', false);
+set role authenticated;
+do $$
+declare oid uuid := current_setting('mge.test_oid')::uuid; n int;
+begin
+  -- The rider can still SEE it: the read policy is untouched.
+  select count(*) into n from public.orders where id = oid;
+  if n <> 1 then raise exception 'FAIL: the rider can no longer see their own order'; end if;
+
+  update public.orders set cod_amount = 1, collected_via = 'kpay' where id = oid;
+  get diagnostics n = row_count;
+  if n <> 0 then raise exception 'FAIL: a rider rewrote % order row(s) directly', n; end if;
+  raise notice 'PASS: a rider sees their order but cannot edit its money';
+end $$;
+reset role;
+select set_config('request.jwt.claims', '', false);
+do $$
+begin
+  if exists (select 1 from pg_policies where tablename = 'orders' and policyname = 'orders_update_rider') then
+    raise exception 'FAIL: orders_update_rider is back';
+  end if;
 end $$;
 
 \echo ''

@@ -53,12 +53,19 @@ set role authenticated;
 do $$
 declare before_amt bigint; after_amt bigint;
 begin
-  before_amt := public.rider_cod_in_hand('44444444-4444-4444-4444-444444444444');
-  if before_amt <> 23000 then raise exception 'FAIL: expected 23000 in hand, got %', before_amt; end if;
+  -- 0053: CASH, not cash less pay. 25000 collected; the 2000 commission is
+  -- owed to the rider at settlement and does not shrink the bag.
+  before_amt := public.rider_cash_held('44444444-4444-4444-4444-444444444444');
+  if before_amt <> 25000 then raise exception 'FAIL: expected 25000 cash in hand, got %', before_amt; end if;
+  if public.rider_unsettled_earnings('44444444-4444-4444-4444-444444444444') <> 2000 then
+    raise exception 'FAIL: expected 2000 unsettled earnings, got %',
+      public.rider_unsettled_earnings('44444444-4444-4444-4444-444444444444');
+  end if;
 
+  -- remit_cod now reports the CASH left in hand.
   after_amt := public.remit_cod('44444444-4444-4444-4444-444444444444', 10000, 'Mid-shift deposit');
-  if after_amt <> 13000 then raise exception 'FAIL: expected 13000 after deposit, got %', after_amt; end if;
-  raise notice 'PASS: 23000 - 10000 = % in hand', after_amt;
+  if after_amt <> 15000 then raise exception 'FAIL: expected 15000 cash after deposit, got %', after_amt; end if;
+  raise notice 'PASS: 25000 - 10000 = % cash in hand; 2000 earnings kept apart', after_amt;
 end $$;
 
 \echo '=== S5. cannot hand in more than you are holding ==='
