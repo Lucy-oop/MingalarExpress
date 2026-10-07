@@ -1,7 +1,8 @@
 import type { Metadata } from 'next'
 import { BadgeCheck } from 'lucide-react'
 import { requireDispatch } from '@/lib/auth/guards'
-import { getKpayQueue } from '@/lib/admin/kpay'
+import { getKpayQueue, getRejectedKpay } from '@/lib/admin/kpay'
+import { KpayRejectedQueue } from '@/components/admin/kpay-rejected'
 import { KpayCard } from '@/components/admin/kpay-card'
 import { PageHeader } from '@/components/admin/kpi'
 import { Alert } from '@/components/ui/alert'
@@ -23,8 +24,9 @@ export default async function AdminKpayPage() {
   await requireDispatch()
 
   let queue
+  let rejected
   try {
-    queue = await getKpayQueue()
+    ;[queue, rejected] = await Promise.all([getKpayQueue(), getRejectedKpay()])
   } catch (error) {
     return (
       <Alert tone="error" title="KBZPay queue unavailable">
@@ -41,6 +43,9 @@ export default async function AdminKpayPage() {
         title="KBZPay to verify"
         description="Compare each receipt with the bank statement before it counts as money in."
       />
+
+      {/* 0058: a rejection is no longer the end of the road. */}
+      <KpayRejectedQueue items={rejected} />
 
       {queue.length === 0 ? (
         <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed p-10 text-center">

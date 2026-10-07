@@ -35,7 +35,7 @@ export default async function ShopOrderDetailPage({
   const detail = await getShopOrderDetail(id)
   if (!detail) notFound()
 
-  const { order, areaName, route, events, rider, proofUrl, attempts, maxAttempts, uncollected,
+  const { order, areaName, events, rider, proofUrl, attempts, maxAttempts, uncollected,
     maxCollectionAttempts, neverCollected, awaitingDecision } =
     detail
 
@@ -227,19 +227,8 @@ export default async function ShopOrderDetailPage({
                 />
               ) : null}
               <Row label="Delivery fee" value={formatMmk(order.delivery_fee)} />
-              {route ? (
-                <div className="flex items-baseline justify-between gap-3">
-                  <span className="text-muted-foreground">Route</span>
-                  <span className="flex items-center gap-1.5">
-                    <span
-                      className="size-2.5 rounded-full"
-                      style={{ backgroundColor: route.colour }}
-                      aria-hidden="true"
-                    />
-                    {route.name}
-                  </span>
-                </div>
-              ) : null}
+              {/* 0058: no way name here -- it is the office's internal run
+                  planning, chosen on the Ways board. */}
               <Row
                 label="Fee paid by"
                 value={order.fee_payer === 'customer' ? 'Customer' : 'Shop'}

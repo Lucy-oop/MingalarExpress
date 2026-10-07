@@ -636,3 +636,43 @@ async function getBoardRiders(): Promise<Omit<BoardRider, 'onOpenTrip'>[]> {
       }
     })
 }
+
+// ---------------------------------------------------------------------------
+// Stale runs (0058)
+// ---------------------------------------------------------------------------
+
+export type StaleRun = {
+  tripId: string
+  routeCode: string
+  riderName: string | null
+  status: string
+  openedAt: string
+  hoursOpen: number
+  cashOnRun: number
+  overHours: boolean
+  overnightCash: boolean
+}
+
+/**
+ * Runs open longer than `hours`, or carrying undeposited cash past midnight.
+ * One SQL function (stale_runs) feeds the Ways board and COD audit, and its
+ * cash figure is close_run_and_deposit's -- R14b checks the two agree.
+ *
+ * Fails soft: an alert that could take the board down is worse than none.
+ */
+export async function getStaleRuns(hours = 18): Promise<StaleRun[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('stale_runs', { p_hours: hours })
+  if (error) return []
+  return (data ?? []).map((r) => ({
+    tripId: r.trip_id,
+    routeCode: r.route_code,
+    riderName: r.rider_name,
+    status: r.status,
+    openedAt: r.opened_at,
+    hoursOpen: Number(r.hours_open),
+    cashOnRun: Number(r.cash_on_run),
+    overHours: r.over_hours,
+    overnightCash: r.overnight_cash,
+  }))
+}

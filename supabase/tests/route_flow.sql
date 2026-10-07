@@ -2742,6 +2742,168 @@ reset role;
 select set_config('request.jwt.claims', '', false);
 
 
+\echo '=== R14. a rejected KBZPay payment is resolved, once, three ways (0058) ==='
+do $$
+declare
+  v_route uuid; v_rider uuid; v_shop uuid; v_by uuid; t uuid;
+  ids uuid[] := '{}'; oid uuid; i int; n int; v bigint; o public.orders; before_unrec bigint;
+begin
+  select id into v_route from public.routes where code = 'ROUTE_LOCAL';
+  select r.id into v_rider from public.rider_profiles r
+   where not exists (select 1 from public.trips x
+                      where x.rider_id = r.id and x.status in ('planned','loading','departed','returned'))
+   limit 1;
+  select id, owner_id into v_shop, v_by from public.shops where is_active and approved_at is not null limit 1;
+  select unreceived into before_unrec from public.shop_balances(v_shop);
+
+  -- Three COD parcels paid by KBZPay at the door.
+  for i in 1..3 loop
+    ids := ids || pg_temp.r11_parcel(v_shop, v_by, 40000, 'R14 kpay ' || i);
+  end loop;
+  t := (public.plan_trip(v_route)).id;
+  perform public.assign_trip_rider(t, v_rider);
+  perform public.load_trip(t, ids, 'delivery');
+  perform public.depart_trip(t);
+  foreach oid in array ids loop
+    perform public.advance_order(oid, 'picked_up');
+    perform public.advance_order(oid, 'delivered', 16.85, 96.17, oid::text || '/p.webp', 'Received',
+                                 null, 'kpay', oid::text || '/kpay.webp');
+    -- The office checks the bank and finds nothing.
+    perform public.reject_kpay_payment(oid, 'No matching transfer');
+  end loop;
+  perform public.return_trip(t);
+  perform public.close_run_and_deposit(t, 0);
+
+  if (select unreceived from public.shop_balances(v_shop)) - before_unrec <> 120000 then
+    raise exception 'FAIL: the three rejected payments are not unreceived';
+  end if;
+
+  -- (a) cash collected by the office: cleared.
+  o := public.resolve_rejected_kpay(ids[1], 'cash_collected', 'Customer paid at the desk');
+  if o.cod_status <> 'settled' or o.kpay_resolution <> 'cash_collected' or o.kpay_resolved_at is null then
+    raise exception 'FAIL: cash_collected left status % resolution %', o.cod_status, o.kpay_resolution;
+  end if;
+
+  -- (b) charged to the rider: a shortfall deduction on this month's payroll.
+  o := public.resolve_rejected_kpay(ids[2], 'charged_rider', 'Rider accepted a fake receipt');
+  select count(*) into n from public.cod_ledger
+   where order_id = ids[2] and kind = 'adjustment' and amount = 40000
+     and category = 'shortfall' and rider_id = v_rider
+     and pay_month = date_trunc('month', public.mm_today())::date;
+  if n <> 1 then raise exception 'FAIL: % shortfall lines for the charged parcel, expected 1', n; end if;
+  select deductions into v from public.payroll_preview(date_trunc('month', public.mm_today())::date)
+   where rider_id = v_rider;
+  if coalesce(v, 0) < 40000 then raise exception 'FAIL: the charge is not on the rider''s payroll (%)', v; end if;
+
+  -- (c) written off: a note is required; then one permanent bad-debt row.
+  begin
+    perform public.resolve_rejected_kpay(ids[3], 'written_off', '');
+    raise exception 'FAIL: a write-off without a note was accepted';
+  exception when others then
+    if sqlerrm like 'FAIL:%' then raise; end if;
+    if sqlerrm not like 'kpay_writeoff_note_required%' then raise exception 'FAIL: wrong refusal: %', sqlerrm; end if;
+  end;
+  o := public.resolve_rejected_kpay(ids[3], 'written_off', 'Customer unreachable, under 50,000');
+  select count(*) into n from public.bad_debts where order_id = ids[3] and amount = 40000;
+  if n <> 1 then raise exception 'FAIL: % bad-debt rows, expected 1', n; end if;
+  begin
+    update public.bad_debts set amount = 1 where order_id = ids[3];
+    raise exception 'FAIL: a write-off was edited';
+  exception when insufficient_privilege then null;
+  end;
+
+  -- All three are cleared: the shop's unreceived figure is back where it was.
+  if (select unreceived from public.shop_balances(v_shop)) <> before_unrec then
+    raise exception 'FAIL: resolved parcels still count as unreceived';
+  end if;
+  raise notice 'PASS: cash collected, charged to rider and written off each clear the parcel';
+
+  -- Once only; and never for a parcel that was not rejected.
+  begin
+    perform public.resolve_rejected_kpay(ids[1], 'written_off', 'second try');
+    raise exception 'FAIL: a resolved parcel was resolved again';
+  exception when others then
+    if sqlerrm like 'FAIL:%' then raise; end if;
+  end;
+  begin
+    perform public.resolve_rejected_kpay(
+      (select id from public.orders where status = 'delivered' and coalesce(collected_via,'cash') = 'cash'
+         and payment_method = 'cod' limit 1),
+      'cash_collected', null);
+    raise exception 'FAIL: a cash parcel was "resolved" as a rejected KBZPay';
+  exception when others then
+    if sqlerrm like 'FAIL:%' then raise; end if;
+    if sqlerrm not like 'kpay_not_awaiting_resolution%' then raise exception 'FAIL: wrong refusal: %', sqlerrm; end if;
+  end;
+  select count(*) into n from public.audit_log
+   where action = 'kpay.resolve' and entity_id = any(array[ids[1]::text, ids[2]::text, ids[3]::text]);
+  if n <> 3 then raise exception 'FAIL: % resolution audit entries, expected 3', n; end if;
+  raise notice 'PASS: each resolution happens once, is audited, and only applies to rejected KBZPay';
+end $$;
+
+\echo '=== R14b. a stale run is flagged with exactly the cash its close will bank (0058) ==='
+do $$
+declare
+  v_route uuid; v_rider uuid; v_shop uuid; v_by uuid; t uuid; oid uuid; sr record; n int;
+begin
+  select id into v_route from public.routes where code = 'ROUTE_LOCAL';
+  select r.id into v_rider from public.rider_profiles r
+   where not exists (select 1 from public.trips x
+                      where x.rider_id = r.id and x.status in ('planned','loading','departed','returned'))
+   limit 1;
+  select id, owner_id into v_shop, v_by from public.shops where is_active and approved_at is not null limit 1;
+
+  oid := pg_temp.r11_parcel(v_shop, v_by, 25000, 'R14b stale');
+  t := (public.plan_trip(v_route)).id;
+  perform public.assign_trip_rider(t, v_rider);
+  perform public.load_trip(t, array[oid], 'delivery');
+  perform public.depart_trip(t);
+  perform public.advance_order(oid, 'picked_up');
+  perform public.advance_order(oid, 'delivered', 16.85, 96.17, oid::text || '/p.webp', 'Received');
+
+  -- Fresh: not stale yet.
+  select count(*) into n from public.stale_runs() where trip_id = t;
+  if n <> 0 then raise exception 'FAIL: a run that just left is reported stale'; end if;
+
+  -- The rider went home: it left 20 hours ago.
+  update public.trips set departed_at = now() - interval '20 hours' where id = t;
+  select * into sr from public.stale_runs() where trip_id = t;
+  if sr.trip_id is null or not sr.over_hours or sr.hours_open < 20 then
+    raise exception 'FAIL: a 20-hour run is not flagged (hours %)', sr.hours_open;
+  end if;
+  -- Back-dating the departure also pulls in any deposit this rider made in the
+  -- last 20 hours (a deposit taken while a run is out belongs to it -- 0055),
+  -- so the figure is not pinned here. What must hold is below: the alert's
+  -- cash is exactly what closing the run banks.
+  if sr.cash_on_run <= 0 or sr.cash_on_run > 25000 then
+    raise exception 'FAIL: stale run carries %, expected 1..25000', sr.cash_on_run;
+  end if;
+  raise notice 'PASS: a run open 20 hours is flagged, carrying %', sr.cash_on_run;
+
+  -- The flagged cash is exactly what closing will bank (it refuses any other figure).
+  perform public.return_trip(t);
+  perform public.close_run_and_deposit(t, sr.cash_on_run);
+  if (select coalesce(-sum(amount), 0) from public.cod_ledger
+       where trip_id = t and kind = 'cod_remitted') <> sr.cash_on_run then
+    raise exception 'FAIL: the close banked a different figure from the alert';
+  end if;
+  select count(*) into n from public.stale_runs() where trip_id = t;
+  if n <> 0 then raise exception 'FAIL: a closed run is still reported stale'; end if;
+  raise notice 'PASS: the alert''s cash matches the close, and closing clears the alert';
+
+  -- Riders cannot read it.
+  perform set_config('request.jwt.claims', format('{"sub":"%s","role":"authenticated"}', v_rider), true);
+  execute 'set local role authenticated';
+  select count(*) into n from public.stale_runs(0);
+  execute 'reset role';
+  perform set_config('request.jwt.claims', '', true);
+  if n <> 0 then raise exception 'FAIL: a rider can read the stale-run list'; end if;
+  raise notice 'PASS: only the office sees stale runs';
+end $$;
+reset role;
+select set_config('request.jwt.claims', '', false);
+
+
 -- ============================================================================
 --  R10. The rider's own numbers (0041)
 --

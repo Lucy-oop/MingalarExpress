@@ -7,9 +7,11 @@ import type { OrderLabelRow } from '@/lib/orders/queries'
  *
  * DESIGNED FOR A MONOCHROME PRINTER. The rolls these shops own print black on
  * white and nothing else, so no distinction on this label may be carried by
- * colour alone: the COLLECT box is a heavy black rule, not a filled swatch, and
- * the route prints its NAME beside the colour dot. `print-color-adjust` is set
- * so the dot survives on a colour printer, but nothing depends on it arriving.
+ * colour alone: the COLLECT box is a heavy black rule, not a filled swatch.
+ *
+ * NO WAY NAME (0058). Shops print these, and the way is the office's internal
+ * run planning -- chosen by hand on the Ways board, often after the label is
+ * printed (0049). The township below is what tells a rider where it goes.
  *
  * SIZED IN MILLIMETRES, not rem. The page box is a physical 100x150mm and the
  * label has to fill it exactly on paper while still being legible on screen, so
@@ -44,21 +46,6 @@ export function ParcelLabel({ order }: { order: OrderLabelRow }) {
         <span className="font-bold tracking-tight" style={{ fontSize: '10pt' }}>
           MINGALAR EXPRESS
         </span>
-        {order.routes ? (
-          <span className="flex items-center gap-[1.5mm]" style={{ fontSize: '8pt' }}>
-            <span
-              className="inline-block rounded-full"
-              style={{
-                width: '2.5mm',
-                height: '2.5mm',
-                backgroundColor: order.routes.colour,
-                border: '0.3mm solid black',
-              }}
-              aria-hidden="true"
-            />
-            {order.routes.name}
-          </span>
-        ) : null}
       </header>
 
       {/* ---- the code, the biggest thing on the label -------------------- */}

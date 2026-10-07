@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { requireDispatch } from '@/lib/auth/guards'
-import { getPlanningBoard } from '@/lib/routes/queries'
+import { getPlanningBoard, getStaleRuns } from '@/lib/routes/queries'
+import { StaleRunsBanner } from '@/components/admin/stale-runs-banner'
 import { RouteBoard } from '@/components/routes/route-board'
 import { Alert } from '@/components/ui/alert'
 
@@ -28,6 +29,8 @@ export default async function AdminHomePage({
   const { date } = await searchParams
 
   let board
+  // 0058: fetched beside the board, and fails soft on its own.
+  const stale = await getStaleRuns()
   try {
     // A bad ?date= falls through to today rather than erroring: the board is the
     // room's live work surface and must not be takeable down by a URL.
@@ -41,5 +44,10 @@ export default async function AdminHomePage({
     )
   }
 
-  return <RouteBoard board={board} />
+  return (
+    <div className="space-y-3">
+      <StaleRunsBanner runs={stale} where="board" />
+      <RouteBoard board={board} />
+    </div>
+  )
 }

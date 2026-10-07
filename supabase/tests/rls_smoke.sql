@@ -29,8 +29,9 @@ begin
   -- a table shipped without RLS being considered at all -- and it did exactly
   -- that for schema_migrations, which arrived with the grants revoked but RLS
   -- off.
-  -- 20 since 0056 added shop_ledger; 22 since 0057 added payslips and pay_periods.
-  if t <> 22 then raise exception 'FAIL: expected 22 public tables, found %', t; end if;
+  -- 20 since 0056 added shop_ledger; 22 since 0057 added payslips and pay_periods;
+  -- 23 since 0058 added bad_debts.
+  if t <> 23 then raise exception 'FAIL: expected 23 public tables, found %', t; end if;
   if e <> 9  then raise exception 'FAIL: expected 9 enums, found %', e; end if;
 
   -- And the count is only useful because of this: a new table with RLS left off

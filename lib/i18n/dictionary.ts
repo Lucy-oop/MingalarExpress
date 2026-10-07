@@ -646,7 +646,7 @@ export const DICTIONARY = {
   'sd.notSetUp': { en: 'Set up your shop', my: 'သင့်ဆိုင်ကို ပြင်ဆင်ပါ' },
   // Was 'Not able to book yet', which is now the opposite of the truth: an
   // unreviewed shop books prepaid parcels from its first minute.
-  'sd.awaiting': { en: 'Cash on delivery not unlocked yet', my: 'COD ကို မဖွင့်ရသေးပါ' },
+  'sd.awaiting': { en: 'Cash on delivery not unlocked yet', my: 'ကြိုရှင်း ကို မဖွင့်ရသေးပါ' },
 
   // ---- what is holding a shop back ------------------------------------------
   //
@@ -826,7 +826,7 @@ export const DICTIONARY = {
   'ss.language': { en: 'Language', my: 'ဘာသာစကား' },
   'ss.ward': { en: 'Ward', my: 'ရပ်ကွက်' },
   'ss.suspended': { en: 'This shop is suspended', my: 'ဆိုင် ရပ်ဆိုင်းထားပါသည်' },
-  'ss.awaiting': { en: 'Cash on delivery not unlocked yet', my: 'COD ကို မဖွင့်ရသေးပါ' },
+  'ss.awaiting': { en: 'Cash on delivery not unlocked yet', my: 'ကြိုရှင်း ကို မဖွင့်ရသေးပါ' },
   'ss.rejected': { en: 'Shop not approved', my: 'ဆိုင်ကို အတည်မပြုပါ' },
   /*
     NOT A WARNING. The old `ss.noPinWarn` was red and it blocked Save, so a shop

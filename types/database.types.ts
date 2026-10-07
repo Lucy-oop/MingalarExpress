@@ -175,6 +175,33 @@ export type Database = {
           },
         ]
       }
+      bad_debts: {
+        Row: {
+          amount: number
+          created_at: string
+          created_by: string | null
+          id: number
+          note: string
+          order_id: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          created_by?: string | null
+          id?: number
+          note: string
+          order_id: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          created_by?: string | null
+          id?: number
+          note?: string
+          order_id?: string
+        }
+        Relationships: []
+      }
       cod_ledger: {
         Row: {
           amount: number
@@ -529,6 +556,10 @@ export type Database = {
           kpay_proof_path: string | null
           kpay_reject_reason: string | null
           kpay_rejected_at: string | null
+          kpay_resolution: string | null
+          kpay_resolution_note: string | null
+          kpay_resolved_at: string | null
+          kpay_resolved_by: string | null
           parcel_desc: string
           parcel_value: number | null
           parcel_weight_g: number | null
@@ -593,6 +624,10 @@ export type Database = {
           kpay_proof_path?: string | null
           kpay_reject_reason?: string | null
           kpay_rejected_at?: string | null
+          kpay_resolution?: string | null
+          kpay_resolution_note?: string | null
+          kpay_resolved_at?: string | null
+          kpay_resolved_by?: string | null
           parcel_desc: string
           parcel_value?: number | null
           parcel_weight_g?: number | null
@@ -657,6 +692,10 @@ export type Database = {
           kpay_proof_path?: string | null
           kpay_reject_reason?: string | null
           kpay_rejected_at?: string | null
+          kpay_resolution?: string | null
+          kpay_resolution_note?: string | null
+          kpay_resolved_at?: string | null
+          kpay_resolved_by?: string | null
           parcel_desc?: string
           parcel_value?: number | null
           parcel_weight_g?: number | null
@@ -2139,6 +2178,26 @@ export type Database = {
       record_payslip_payment: {
         Args: { p_payslip_id: string; p_method: string; p_reference?: string }
         Returns: Database["public"]["Tables"]["payslips"]["Row"]
+      }
+      resolve_rejected_kpay: {
+        Args: { p_order_id: string; p_resolution: string; p_note?: string }
+        Returns: Database["public"]["Tables"]["orders"]["Row"]
+      }
+      stale_runs: {
+        Args: { p_hours?: number }
+        Returns: {
+          trip_id: string
+          route_code: string
+          rider_id: string | null
+          rider_name: string | null
+          status: string
+          service_date: string
+          opened_at: string
+          hours_open: number
+          cash_on_run: number
+          over_hours: boolean
+          overnight_cash: boolean
+        }[]
       }
       receive_trip_parcels: {
         Args: { p_trip_id: string; p_order_ids: string[] }

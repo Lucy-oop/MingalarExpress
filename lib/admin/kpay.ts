@@ -122,6 +122,95 @@ export async function rejectKpay(orderId: string, reason: string): Promise<KpayR
   }
 }
 
+// ---------------------------------------------------------------------------
+// 0058: rejected KBZPay payments, and how each is resolved
+// ---------------------------------------------------------------------------
+
+export type KpayRejected = {
+  id: string
+  code: string
+  customerName: string
+  customerPhone: string
+  shopName: string | null
+  riderName: string | null
+  hasRider: boolean
+  codAmount: number
+  rejectedAt: string
+  rejectReason: string | null
+}
+
+export type KpayResolution = 'cash_collected' | 'charged_rider' | 'written_off'
+
+/** Rejected KBZPay payments nobody has resolved yet, oldest first. */
+export async function getRejectedKpay(): Promise<KpayRejected[]> {
+  await assertRole('super_admin')
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('orders')
+    .select(
+      `id, code, customer_name, customer_phone, cod_amount, rider_id,
+       kpay_rejected_at, kpay_reject_reason, shops:shop_id (name)`,
+    )
+    .eq('collected_via', 'kpay')
+    .eq('cod_status', 'pending')
+    .eq('status', 'delivered')
+    .not('kpay_rejected_at', 'is', null)
+    .is('kpay_resolution', null)
+    .order('kpay_rejected_at', { ascending: true })
+  if (error) throw new Error(`rejected KBZPay list unavailable: ${error.message}`)
+
+  return Promise.all(
+    (data ?? []).map(async (o) => {
+      const { data: card } = await supabase.rpc('order_rider_card', { p_order_id: o.id })
+      return {
+        id: o.id,
+        code: o.code,
+        customerName: o.customer_name,
+        customerPhone: o.customer_phone,
+        shopName: (o.shops as unknown as { name: string } | null)?.name ?? null,
+        riderName: (card as { full_name?: string } | null)?.full_name ?? null,
+        hasRider: o.rider_id !== null,
+        codAmount: o.cod_amount,
+        rejectedAt: o.kpay_rejected_at as string,
+        rejectReason: o.kpay_reject_reason,
+      }
+    }),
+  )
+}
+
+const RESOLVED_MESSAGE: Record<KpayResolution, string> = {
+  cash_collected: 'Marked as collected by the office. The parcel is cleared and the shop can be paid.',
+  charged_rider: "Charged to the rider as a shortfall on this month's payroll. The parcel is cleared.",
+  written_off: 'Written off as a loss and recorded. The parcel is cleared and the shop can be paid.',
+}
+
+/** Resolve one rejected KBZPay payment, once (resolve_rejected_kpay). */
+export async function resolveRejectedKpay(
+  orderId: string,
+  resolution: KpayResolution,
+  note: string,
+): Promise<KpayResult> {
+  const ctx = await assertRole('super_admin').catch(() => null)
+  if (!ctx) return { ok: false, message: 'Your session has expired. Sign in again.' }
+  if (resolution === 'written_off' && note.trim().length < 3) {
+    return { ok: false, message: 'Say why this is being written off — the record is permanent.' }
+  }
+
+  const supabase = await createClient()
+  const { error } = await supabase.rpc('resolve_rejected_kpay', {
+    p_order_id: orderId,
+    p_resolution: resolution,
+    p_note: note.trim() || undefined,
+  })
+  if (error) return { ok: false, message: explain(error.message) }
+
+  revalidateKpay(orderId)
+  revalidatePath('/admin/payroll')
+  revalidatePath('/admin/audit')
+  revalidatePath('/shop/money')
+  return { ok: true, message: RESOLVED_MESSAGE[resolution] }
+}
+
 function revalidateKpay(orderId: string) {
   revalidatePath('/admin/kpay')
   revalidatePath('/admin/orders')
@@ -136,6 +225,11 @@ function explain(raw: string): string {
   if (/not_a_kpay_payment/i.test(raw)) return 'This parcel was not paid by KBZPay.'
   if (/reject_reason_required/i.test(raw)) return 'Say what was wrong with the receipt.'
   if (/order_not_found/i.test(raw)) return 'That order no longer exists.'
+  if (/kpay_already_resolved|kpay_not_awaiting_resolution/i.test(raw)) {
+    return 'This payment has already been resolved. Refresh the list.'
+  }
+  if (/kpay_writeoff_note_required/i.test(raw)) return 'Say why this is being written off.'
+  if (/order_has_no_rider/i.test(raw)) return 'No rider is recorded on this parcel to charge.'
   if (/forbidden|42501/i.test(raw)) return 'You do not have permission to do that.'
   return `Could not save that: ${raw}`
 }

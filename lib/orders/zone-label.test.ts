@@ -50,3 +50,40 @@ describe('the shop booking form shows no way names', () => {
     assert.match(code, /areaZoneLabel\(/)
   })
 })
+
+/**
+ * 0058: no shop-facing screen and no printed waybill shows an internal way.
+ * The way is the office's run planning, chosen on the Ways board.
+ */
+import { readdirSync, statSync } from 'node:fs'
+import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+describe('shops never see a way name', () => {
+  const root = fileURLToPath(new URL('../../', import.meta.url))
+  const files: string[] = [join(root, 'components/orders/parcel-label.tsx')]
+  const walk = (dir: string) => {
+    for (const name of readdirSync(dir)) {
+      const full = join(dir, name)
+      if (statSync(full).isDirectory()) walk(full)
+      else if (full.endsWith('.tsx')) files.push(full)
+    }
+  }
+  walk(join(root, 'app/shop'))
+
+  test('no shop page or waybill renders a route/way name', () => {
+    const offenders = files.filter((f) =>
+      /\broutes\.name\b|\broute\.name\b|\brouteName\b/.test(
+        readFileSync(f, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, ''),
+      ),
+    )
+    assert.deepEqual(offenders, [])
+  })
+
+  test('the "not unlocked yet" labels say ကြိုရှင်း, not COD', async () => {
+    const { DICTIONARY } = await import('@/lib/i18n/dictionary')
+    for (const key of ['sd.awaiting', 'ss.awaiting'] as const) {
+      assert.equal(DICTIONARY[key].my, 'ကြိုရှင်း ကို မဖွင့်ရသေးပါ')
+    }
+  })
+})
