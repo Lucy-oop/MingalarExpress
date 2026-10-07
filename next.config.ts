@@ -30,6 +30,21 @@ const nextConfig: NextConfig = {
       nothing to go stale.
     */
     staleTimes: { dynamic: 15, static: 300 },
+    /*
+      CSS IN THE HTML, for the first paint on a phone.
+
+      The whole stylesheet is Tailwind -- ~11 KB gzipped -- and as a <link> it
+      was a render-blocking request: on PageSpeed's throttled mobile profile,
+      one more round trip before First Contentful Paint. Inlined, the styles
+      arrive with the HTML and the page paints as soon as it is parsed.
+
+      The trade-off the docs name: a full page load re-sends those ~11 KB
+      instead of reading a cached file. Client-side navigations inside the app
+      (every rider/shop/admin click after the first) still use <link>, so it is
+      paid once per hard load. Experimental -- if it misbehaves, delete this
+      line; nothing else depends on it.
+    */
+    inlineCss: true,
   },
   // Leaflet ships CommonJS and touches `window` at import time; every consumer
   // must be dynamically imported with `ssr: false` (see components/map/MapCanvas).
